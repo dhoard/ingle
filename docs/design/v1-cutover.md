@@ -380,3 +380,15 @@ exactly where Go 1.5 and Rust 1.0 stood.
   → 34 (26% of the frontier), 5 byte-identical C-emit fixes, all gate-green (selfhost 1534/0), bootstrap
   green throughout.** Remaining: field-access B/C/D (~10), witness/OFI-174 (~6), lambda/OFI-206 (~6),
   for-loop element-typing (~3), qualified-variant (2), misc.
+- **2026-07-25 — pushed to origin/main (139 commits; CI green) — the whole OFI-218 + web + OFI-224 batch.**
+- **2026-07-25 — two more slices attempted, BOTH reverted after verification (a signal, not a failure).**
+  (D) `Box<T>` param base-sid fallback fixed `generic_fn_infer` but made *other* generic-`Box` programs emit
+  broken C (the erased-Box repr + mono-keying area is fragile — OFI-174 territory). (For-loop) string
+  element-typing produced a byte-identical loop body but exposed **OFI-225** — marking the loop var `sc_refc`
+  corrupts the downstream entry-point `\n` boilerplate. **Both reverted; verification prevented the
+  regressions.** The lesson: **the remaining ~33 gaps are NOT clean incremental one-liners** — they're
+  entangled with (a) the fragile erased-generic representation (categories B/C/D + witness → the OFI-174
+  campaign) and (b) latent emit bugs like OFI-225. The cheap-slice era is over; the rest needs the
+  **focused OFI-174 return-typing/witness campaign** (+ OFI-225 fix), approached deliberately — not more
+  tail-of-session slices. **Recommendation: bank the pushed milestone (46→34, a quarter of the frontier,
+  all public + CI-green) and take the remaining frontier as that dedicated campaign.**
