@@ -9031,14 +9031,21 @@ static Value em_fn_159(Value a0, Value a1) {
             Value v5 = em_enum_field(&g_em, v0, 0);
             Value v6 = em_enum_field(&g_em, v0, 1);
             Value v7 = em_enum_field(&g_em, v0, 2);
-            { Value v8 = em_fn_157(a0, em_fn_144(own_into_slot(&g_em, a1)));
+            int64_t v8 = (int64_t)AS_INT(em_fn_157(a0, em_fn_144(own_into_slot(&g_em, a1))));
+            if (em_truthy(em_ge(INT_VAL((int64_t)v8), INT_VAL(0LL), 0))) {
+                { Value v9 = ({ Value v10 = INT_VAL((int64_t)v8); if (IS_OBJ(v10)) OBJ_RETAIN(AS_OBJ(v10)); v10; });
+                    drop_value(&g_em, a1);
+                    return v9;
+                }
+            }
+            { Value v11 = em_fn_154(a0, own_into_slot(&g_em, v6));
                 drop_value(&g_em, a1);
-                return v8;
+                return v11;
             }
         } else {
-            { Value v9 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
+            { Value v12 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
                 drop_value(&g_em, a1);
-                return v9;
+                return v12;
             }
         }
     }

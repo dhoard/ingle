@@ -2166,7 +2166,16 @@ struct StructTab {
                 // The qualifier is a MODULE ALIAS (`map.Map<…>`); the merged instance table keys by bare name
                 // (ty_key drops the qualifier), so ignore it — a qualified generic instance still resolves. A
                 // generic ENUM (Option<int>) isn't in inst_keys, so it stays -1 regardless.
-                return self.inst_sid_of(ty_key(ty))
+                let inst = self.inst_sid_of(ty_key(ty))
+                if inst >= 0 {
+                    return inst
+                }
+                // A generic instance whose arg is a bare TYPE-VARIABLE (`Box<T>` inside `fn unwrap<T>`) has no
+                // monomorphic entry in inst_keys — fall back to the BASE struct sid. The erased base carries the
+                // field layout (`value` at index 0) and its boxed representation, so `b.value` on a `Box<T>`
+                // param resolves exactly like `Box<int>` (the type arg is erased at runtime). A generic ENUM
+                // name is absent from the struct `names`, so sid_of leaves it -1. (OFI-202, un-dodged.)
+                return self.sid_of(name)
             }
             case _ {
                 return 0 - 1
