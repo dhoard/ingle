@@ -4548,6 +4548,15 @@ struct CgcGen {
                 self.cur_lambda = self.cur_lambda + 1
                 return s + ")"
             }
+            case ETry(operand) {
+                // The `?` (try) operator on Option<T>/Result<T,E>: yield the success payload (Some/Ok = tag 0),
+                // or RETURN the whole None/Err value early from the enclosing function (tag != 0). Lowered as a
+                // GCC statement-expression so it works in ANY expression position (`let v = o?`, `Ok(a()? + b()?)`)
+                // — the `return` exits the function. Run-correct; not byte-identical to stage-0's hoisted-statement
+                // form, and it does not drop abandoned owning temps on the early-return path (a leak, sound). (OFI-173.)
+                let tv = self.fresh_var()
+                return "(\{ Value v{tv} = {self.emit_expr(operand.value)}; if (em_tag(v{tv}) != 0) \{ return v{tv}; \} em_enum_field(&g_em, v{tv}, 0); \})"
+            }
             case _ {
                 return cgc_internal_error("unhandled expression kind (OFI-173; a lambda argument needs lambda lifting, OFI-206)")
             }

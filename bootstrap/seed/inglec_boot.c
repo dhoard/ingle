@@ -11930,10 +11930,17 @@ static Value em_fn_265(Value a0, Value a1) {
             }
             drop_value(&g_em, v115);
             drop_value(&g_em, v114);
-        } else {
-            { Value v124 = em_fn_95(({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "unhandled expression kind (OFI-173; a lambda argument needs lambda lifting, OFI-206)", 84); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }));
+        } else if (v1 == 12) {
+            Value v124 = em_enum_field(&g_em, v0, 0);
+            int64_t v125 = (int64_t)AS_INT(em_fn_218(a0));
+            { Value v126 = em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "({ Value v", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v125), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " = ", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_265(a0, own_into_slot(&g_em, em_enum_field(&g_em, v124, 0))), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "; if (em_tag(v", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v125), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ") != 0) { return v", 18); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v125), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "; } em_enum_field(&g_em, v", 26); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v125), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", 0); })", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
                 drop_value(&g_em, a1);
-                return v124;
+                return v126;
+            }
+        } else {
+            { Value v127 = em_fn_95(({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "unhandled expression kind (OFI-173; a lambda argument needs lambda lifting, OFI-206)", 84); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }));
+                drop_value(&g_em, a1);
+                return v127;
             }
         }
     }
