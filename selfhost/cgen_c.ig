@@ -3324,6 +3324,10 @@ struct EnumTab {
     // out of range). Resolved to a struct sid at the match site (sid_of_ty handles generic instances).
     fn payload_ty(self, vname: string, idx: int) -> ps.Ty {
         let f = self.payload_flat(vname, idx)
+        if f < 0 {
+            return ps.TyName("", "")   // a PRELUDE variant (Some/Ok/…) has no user payload row — its payload type
+                                       // is the erased T; the concrete type comes from the scrutinee, not here.
+        }
         return self.pf_ty[f]
     }
 
@@ -8353,20 +8357,29 @@ struct CgcGen {
                             // boxed value-struct payload into an em_s ONCE, then bind each inner name to
                             // its em_s field (em_s fields ARE Values — no re-boxing). Mirrors src/cgen_c.c.
                             if cases[ci].pattern.binding_pats.len() > 0 && cases[ci].pattern.binding_pats[bi].kind != 5 {
-                                let psid = self.st.sid_of_ty(self.en.payload_ty(cases[ci].pattern.variant, bi))
-                                let fc = self.st.field_count(psid)
-                                let bv = self.fresh_var()
-                                println("{self.ind()}em_s{psid} v{bv}; em_unbox_struct(&g_em, {psid}, em_enum_field(&g_em, v{sv}, {bi}), (Value*)&v{bv}, {fc});")
-                                var ij = 0
-                                loop {
-                                    if ij >= cases[ci].pattern.binding_pats[bi].bindings.len() {
-                                        break
-                                    }
-                                    self.push(cases[ci].pattern.binding_pats[bi].bindings[ij], "v{bv}.f{ij}", 0 - 1, false, false, false, 0 - 1)   // a Value field of the unboxed struct
-                                    ij = ij + 1
+                                var psid = self.st.sid_of_ty(self.en.payload_ty(cases[ci].pattern.variant, bi))
+                                if psid < 0 {
+                                    // a PRELUDE outer variant (`case Some(Point(x, y))` / `case Ok(Point(x, y))`):
+                                    // the payload struct isn't in the enum table (Some/Ok's payload is the erased T),
+                                    // so recover the concrete struct from the scrutinee's Option<Point>/Result<Point,_>
+                                    // — the same concrete-payload path the SIMPLE `case Some(r)` branch uses. (OFI-173.)
+                                    psid = self.match_payload_sid(value.value)
                                 }
-                                bi = bi + 1
-                                continue
+                                if psid >= 0 {
+                                    let fc = self.st.field_count(psid)
+                                    let bv = self.fresh_var()
+                                    println("{self.ind()}em_s{psid} v{bv}; em_unbox_struct(&g_em, {psid}, em_enum_field(&g_em, v{sv}, {bi}), (Value*)&v{bv}, {fc});")
+                                    var ij = 0
+                                    loop {
+                                        if ij >= cases[ci].pattern.binding_pats[bi].bindings.len() {
+                                            break
+                                        }
+                                        self.push(cases[ci].pattern.binding_pats[bi].bindings[ij], "v{bv}.f{ij}", 0 - 1, false, false, false, 0 - 1)   // a Value field of the unboxed struct
+                                        ij = ij + 1
+                                    }
+                                    bi = bi + 1
+                                    continue
+                                }
                             }
                             // A simple `case Some(r)`/`case Ok(r)` whose payload the ENUM TABLE types as the
                             // erased T (a prelude generic), but whose SCRUTINEE is a concrete generic container
