@@ -3628,6 +3628,9 @@ struct CgcGen {
     sc_struct: [int]           // ...for a VALUE-STRUCT binding: its struct sid (so `p.f` / storage type resolve), else -1
     sc_opt_payload: [int]      // ...for an Option<Struct>/Result<Struct,_> binding: the payload's base struct sid, so a
                                // plain `match o { case Some(v) }` on this local/param tracks v's struct (OFI-173 return-typing)
+    sc_ctype: [ps.Ty]          // ...for a GENERIC-CONTAINER binding (`arena: SlotMap<Person>`, `m: Map<K,V>`): its full
+                               // declared type WITH args, so `match arena.get(h) { case Some(q) }` types q from the
+                               // concrete arg — a LOCAL/PARAM analogue of the struct-field f_ty path (OFI-202), else a sentinel
     sc_render: [int]           // ...its interpolation render-kind (int_kind: 0 int, 8 f32, 9 float, 10 bool, 1..7 sized), for `{x}`
     indent: int                // current C indentation depth (1 = the function-body level, 4 spaces each)
     st: StructTab              // the declared-struct table (value/boxed classification + field resolution)
@@ -3720,6 +3723,7 @@ struct CgcGen {
         self.sc_tyvar.append(false)           // default: not an owned type-param local (set_last_tyvar overrides)
         self.sc_struct.append(0 - 1)          // default: not a struct binding (set_last_struct overrides)
         self.sc_opt_payload.append(0 - 1)     // default: not an Option/Result-of-struct binding (set_last_opt_payload overrides)
+        self.sc_ctype.append(ps.TyName("", ""))   // default: no tracked container type (set_last_ctype overrides for generic containers)
         self.sc_render.append(0)              // default: int render-kind (set_last_render overrides for float/bool/sized)
     }
 
@@ -3884,6 +3888,29 @@ struct CgcGen {
             i = i - 1
         }
         return 0 - 1
+    }
+
+
+    // set_last_ctype records the full DECLARED generic-container type (with args) of the most-recently pushed
+    // binding, so `match local.get(k) { case Some(v) }` on a LOCAL/PARAM container scrutinee types v from the
+    // concrete arg — the local analogue of the struct-field f_ty path. Called right after push. (OFI-202.)
+    fn set_last_ctype(mut self, ty: ps.Ty) {
+        self.sc_ctype[self.sc_ctype.len() - 1] = ty
+    }
+
+
+    fn lookup_ctype(self, name: string) -> ps.Ty {
+        var i = self.sc_name.len() - 1
+        loop {
+            if i < 0 {
+                break
+            }
+            if self.sc_name[i] == name {
+                return self.sc_ctype[i]
+            }
+            i = i - 1
+        }
+        return ps.TyName("", "")
     }
 
 
@@ -4088,6 +4115,8 @@ struct CgcGen {
         var ntv: [bool] = []
         var ns: [int] = []
         var nrd: [int] = []
+        var nop: [int] = []
+        var nct: [ps.Ty] = []
         var i = 0
         loop {
             if i >= mark {
@@ -4108,6 +4137,8 @@ struct CgcGen {
             ntv.append(self.sc_tyvar[i])
             ns.append(self.sc_struct[i])
             nrd.append(self.sc_render[i])
+            nop.append(self.sc_opt_payload[i])
+            nct.append(self.sc_ctype[i])
             i = i + 1
         }
         self.sc_elem_struct = nes
@@ -4125,6 +4156,8 @@ struct CgcGen {
         self.sc_elem_aek = nea
         self.sc_struct = ns
         self.sc_render = nrd
+        self.sc_opt_payload = nop
+        self.sc_ctype = nct
     }
 
 
@@ -4275,6 +4308,36 @@ struct CgcGen {
     // recv_container_ty returns the DECLARED type of a method-call receiver when it is a struct FIELD access
     // (`self.rects` / `obj.field`) — a `TyGeneric` carrying the container's value type-args (`Map<string,
     // Rect>`). Returns the sentinel `TyName("","")` for anything else (a local, a call result, …). P6 keystone.
+    // binding_container_ty returns a binding's full generic-container type (with args) — from the `[T]`
+    // annotation if present, else the RHS struct-literal's type (`SlotMap<Person>{…}`) — or a sentinel
+    // TyName("","") when the binding is not a generic instance. Recorded via set_last_ctype. (OFI-202.)
+    fn binding_container_ty(self, ty: [ps.Ty], value: ps.Expr) -> ps.Ty {
+        if ty.len() > 0 {
+            match ty[0] {
+                case TyGeneric(q, n, a) {
+                    return ty[0]
+                }
+                case _ {
+                }
+            }
+        }
+        match value {
+            case EStructLit(lty, fields) {
+                match lty.value {
+                    case TyGeneric(q, n, a) {
+                        return lty.value
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return ps.TyName("", "")
+    }
+
+
     fn recv_container_ty(self, recv: ps.Expr) -> ps.Ty {
         match recv {
             case EGet(object, fname) {
@@ -4282,6 +4345,12 @@ struct CgcGen {
                 if osid >= 0 {
                     return self.st.field_ty(osid, fname)
                 }
+            }
+            case EIdent(name) {
+                // a LOCAL/PARAM generic-container receiver (`arena.get(h)` — arena: SlotMap<Person>): its full
+                // declared type (with args) was recorded on the binding, so `match arena.get(h) { case Some(q) }`
+                // types q from the concrete arg — the local analogue of the struct-field f_ty path. (OFI-202.)
+                return self.lookup_ctype(name)
             }
             case _ {
             }
@@ -7912,6 +7981,10 @@ struct CgcGen {
                     self.push(name, "v{id}", 0 - 1, false, owned, arr, elem_sk)
                     if bsid >= 0 {
                         self.set_last_struct(bsid)          // track the boxed-struct sid so `c.field` resolves
+                        // A GENERIC-CONTAINER binding (`var arena = SlotMap<Person>{…}`, `var m = Map<K,V>{…}`):
+                        // record its full declared type (with args) so `match arena.get(h) { case Some(q) }` types
+                        // q from the concrete arg — the local analogue of the struct-field f_ty path. (OFI-202.)
+                        self.set_last_ctype(self.binding_container_ty(ty, value.value))
                     }
                     if ty.len() > 0 {
                         // An Option<Struct>/Result<Struct,_> binding: record the CONCRETE payload struct sid so a
@@ -9042,7 +9115,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
     // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
     // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
     // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
