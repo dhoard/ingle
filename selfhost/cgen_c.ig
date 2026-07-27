@@ -349,6 +349,9 @@ struct FnResolve {
     imp_path: [string]
     newtypes: [string]         // every `type Name = Base [where …]` (DType) name — a construction `Name(x)`
                                // erases to its base value (OFI-202), so emit_call lowers it to the bare arg
+    itab: IfaceTab             // user interface -> method names (witness method count/index), OFI-174 free-fn
+    wit: WitTables             // per-em_fn FREE-FN witness rows (bound + determining-arg, with start/count) —
+                               // for call-site witness threading of a bounded generic free fn (OFI-174)
 }
 
 
@@ -1728,16 +1731,34 @@ fn fn_ret_ctype(f: ps.FnDecl, stab: StructTab) -> string {
 // value), everything else is `Value a<i>`; a method's `self` is the leading a0, typed as its owning struct.
 fn fn_param_list(f: ps.FnDecl, has_self: bool, stab: StructTab, owner_sid: int) -> string {
     let n = value_arity(f, has_self)
-    if n == 0 {
+    // A FREE bounded generic fn (`fn max<T: Ord>`) prepends one hidden `Value wN` witness param per (type-param,
+    // bound) BEFORE its value params — the concrete Ord/Hash/… impl for the call's type-args. A struct METHOD
+    // carries its witnesses on self's fields instead, so no witness params. (OFI-174 free-fn witnesses.)
+    var wc = 0
+    if has_self == false {
+        wc = fn_witness_count(f)
+    }
+    if n == 0 && wc == 0 {
         return "void"
     }
     var s = ""
+    var w = 0
+    loop {
+        if w >= wc {
+            break
+        }
+        if w > 0 {
+            s = s + ", "
+        }
+        s = s + "Value w{w}"
+        w = w + 1
+    }
     var i = 0
     loop {
         if i >= n {
             break
         }
-        if i > 0 {
+        if wc > 0 || i > 0 {
             s = s + ", "
         }
         let psid = param_value_sid(f, has_self, stab, owner_sid, i)
@@ -2909,14 +2930,175 @@ fn nth_targ_head(ty: ps.Ty, k: int) -> string {
 // iface_methods returns a built-in bound interface's method names, in declaration order (the witness record's
 // field order AND the CALL_INDIRECT method index): Hash -> ["hash"], Eq -> ["eq"]. A USER interface's methods
 // would come from its DInterface decl — deferred (the stdlib's bounded structs use only Hash/Eq). OFI-174.
-fn iface_methods(iface: string) -> [string] {
+// IfaceTab maps a user interface NAME to its method names in declaration order (flat, parallel arrays),
+// built once from the DInterface decls. Drives the witness method COUNT (em_enum arity) and the method
+// INDEX (the CALL_INDIRECT midx) for a bounded-generic dispatch over a USER interface (Ord/Named/Aged). The
+// prelude Hash/Eq have no DInterface decl, so iface_methods falls back to them. (OFI-174 free-fn witnesses.)
+struct IfaceTab {
+    m_iface: [string]
+    m_name: [string]
+}
+
+
+fn build_iface_tab(decls: [ps.Decl]) -> IfaceTab {
+    var m_iface: [string] = []
+    var m_name: [string] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DInterface(name, generics, methods) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    m_iface.append(name)
+                    m_name.append(methods[mi].name)
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return IfaceTab { m_iface: m_iface, m_name: m_name }
+}
+
+
+fn iface_methods(itab: IfaceTab, iface: string) -> [string] {
+    var out: [string] = []
+    var i = 0
+    loop {
+        if i >= itab.m_iface.len() {
+            break
+        }
+        if itab.m_iface[i] == iface {
+            out.append(itab.m_name[i])
+        }
+        i = i + 1
+    }
+    if out.len() > 0 {
+        return out
+    }
+    // prelude fallback: Hash/Eq are built-in bounds with no user DInterface decl.
     if iface == "Hash" {
         return ["hash"]
     }
     if iface == "Eq" {
         return ["eq"]
     }
-    return []
+    return out
+}
+
+
+// fn_witness_count is the number of hidden leading `Value wN` witness params a FREE bounded generic fn carries:
+// one per (type-param, bound) — the sum of each generic's bound count (Copy is excluded from bounds). A
+// non-generic or unbounded fn returns 0. Mirrors stage-0's fn_witness_count. (OFI-174 free-fn witnesses.)
+fn fn_witness_count(f: ps.FnDecl) -> int {
+    var n = 0
+    var gi = 0
+    loop {
+        if gi >= f.generics.len() {
+            break
+        }
+        n = n + f.generics[gi].bounds.len()
+        gi = gi + 1
+    }
+    return n
+}
+
+
+// param_of_tparam returns the VALUE-param index (self excluded) of the FIRST param typed as the bare type-param
+// `tpname` — the arg whose concrete type determines that type-param's witness at a call site.
+fn param_of_tparam(params: [ps.Param], generics: [ps.GenericParam], tpname: string) -> int {
+    var vi = 0
+    var i = 0
+    loop {
+        if i >= params.len() {
+            break
+        }
+        if params[i].is_self == false {
+            if params[i].ty.len() > 0 && field_tpname_ty(params[i].ty[0], generics) == tpname {
+                return vi
+            }
+            vi = vi + 1
+        }
+        i = i + 1
+    }
+    return 0 - 1
+}
+
+
+struct WitTables {
+    bound: [string]
+    arg: [int]
+    start: [int]
+    count: [int]
+}
+
+
+// build_fn_witness computes, per em_fn (parallel to build_fn_names), the FREE-FN witness rows: for a free
+// generic fn with bounded type-params, one (bound-interface, determining-value-arg-index) row per (type-param,
+// bound), flattened into bound/arg with per-fn start/count. A struct METHOD gets 0 rows (it dispatches through
+// self's witness FIELD, not a param). Only free fns prepend hidden witness PARAMS. (OFI-174 free-fn witnesses.)
+fn build_fn_witness(decls: [ps.Decl]) -> WitTables {
+    var bound: [string] = []
+    var arg: [int] = []
+    var start: [int] = []
+    var count: [int] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    start.append(bound.len())
+                    let n0 = bound.len()
+                    var gi = 0
+                    loop {
+                        if gi >= f.generics.len() {
+                            break
+                        }
+                        let ai = param_of_tparam(f.params, f.generics, f.generics[gi].name)
+                        var bi = 0
+                        loop {
+                            if bi >= f.generics[gi].bounds.len() {
+                                break
+                            }
+                            bound.append(f.generics[gi].bounds[bi])
+                            arg.append(ai)
+                            bi = bi + 1
+                        }
+                        gi = gi + 1
+                    }
+                    count.append(bound.len() - n0)
+                }
+            }
+            case DStruct(sname, sgenerics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        start.append(bound.len())
+                        count.append(0)
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return WitTables { bound: bound, arg: arg, start: start, count: count }
 }
 
 
@@ -3464,6 +3646,9 @@ struct CgcGen {
                                // resolves to THIS module's definition first (matching stage-0's scope resolution)
     cur_tp_pname: [string]     // param names typed as one of the owner's TYPE-PARAMS (`key: K`) — a bounded-method
     cur_tp_tname: [string]     // ...call on such a param dispatches through a witness; parallel tparam name ("K")
+    cur_wit_tp: [string]       // the CURRENT free fn's witness-param LAYOUT: the type-param name of each leading
+    cur_wit_bound: [string]    // hidden Value wN param, and its bound interface — so `a.compare(b)` finds w{N}.
+
     cur_lambda: int            // the em_fn index of the NEXT lambda this body lifts (fn_count + prior lambdas),
                                // incremented at each `em_closure` site so a lambda VALUE gets its lifted slot (OFI-206)
     fn_ret_det_arg: [int]      // ...per em_fn: the value-arg index determining a bare-`T`/`[T]` return (else -1),
@@ -4225,7 +4410,7 @@ struct CgcGen {
             if bi >= bounds.len() {
                 break
             }
-            if index_of_str(iface_methods(bounds[bi]), mname) >= 0 {
+            if index_of_str(iface_methods(self.res.itab, bounds[bi]), mname) >= 0 {
                 return bounds[bi]
             }
             bi = bi + 1
@@ -4271,9 +4456,64 @@ struct CgcGen {
     fn emit_witness_call(mut self, recv: ps.Expr, tpname: string, mname: string, args: [ps.Expr]) -> string {
         let bound = self.bound_for_method(self.cur_owner, tpname, mname)
         let widx = self.witness_field_index(self.cur_owner, tpname, bound)
-        let midx = index_of_str(iface_methods(bound), mname)
+        let midx = index_of_str(iface_methods(self.res.itab, bound), mname)
         let selfc = self.lookup_cname("self")
         var s = "rt_call_indirect(&g_em, AS_INT(em_enum_field(&g_em, em_enum_field(&g_em, {selfc}, {widx}), {midx})), {1 + args.len()}, (Value[])\{ "
+        s = s + self.emit_expr(recv)
+        var i = 0
+        loop {
+            if i >= args.len() {
+                break
+            }
+            s = s + ", " + self.emit_expr(args[i])
+            i = i + 1
+        }
+        return s + " \}, em_invoke)"
+    }
+
+
+    // free_bound_for_method returns which of the CURRENT free fn's witness bounds for type-param `tpname`
+    // declares method `mname` (Ord→compare, Named→name, Aged→age), or "". Reads cur_wit_bound (this fn's
+    // witness layout), the free-fn analogue of bound_for_method (which reads a struct owner's bounds). OFI-174.
+    fn free_bound_for_method(self, tpname: string, mname: string) -> string {
+        var i = 0
+        loop {
+            if i >= self.cur_wit_tp.len() {
+                break
+            }
+            if self.cur_wit_tp[i] == tpname && index_of_str(iface_methods(self.res.itab, self.cur_wit_bound[i]), mname) >= 0 {
+                return self.cur_wit_bound[i]
+            }
+            i = i + 1
+        }
+        return ""
+    }
+
+
+    // cur_wit_index returns the witness-PARAM index (w{N}) of the current free fn's (tparam, bound) row, from
+    // its witness layout — the free-fn analogue of witness_field_index (which returns a struct FIELD index).
+    fn cur_wit_index(self, tpname: string, bound: string) -> int {
+        var i = 0
+        loop {
+            if i >= self.cur_wit_tp.len() {
+                break
+            }
+            if self.cur_wit_tp[i] == tpname && self.cur_wit_bound[i] == bound {
+                return i
+            }
+            i = i + 1
+        }
+        return 0 - 1
+    }
+
+
+    // emit_free_witness_call lowers a bounded-method call on a FREE fn's type-param receiver (`a.compare(b)`) to
+    // a witness dispatch through the hidden witness PARAM w{widx}: a SINGLE em_enum_field (the param IS the
+    // witness record), vs emit_witness_call's DOUBLE (self→field→method). Receiver + args are BORROWS. OFI-174.
+    fn emit_free_witness_call(mut self, recv: ps.Expr, tpname: string, bound: string, mname: string, args: [ps.Expr]) -> string {
+        let widx = self.cur_wit_index(tpname, bound)
+        let midx = index_of_str(iface_methods(self.res.itab, bound), mname)
+        var s = "rt_call_indirect(&g_em, AS_INT(em_enum_field(&g_em, w{widx}, {midx})), {1 + args.len()}, (Value[])\{ "
         s = s + self.emit_expr(recv)
         var i = 0
         loop {
@@ -4711,7 +4951,7 @@ struct CgcGen {
     // count>, INT_VAL(id0), …) — a generic record enum (id 0 / tag 0, NOT Some, so it can't collide with an
     // Option enum id). One INT_VAL per interface method, in declaration order.
     fn emit_witness(self, bound: string, concrete: string) -> string {
-        let methods = iface_methods(bound)
+        let methods = iface_methods(self.res.itab, bound)
         var s = "em_enum(&g_em, 0, 0, {methods.len()}"
         var i = 0
         loop {
@@ -6036,6 +6276,26 @@ struct CgcGen {
                         return self.emit_witness_call(object.value, wtp, mname, args)
                     }
                 }
+                // A bounded-method call on a FREE fn's type-param receiver (`a.compare(b)` where `a: T` in
+                // `fn max<T: Ord>`) — dispatch through the hidden witness PARAM w{N}, not self's field. Only
+                // when the current fn is free (cur_owner < 0) and the receiver is a param typed as a bounded
+                // type-param whose bound declares the method. (OFI-174 free-fn witnesses.)
+                if self.cur_owner < 0 {
+                    var fwtp = ""
+                    match object.value {
+                        case EIdent(rn) {
+                            fwtp = self.lookup_tp_tname(rn)
+                        }
+                        case _ {
+                        }
+                    }
+                    if fwtp != "" {
+                        let fbound = self.free_bound_for_method(fwtp, mname)
+                        if fbound != "" {
+                            return self.emit_free_witness_call(object.value, fwtp, fbound, mname, args)
+                        }
+                    }
+                }
                 // UFCS (Phase 3): a NON-STRUCT value receiver (an enum like Option, …) whose method
                 // name is a free function → emit the free call `mname(object, args)` with the receiver
                 // prepended as arg 0 (mirrors src/check.c's AST rewrite → byte-identical to stage-0).
@@ -6093,8 +6353,124 @@ struct CgcGen {
     // temporary (an array literal), hoist EVERY argument into a `c%d` local (left-to-right), call, drop the
     // masked temps, then yield the result — a statement-expression so it stays usable in expression position
     // (cgen_c.c:emit_call). Shared by the bare-name and the module-qualified `mod.fn` call paths.
+    // concrete_type_of_arg names the concrete type a value argument carries — for resolving the witness impl at
+    // a bounded-generic call site: a literal's primitive name, else the arg's struct name (Version/Coord), else
+    // "" (falls through witness_method_ref to the native hash/eq sentinel). (OFI-174 free-fn witnesses.)
+    fn concrete_type_of_arg(self, e: ps.Expr) -> string {
+        match e {
+            case EInt(v, k) {
+                return "int"
+            }
+            case EStr(parts) {
+                return "string"
+            }
+            case EBool(v) {
+                return "bool"
+            }
+            case EFloat(v) {
+                return "float"
+            }
+            case _ {
+            }
+        }
+        let sid = self.struct_sid_any(e)
+        if sid >= 0 {
+            return self.st.names[sid]
+        }
+        return ""
+    }
+
+
+    // emit_bounded_free_call threads the hidden witness args for a call to a bounded generic FREE fn
+    // (`max(v1, v2)` -> `em_fn_K(w, v1, v2)`): build each (type-param, bound) witness from the concrete type of
+    // its determining arg (reusing emit_witness), prepend them, then drop each after the call. Mirrors stage-0.
+    // The witnesses are owned enum temps; value args go through emit_call_arg_gen (boxing structs into erased
+    // Value params). (OFI-174 free-fn witnesses.)
+    fn emit_bounded_free_call(mut self, fi: int, args: [ps.Expr]) -> string {
+        let start = self.res.wit.start[fi]
+        let wcount = self.res.wit.count[fi]
+        let rid = self.fresh_var()
+        var witids: [int] = []
+        var s = "(\{ "
+        var wi = 0
+        loop {
+            if wi >= wcount {
+                break
+            }
+            let bound = self.res.wit.bound[start + wi]
+            let argidx = self.res.wit.arg[start + wi]
+            var concrete = ""
+            if argidx >= 0 && argidx < args.len() {
+                concrete = self.concrete_type_of_arg(args[argidx])
+            }
+            let wid = self.fresh_var()
+            witids.append(wid)
+            s = s + "Value w{wid} = {self.emit_witness(bound, concrete)}; "
+            wi = wi + 1
+        }
+        var argids: [int] = []
+        var i = 0
+        loop {
+            if i >= args.len() {
+                break
+            }
+            let aid = self.fresh_var()
+            argids.append(aid)
+            s = s + "Value c{aid} = {self.emit_call_arg_gen(args[i], fi, i)}; "
+            i = i + 1
+        }
+        var rtype = "Value"
+        if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 {
+            rtype = "em_s{self.fn_ret_struct[fi]}"
+        }
+        s = s + "{rtype} c{rid} = em_fn_{fi}("
+        var wj = 0
+        loop {
+            if wj >= witids.len() {
+                break
+            }
+            if wj > 0 {
+                s = s + ", "
+            }
+            s = s + "w{witids[wj]}"
+            wj = wj + 1
+        }
+        var j = 0
+        loop {
+            if j >= argids.len() {
+                break
+            }
+            s = s + ", c{argids[j]}"
+            j = j + 1
+        }
+        s = s + "); "
+        var dw = 0
+        loop {
+            if dw >= witids.len() {
+                break
+            }
+            s = s + "drop_value(&g_em, w{witids[dw]}); "
+            dw = dw + 1
+        }
+        var k = 0
+        loop {
+            if k >= args.len() {
+                break
+            }
+            if self.arg_owning_temp_p(fi, k, args[k]) {
+                s = s + "drop_value(&g_em, c{argids[k]}); "
+            }
+            k = k + 1
+        }
+        return s + "c{rid}; \})"
+    }
+
+
     fn emit_free_call(mut self, fi: int, args: [ps.Expr]) -> string {
         self.record_hof_lambdas(fi, args)               // capture any lambda arg's param typing before it lifts
+        if fi >= 0 && fi < self.res.wit.count.len() && self.res.wit.count[fi] > 0 {
+            return self.emit_bounded_free_call(fi, args)   // a bounded generic free fn — thread witness args (OFI-174)
+        }
         var any_temp = false
         var ti = 0
         loop {
@@ -8575,7 +8951,28 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
+    // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
+    // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
+    if has_self == false {
+        var wgi = 0
+        loop {
+            if wgi >= f.generics.len() {
+                break
+            }
+            var wbi = 0
+            loop {
+                if wbi >= f.generics[wgi].bounds.len() {
+                    break
+                }
+                g.cur_wit_tp.append(f.generics[wgi].name)
+                g.cur_wit_bound.append(f.generics[wgi].bounds[wbi])
+                wbi = wbi + 1
+            }
+            wgi = wgi + 1
+        }
+    }
     // For a lifted lambda, lam_pstr/lam_pkind type its OWN params (the trailing params after the captures) so
     // the body dispatches `.len()`/concat/arithmetic like stage-0 (the C signature stays all-`Value`). Captures
     // lead and stay untyped. caps = (non-self param count) − (own params typed) — OFI-206 follow-on.
@@ -8684,6 +9081,16 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
                     g.cur_tp_pname.append(f.params[p].name)
                     g.cur_tp_tname.append(otp)
                 }
+                // A FREE bounded generic fn's param typed as one of ITS OWN type-params (`a: T` in max<T: Ord>)
+                // — record it so `a.compare(b)` dispatches through the witness PARAM (owner_tparam_name only
+                // handles struct owners, returning "" for a free fn). (OFI-174 free-fn witnesses.)
+                if owner_sid < 0 {
+                    let ftp = field_tpname_ty(f.params[p].ty[0], f.generics)
+                    if ftp != "" {
+                        g.cur_tp_pname.append(f.params[p].name)
+                        g.cur_tp_tname.append(ftp)
+                    }
+                }
             }
             ai = ai + 1
         }
@@ -8775,6 +9182,13 @@ fn invoke_args(arity: int) -> string {
 fn emit_invoke_case(f: ps.FnDecl, idx: int, has_self: bool, stab: StructTab, owner_sid: int) {
     println("        case {idx}: \{")
     let n = value_arity(f, has_self)
+    // A FREE bounded generic fn carries wc leading witness slots (slots[0..wc-1]); its value params start at
+    // slots[wc]. The witnesses are passed straight through and dropped after the call (they are owned enum
+    // temps). (OFI-174 free-fn witnesses.)
+    var wc = 0
+    if has_self == false {
+        wc = fn_witness_count(f)
+    }
     var i = 0
     loop {
         if i >= n {
@@ -8782,36 +9196,63 @@ fn emit_invoke_case(f: ps.FnDecl, idx: int, has_self: bool, stab: StructTab, own
         }
         let psid = param_value_sid(f, has_self, stab, owner_sid, i)
         if psid >= 0 {
-            println("            em_s{psid} p{i}; em_unbox_struct(ctx, {psid}, slots[{i}], (Value*)&p{i}, {stab.field_count(psid)});")
+            println("            em_s{psid} p{i}; em_unbox_struct(ctx, {psid}, slots[{wc + i}], (Value*)&p{i}, {stab.field_count(psid)});")
         }
         i = i + 1
     }
     var args = ""
+    var w = 0
+    loop {
+        if w >= wc {
+            break
+        }
+        if w > 0 {
+            args = args + ", "
+        }
+        args = args + "slots[{w}]"
+        w = w + 1
+    }
     var j = 0
     loop {
         if j >= n {
             break
         }
-        if j > 0 {
+        if wc > 0 || j > 0 {
             args = args + ", "
         }
         let psid = param_value_sid(f, has_self, stab, owner_sid, j)
         if psid >= 0 {
             args = args + "p{j}"
         } else {
-            args = args + "slots[{j}]"
+            args = args + "slots[{wc + j}]"
         }
         j = j + 1
     }
     let rsid = fn_ret_value_struct(f, stab)
     if rsid >= 0 {
         println("            em_s{rsid} r = em_fn_{idx}({args});")
+        wit_slot_drops(wc)
         println("            return em_box_struct(ctx, {rsid}, (Value*)&r, {stab.field_count(rsid)});")
     } else {
         println("            Value _r = em_fn_{idx}({args});")
+        wit_slot_drops(wc)
         println("            return _r;")
     }
     println("        \}")
+}
+
+
+// wit_slot_drops emits `drop_value(ctx, slots[w])` for each of the wc leading witness slots after a bounded
+// free-fn trampoline call (the witnesses are owned enum temps). (OFI-174 free-fn witnesses.)
+fn wit_slot_drops(wc: int) {
+    var w = 0
+    loop {
+        if w >= wc {
+            break
+        }
+        println("            drop_value(ctx, slots[{w}]);")
+        w = w + 1
+    }
 }
 
 
@@ -9489,7 +9930,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_modules = build_fn_modules(decls, decl_mods)  // per-em_fn source module (module-aware qualified resolution)
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
