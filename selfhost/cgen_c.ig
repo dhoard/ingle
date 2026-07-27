@@ -5674,6 +5674,24 @@ struct CgcGen {
                 if name == "panic" && args.len() == 1 {
                     return "(em_panic_val(&g_em, {self.emit_expr(args[0])}), INT_VAL(0))"
                 }
+                // assert(cond [, "msg"]) → em_assert(<cond>, <msg>): the message is a RAW C string literal (not
+                // an em_str Value), or 0 for the auto-message form. Contract-check machinery (a violation is a
+                // structured tape event, release-elided). Mirrors stage-0. (OFI-173, un-dodged.)
+                if name == "assert" && (args.len() == 1 || args.len() == 2) {
+                    let cond = self.emit_expr(args[0])
+                    if args.len() == 2 {
+                        match args[1] {
+                            case EStr(parts) {
+                                if parts.len() == 1 && parts[0].hole.len() == 0 {
+                                    return "em_assert({cond}, \"{c_escape(parts[0].text)}\")"
+                                }
+                            }
+                            case _ {
+                            }
+                        }
+                    }
+                    return "em_assert({cond}, 0)"
+                }
                 // Concurrency CHANNEL builtins: channel(n) → a buffered channel; send(ch, v) enqueues (v moved
                 // in); recv(ch)/try_recv(ch) → Option<elem> (blocking / non-blocking poll); close(ch). recv wraps
                 // the value in Some/None, so it carries the Option enum id + Some(0)/None(1) tags. (cgen_c.c M4.)
