@@ -6904,6 +6904,35 @@ struct CgcGen {
     // (lookup_elem_struct), a struct field array (field_elem_struct), or an array-returning call
     // (value_elem_struct). -1 for a scalar/string-element or non-array. So `xs.clone()[i]` / `for x in xs`
     // resolve x's fields.
+    // array_elem_is_refc_leaf reports whether array expression `e`'s ELEMENT is a boxed refcounted LEAF — a
+    // string or enum (AEK 0, not a struct, not a nested array). Used to type a for-loop var (`for line in lines`
+    // over a [string]) as a refcounted borrow so `line.split()` (a string method) resolves, mirroring a direct
+    // `lines[i].split()`. (OFI-173 return-typing, un-dodged.)
+    fn array_elem_is_refc_leaf(self, e: ps.Expr) -> bool {
+        match e {
+            case EIdent(aname) {
+                return self.lookup_elem_aek(aname) == 0 && self.lookup_elem_struct(aname) < 0 && self.lookup_elem_is_array(aname) == false
+            }
+            case EGet(gobj, gname) {
+                let osid = self.struct_sid_any(gobj.value)
+                if osid >= 0 {
+                    return self.st.field_elem_aek(osid, gname) == 0 && self.st.field_elem_struct(osid, gname) < 0 && is_array_ty(elem_ty_of(self.st.field_ty(osid, gname))) == false
+                }
+            }
+            case ECall(callee, args) {
+                // iterating the RESULT of a `[T]`-returning call directly (`for p in csv.split(",")`): the loop
+                // var is a refc-leaf borrow when the call's element is a boxed refc leaf (string — via split/chars)
+                // that is NOT a struct and NOT a nested array. Mirrors the EIdent case through the value_elem_*
+                // helpers (which already resolve a call's return element). (OFI-173, un-dodged.)
+                return self.value_elem_aek_boxed(e) == 0 && self.value_elem_struct(e) < 0 && self.value_elem_is_array(e) == false
+            }
+            case _ {
+            }
+        }
+        return false
+    }
+
+
     fn array_elem_struct_of(self, e: ps.Expr) -> int {
         match e {
             case EIdent(aname) {
@@ -7949,6 +7978,11 @@ struct CgcGen {
                         let lv_esid = self.array_elem_struct_of(iter.value)
                         if lv_esid >= 0 {
                             self.set_last_struct(lv_esid)
+                        } else if self.array_elem_is_refc_leaf(iter.value) {
+                            // A string/enum element (`for line in lines` over a [string]) — mark the loop var a
+                            // refcounted borrow so `line.split()` and other string/enum methods resolve. em_index
+                            // borrows the element (the array still owns it), so it is NOT dropped. (OFI-173.)
+                            self.set_last_refc(true)
                         }
                         self.emit_block_raw(body)
                         self.emit_drops(mark)
