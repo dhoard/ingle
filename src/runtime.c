@@ -1036,7 +1036,7 @@ static void em_print_value(Value v) {
     } else if (IS_FLOAT(v)) {
         fwrite(buf, 1, (size_t)snprintf(buf, sizeof buf, "%g", AS_FLOAT(v)), stdout);
     } else if (IS_STRING(v)) {
-        fwrite(AS_CSTRING(v), 1, strlen(AS_CSTRING(v)), stdout);
+        fwrite(AS_STRING(v)->chars, 1, AS_STRING(v)->length, stdout);
     } else {
         fwrite("<obj>", 1, 5, stdout);
     }
