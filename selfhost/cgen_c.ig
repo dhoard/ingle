@@ -4743,6 +4743,15 @@ struct CgcGen {
                 // qualifier is erased, like an unqualified constant read).
                 match object.value {
                     case EIdent(recv) {
+                        // A QUALIFIED zero-field variant `Enum.Variant` (`Color.Red`, `Option.None`): the receiver
+                        // is an enum TYPE name (not a binding, not a struct), the field a variant. The checker
+                        // desugars `Enum.Variant` to the bare variant (variant names are globally unique, OFI-013),
+                        // so lower it exactly like a bare `Red`/`None` — em_enum with 0 payload. (The payload form
+                        // `Enum.Variant(x)` is an ECall, handled elsewhere.)
+                        if self.is_qualified_variant(e) {
+                            let no_args: [ps.Expr] = []
+                            return self.emit_enum_ctor(name, no_args)
+                        }
                         if self.lookup_cname(recv) == "" && self.lookup_struct(recv) < 0 {
                             let ci = self.consts.lookup_idx(name)
                             if ci >= 0 {
@@ -5241,6 +5250,11 @@ struct CgcGen {
                 return self.en.is_case_variant(name) && self.lookup_cname(name) == ""
             }
             case ECall(callee, args) {
+                // a QUALIFIED payload variant construction `Option.Some(7)` / `Color.Blue(5)` — the callee is
+                // the `Enum.Variant` EGet, lowered to em_enum like the bare `Some(7)` (an owned enum). (OFI-013)
+                if self.is_qualified_variant(callee.value) {
+                    return true
+                }
                 match callee.value {
                     case EIdent(name) {
                         if self.en.is_case_variant(name) {
@@ -5277,6 +5291,35 @@ struct CgcGen {
                     }
                 }
                 return false
+            }
+            case EGet(object, name) {
+                // a QUALIFIED zero-field variant `Enum.Variant` (Color.Red / Option.None) is an owned enum
+                // value, exactly like a bare `Red`/`None` — the emit_expr EGet path lowers it to em_enum, so a
+                // binding must own+drop it and a consuming op must retain it, like the bare form. (OFI-013)
+                return self.is_qualified_variant(e)
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
+    // is_qualified_variant reports whether `e` is a QUALIFIED zero-field variant reference `Enum.Variant`
+    // (`Color.Red`, `Option.None`) — the receiver an enum TYPE name (not a binding/struct), the field a
+    // variant. The checker desugars it to the bare variant (variant names are globally unique, OFI-013), so
+    // it lowers exactly like a bare `Red`/`None`: em_enum, owned+dropped as a binding, retained on consume.
+    fn is_qualified_variant(self, e: ps.Expr) -> bool {
+        match e {
+            case EGet(object, name) {
+                match object.value {
+                    case EIdent(recv) {
+                        return self.lookup_cname(recv) == "" && self.lookup_struct(recv) < 0 && self.en.is_case_variant(name)
+                    }
+                    case _ {
+                        return false
+                    }
+                }
             }
             case _ {
                 return false
@@ -5625,6 +5668,11 @@ struct CgcGen {
                     return "(\{ Value v{v} = own_into_slot(&g_em, {self.emit_expr(e)}); if (IS_OBJ(v{v})) OBJ_RETAIN(AS_OBJ(v{v})); v{v}; \})"
                 }
                 if self.is_self_field(object.value) || bsid >= 0 {
+                    return self.retain_dance(e)
+                }
+                // a QUALIFIED zero-field variant `Enum.Variant` bound/consumed — retain it exactly like a bare
+                // `Red`/`None` (the EIdent path's default), so the consuming op's balance stays even. (OFI-013)
+                if self.is_qualified_variant(e) {
                     return self.retain_dance(e)
                 }
             }
