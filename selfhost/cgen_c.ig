@@ -6058,6 +6058,14 @@ struct CgcGen {
                     }
                     return "em_assert({cond}, 0)"
                 }
+                // len(x) — the FREE-FUNCTION form of `x.len()`. The checker restricts it to an ARRAY arg
+                // ("len requires an array"). cgen_c lowers it to a bare em_array_len(<arg>) — stage-0's free
+                // form does NOT temp-drop the arg (unlike the method form), so a temp-array `len([…])` is
+                // measured as-is. Only fires for an array arg, so a user `fn len(s: Struct)` still resolves
+                // below. (OFI-173, un-dodged.)
+                if name == "len" && args.len() == 1 && self.is_array_expr(args[0]) {
+                    return "em_array_len({self.emit_expr(args[0])})"
+                }
                 // Concurrency CHANNEL builtins: channel(n) → a buffered channel; send(ch, v) enqueues (v moved
                 // in); recv(ch)/try_recv(ch) → Option<elem> (blocking / non-blocking poll); close(ch). recv wraps
                 // the value in Some/None, so it carries the Option enum id + Some(0)/None(1) tags. (cgen_c.c M4.)
@@ -6958,6 +6966,9 @@ struct CgcGen {
                         let ck = numeric_typename_kind(name)
                         if ck >= 0 {
                             return ck                     // a numeric conversion `let a = i32(n)` → a sized scalar
+                        }
+                        if name == "len" && args.len() == 1 && self.is_array_expr(args[0]) {
+                            return 0                      // the free-function form `len(a)` returns an int scalar (i64), like `a.len()`
                         }
                         let fi = self.fn_index(name)
                         if fi >= 0 {
