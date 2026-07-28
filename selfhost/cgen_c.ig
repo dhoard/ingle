@@ -139,6 +139,63 @@ fn build_fn_param_quals(decls: [ps.Decl]) -> [[int]] {
 }
 
 
+// param_ifaces_of returns each NON-self param's interface name (`s: Shape` → "Shape"), else "" — parallel to
+// param_quals_of, so a struct arg to an interface param can be UPCAST at the call site. (OFI-013.)
+fn param_ifaces_of(params: [ps.Param], itab: IfaceTab) -> [string] {
+    var q: [string] = []
+    var i = 0
+    loop {
+        if i >= params.len() {
+            break
+        }
+        if params[i].is_self == false {
+            if params[i].ty.len() > 0 {
+                q.append(iface_name_of_ty(itab, params[i].ty[0]))
+            } else {
+                q.append("")
+            }
+        }
+        i = i + 1
+    }
+    return q
+}
+
+
+// build_fn_param_iface is per-em_fn: each param's interface name (else ""), keyed by em_fn index. (OFI-013.)
+fn build_fn_param_iface(decls: [ps.Decl], itab: IfaceTab) -> [[string]] {
+    var out: [[string]] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    out.append(param_ifaces_of(f.params, itab))
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        out.append(param_ifaces_of(methods[mi].params, itab))
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 // build_fn_modules is parallel to build_fn_names (same em_fn order): each entry is the fn's SOURCE-MODULE path
 // (`decl_mods` is the merged decls' per-decl module, from the driver's load_modules). Backs module-aware
 // resolution of a qualified call whose bare name collides across modules. A method's module is its struct's.
@@ -354,6 +411,8 @@ struct FnResolve {
                                // for call-site witness threading of a bounded generic free fn (OFI-174)
     ret_iface: [string]        // per-em_fn: the INTERFACE name a fn returns (`-> Shape`), else "" — so a method
                                // call on an interface-returning call (`make(k).area()`) dispatches dynamically (OFI-013)
+    param_iface: [[string]]    // per-em_fn, per value-param: the param's INTERFACE name (else "") — so a struct arg
+                               // to an interface param is UPCAST at the call site (OFI-013)
 }
 
 
@@ -6512,6 +6571,15 @@ struct CgcGen {
     // value struct passed to a `val: V` generic param (`m.set(k, Rect{…})`) is boxed into the Value slot (a raw
     // em_s would blow the varargs/param ABI), like emit_field_consume does for a generic FIELD. OFI-218.
     fn emit_call_arg_gen(mut self, e: ps.Expr, fi: int, pidx: int) -> string {
+        // A struct arg to an INTERFACE param (`measure(Square{…})` where `measure(s: Shape)`) — UPCAST it to an
+        // interface value at the call site. An already-interface arg (a binding/call) is not a struct, so it
+        // passes through unchanged. (OFI-013, un-dodged.)
+        if fi >= 0 && fi < self.res.param_iface.len() && pidx >= 0 && pidx < self.res.param_iface[fi].len() {
+            let pifn = self.res.param_iface[fi][pidx]
+            if pifn != "" && (self.struct_sid_of(e) >= 0 || self.boxed_sid_of(e) >= 0) {
+                return self.emit_iface_upcast(e, pifn)
+            }
+        }
         if self.param_is_gen_tparam(fi, pidx) {
             let vsid = self.struct_sid_of(e)
             if vsid >= 0 {
@@ -6558,6 +6626,13 @@ struct CgcGen {
     fn arg_owning_temp_p(self, fi: int, pidx: int, e: ps.Expr) -> bool {
         if self.arg_is_owning_temp(e) {
             return true
+        }
+        // a struct arg UPCAST to an interface param produces a fresh owned interface value (alloc_interface) —
+        // the callee borrows it and the caller drops it after the call. (OFI-013.)
+        if fi >= 0 && fi < self.res.param_iface.len() && pidx >= 0 && pidx < self.res.param_iface[fi].len() {
+            if self.res.param_iface[fi][pidx] != "" && (self.struct_sid_of(e) >= 0 || self.boxed_sid_of(e) >= 0) {
+                return true
+            }
         }
         // a fresh string temp at a generic-T BORROW param is dropped by the caller; at a MOVE param the callee
         // adopts it (dropping would double-free), so restrict this to non-move generic params. (OFI-176 F1.)
@@ -10882,7 +10957,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_modules = build_fn_modules(decls, decl_mods)  // per-em_fn source module (module-aware qualified resolution)
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
