@@ -6614,13 +6614,51 @@ struct CgcGen {
     // passing an array-element field to a fn would be a partial move.
     fn emit_str_part(mut self, parts: [ps.StrPart], i: int) -> string {
         if parts[i].hole.len() == 1 {
-            if self.hole_is_string_temp(parts[i].hole[0]) {
-                return self.emit_expr(parts[i].hole[0])
+            let hole = parts[i].hole[0]
+            if self.hole_is_string_temp(hole) {
+                return self.emit_expr(hole)
             }
-            let rk = self.render_kind_of_expr(parts[i].hole[0])   // int 0 · float 9 · bool 10 · sized 1..8
-            return "em_to_string(&g_em, {self.emit_expr(parts[i].hole[0])}, {rk})"
+            // OFI-139 structural Show: a hole whose STATIC TYPE provides `fn show(self) -> string` (a concrete
+            // struct with a `.show` method, or an interface that declares `show`) renders via `.show()` — the
+            // rewrite stage-0's checker performs on `{value}` → `{value.show()}`. The self-hosted checker leaves
+            // the AST unrewritten, so synthesise the call here and route it through emit_call (which handles a
+            // value / boxed / interface / owned-temp receiver + drop). The result is an owned string, consumed by
+            // the interpolation's em_add like any string hole — no em_to_string wrapper. (OFI-139, un-dodged.)
+            if self.hole_has_show(hole) {
+                var no_args: [ps.Expr] = []
+                return self.emit_call(ps.EGet(ps.Box<ps.Expr>{ value: hole, line: 0 }, "show"), no_args)
+            }
+            let rk = self.render_kind_of_expr(hole)   // int 0 · float 9 · bool 10 · sized 1..8
+            return "em_to_string(&g_em, {self.emit_expr(hole)}, {rk})"
         }
         return self.emit_cached_str(parts[i].text)
+    }
+
+
+    // hole_has_show reports whether an interpolation hole's static type provides the Show contract
+    // `fn show(self) -> string` — an interface that declares `show`, or a concrete struct with a `.show`
+    // method. Drives the OFI-139 `{value}` → `{value.show()}` desugar in emit_str_part.
+    fn hole_has_show(self, e: ps.Expr) -> bool {
+        let ifn = self.recv_iface(e)
+        if ifn != "" {
+            let ms = iface_methods(self.res.itab, ifn)
+            var j = 0
+            loop {
+                if j >= ms.len() {
+                    break
+                }
+                if ms[j] == "show" {
+                    return true
+                }
+                j = j + 1
+            }
+            return false
+        }
+        let sid = self.struct_sid_any(e)
+        if sid >= 0 {
+            return self.fn_index("{self.st.names[sid]}.show") >= 0
+        }
+        return false
     }
 
 
