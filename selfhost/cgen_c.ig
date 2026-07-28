@@ -7370,6 +7370,11 @@ struct CgcGen {
                 if self.is_string_expr(elems[0]) || self.is_array_expr(elems[0]) {
                     return 0 - 1
                 }
+                if self.struct_sid_any(elems[0]) >= 0 || self.is_enum_expr(elems[0]) {
+                    return 0 - 1   // a STRUCT / enum element is NOT a scalar — its element struct is tracked
+                                   // separately (value_elem_struct); returning 0 here mis-typed `arr[i]` as an
+                                   // int, which leaked for a non-is_value struct (a boxed-field struct). (OFI-202.)
+                }
                 match elems[0] {
                     case EFloat(v) {
                         return 9
