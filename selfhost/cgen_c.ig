@@ -5954,9 +5954,23 @@ struct CgcGen {
                 // The `?` (try) operator on Option<T>/Result<T,E>: yield the success payload (Some/Ok = tag 0),
                 // or RETURN the whole None/Err value early from the enclosing function (tag != 0). Lowered as a
                 // GCC statement-expression so it works in ANY expression position (`let v = o?`, `Ok(a()? + b()?)`)
-                // — the `return` exits the function. Run-correct; not byte-identical to stage-0's hoisted-statement
-                // form, and it does not drop abandoned owning temps on the early-return path (a leak, sound). (OFI-173.)
+                // — the `return` exits the function. The success payload is MOVED OUT with em_enum_take (not a
+                // borrow via em_enum_field) and the emptied enum SHELL is dropped, so an OWNED payload — a resource
+                // / rc struct, a string — is transferred exactly once and the shell doesn't leak. `let db = open()?`
+                // then owns the Db and its scope-exit drop fires (Db::drop), matching stage-0/the VM. Run-correct;
+                // not byte-identical to stage-0's hoisted-statement form; still leaks abandoned owning temps on the
+                // early-return path (pre-existing, sound). (OFI-173/OFI-122.)
                 let tv = self.fresh_var()
+                if self.recv_is_temp(operand.value) {
+                    // A fresh OWNING-TEMP operand (`open(…)?`, `checked(x)?` — a call result the enclosing scope
+                    // does not otherwise own): MOVE the payload out (em_enum_take) and drop the emptied shell, so an
+                    // owned payload transfers exactly once and the temp doesn't leak. Only then is the result owned.
+                    let pv = self.fresh_var()
+                    return "(\{ Value v{tv} = {self.emit_expr(operand.value)}; if (em_tag(v{tv}) != 0) \{ return v{tv}; \} Value v{pv} = em_enum_take(&g_em, v{tv}, 0); drop_value(&g_em, v{tv}); v{pv}; \})"
+                }
+                // A BORROWED operand (`o?` on an Option/Result PARAM or binding): the owner keeps the shell, so
+                // BORROW the payload (em_enum_field) and do NOT drop — dropping the caller's still-owned value was
+                // a use-after-free. (OFI-173.)
                 return "(\{ Value v{tv} = {self.emit_expr(operand.value)}; if (em_tag(v{tv}) != 0) \{ return v{tv}; \} em_enum_field(&g_em, v{tv}, 0); \})"
             }
             case _ {
@@ -6106,6 +6120,30 @@ struct CgcGen {
             case EIdent(bn) {
                 if self.lookup_boxed_vstruct(bn) {
                     return self.st.base_of(self.lookup_struct(bn))
+                }
+            }
+            case ETry(operand) {
+                // `let db = open()?` where open returns Result<Db,_> — `?` MOVES OUT an owned boxed/rc/resource
+                // struct payload, so the binding is a boxed struct that MUST be dropped at scope exit (Db::drop).
+                // Resolve the Ok/Some payload struct sid from the operand call's recorded return payload. (OFI-122.)
+                match operand.value {
+                    case ECall(callee, args) {
+                        match callee.value {
+                            case EIdent(name) {
+                                let fi = self.fn_index(name)
+                                if fi >= 0 && fi < self.res.ret_ok_struct.len() {
+                                    let sid = self.res.ret_ok_struct[fi]
+                                    if sid >= 0 && self.st.is_value(sid) == false {
+                                        return self.st.base_of(sid)
+                                    }
+                                }
+                            }
+                            case _ {
+                            }
+                        }
+                    }
+                    case _ {
+                    }
                 }
             }
             case _ {
