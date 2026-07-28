@@ -3691,6 +3691,9 @@ struct CgcGen {
     sc_ctype: [ps.Ty]          // ...for a GENERIC-CONTAINER binding (`arena: SlotMap<Person>`, `m: Map<K,V>`): its full
                                // declared type WITH args, so `match arena.get(h) { case Some(q) }` types q from the
                                // concrete arg — a LOCAL/PARAM analogue of the struct-field f_ty path (OFI-202), else a sentinel
+    sc_tp_tname: [string]      // ...for a binding whose type is the OWNER struct's TYPE-PARAM (a `case Some(k)` payload of
+                               // a [Option<K>] field): that type-param's name ("K"), so `k.eq(x)` dispatches through self's
+                               // witness field like a `key: K` param — the match-payload analogue of cur_tp_pname (OFI-174), else ""
     sc_render: [int]           // ...its interpolation render-kind (int_kind: 0 int, 8 f32, 9 float, 10 bool, 1..7 sized), for `{x}`
     indent: int                // current C indentation depth (1 = the function-body level, 4 spaces each)
     st: StructTab              // the declared-struct table (value/boxed classification + field resolution)
@@ -3784,6 +3787,7 @@ struct CgcGen {
         self.sc_struct.append(0 - 1)          // default: not a struct binding (set_last_struct overrides)
         self.sc_opt_payload.append(0 - 1)     // default: not an Option/Result-of-struct binding (set_last_opt_payload overrides)
         self.sc_ctype.append(ps.TyName("", ""))   // default: no tracked container type (set_last_ctype overrides for generic containers)
+        self.sc_tp_tname.append("")           // default: not an owner-type-param binding (set_last_tp_tname overrides)
         self.sc_render.append(0)              // default: int render-kind (set_last_render overrides for float/bool/sized)
     }
 
@@ -3879,6 +3883,63 @@ struct CgcGen {
             }
         }
         return false
+    }
+
+
+    // opt_payload_owner_tparam returns the BOUNDED owner type-param name of an Option<K>/Result<K,_> payload
+    // (K where `struct_bound_of(cur_owner, K) != ""`), else "". Only inside a bounded-struct method. (OFI-174.)
+    fn opt_payload_owner_tparam(self, ty: ps.Ty) -> string {
+        if self.cur_owner < 0 {
+            return ""
+        }
+        match ty {
+            case TyGeneric(q, n, args) {
+                if (n == "Option" || n == "Result") && args.len() >= 1 {
+                    match args[0] {
+                        case TyName(q2, pname) {
+                            if q2 == "" && self.st.struct_bound_of(self.cur_owner, pname) != "" {
+                                return pname
+                            }
+                        }
+                        case _ {
+                        }
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return ""
+    }
+
+
+    // match_payload_owner_tparam returns the owner type-param name a `case Some(k)`/`case Ok(k)` payload binds
+    // when the scrutinee is a field/local of `[Option<K>]` element or `Option<K>` type and K is a bounded owner
+    // type-param — so `k.eq(x)` on the payload dispatches through self's witness like a `key: K` param. (OFI-174.)
+    fn match_payload_owner_tparam(self, scrut: ps.Expr) -> string {
+        match scrut {
+            case EIndex(arr, ix) {
+                match arr.value {
+                    case EGet(obj, fname) {
+                        let osid = self.struct_sid_any(obj.value)
+                        if osid >= 0 {
+                            return self.opt_payload_owner_tparam(elem_ty_of(self.st.field_ty(osid, fname)))
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case EGet(obj, fname) {
+                let osid = self.struct_sid_any(obj.value)
+                if osid >= 0 {
+                    return self.opt_payload_owner_tparam(self.st.field_ty(osid, fname))
+                }
+            }
+            case _ {
+            }
+        }
+        return ""
     }
 
 
@@ -4219,6 +4280,7 @@ struct CgcGen {
         var nrd: [int] = []
         var nop: [int] = []
         var nct: [ps.Ty] = []
+        var ntp: [string] = []
         var i = 0
         loop {
             if i >= mark {
@@ -4241,6 +4303,7 @@ struct CgcGen {
             nrd.append(self.sc_render[i])
             nop.append(self.sc_opt_payload[i])
             nct.append(self.sc_ctype[i])
+            ntp.append(self.sc_tp_tname[i])
             i = i + 1
         }
         self.sc_elem_struct = nes
@@ -4260,6 +4323,7 @@ struct CgcGen {
         self.sc_render = nrd
         self.sc_opt_payload = nop
         self.sc_ctype = nct
+        self.sc_tp_tname = ntp
     }
 
 
@@ -4608,6 +4672,18 @@ struct CgcGen {
 
     // lookup_tp_tname returns the OWNER type-param name a param-name is typed as (`key` → "K"), or "".
     fn lookup_tp_tname(self, name: string) -> string {
+        // a match-payload binding whose type is an owner type-param (`case Some(k)` of a [Option<K>] field) is
+        // tracked on the SCOPE (sc_tp_tname), most-recent first — check it before the flat param table. (OFI-174.)
+        var j = self.sc_name.len() - 1
+        loop {
+            if j < 0 {
+                break
+            }
+            if self.sc_name[j] == name && self.sc_tp_tname[j] != "" {
+                return self.sc_tp_tname[j]
+            }
+            j = j - 1
+        }
         var i = 0
         loop {
             if i >= self.cur_tp_pname.len() {
@@ -4619,6 +4695,13 @@ struct CgcGen {
             i = i + 1
         }
         return ""
+    }
+
+
+    // set_last_tp_tname records the owner-type-param name of the most-recently pushed binding (a match payload
+    // whose type is the owner's K), so `k.eq(x)` dispatches through self's witness field. Called right after push.
+    fn set_last_tp_tname(mut self, name: string) {
+        self.sc_tp_tname[self.sc_tp_tname.len() - 1] = name
     }
 
 
@@ -8719,6 +8802,13 @@ struct CgcGen {
                             if self.en.payload_refc(cases[ci].pattern.variant, bi) || self.subject_is_gopt(value.value) || self.subject_is_gopt_call(value.value) {
                                 self.set_last_refc(true)      // a refcounted (string/enum) payload, an erased generic-Option<T> PARAM payload (OFI-205), OR an erased gopt-returning-CALL payload (OFI-218) → own_into_slot on consume
                             }
+                            // a `case Some(k)` payload whose type is a BOUNDED owner type-param K (from a [Option<K>]
+                            // field / Option<K> local) — record K so `k.eq(x)` on the payload dispatches through
+                            // self's witness field, like a `key: K` param. (OFI-174, un-dodged.)
+                            let ptp = self.match_payload_owner_tparam(value.value)
+                            if ptp != "" {
+                                self.set_last_tp_tname(ptp)
+                            }
                             if pa {
                                 // a `[Struct]` / `[Box<T>]` payload: resolve the element struct sid via sid_of_ty
                                 // (handles generic instances ty_struct_sid can't), so `xs[i]` / `xs[i].f` resolve.
@@ -9423,7 +9513,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
     // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
     // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
     // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
