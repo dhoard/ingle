@@ -1825,6 +1825,22 @@ fn ty_base_name(ty: ps.Ty) -> string {
 
 
 // base_name_of_key returns the generic base name of an instance key: `Box<Ty>` → `Box` (the prefix before `<`).
+// ty_arg_at returns the `idx`-th type ARGUMENT of a generic type (`Box<Box<int>>`, idx 0 → Box<int>), or a
+// sentinel TyName("","") if `ty` is not generic or `idx` is out of range. (OFI-202 nested generic resolver.)
+fn ty_arg_at(ty: ps.Ty, idx: int) -> ps.Ty {
+    match ty {
+        case TyGeneric(qual, name, args) {
+            if idx >= 0 && idx < args.len() {
+                return args[idx]
+            }
+        }
+        case _ {
+        }
+    }
+    return ps.TyName("", "")
+}
+
+
 fn base_name_of_key(key: string) -> string {
     let bs = key.bytes()
     var i = 0
@@ -2358,6 +2374,30 @@ struct StructTab {
             i = i + 1
         }
         return ""
+    }
+
+
+    // struct_tparam_index returns the 0-based position of type-param `tpname` in struct `sid`'s generic
+    // parameter list (`Box<T>` → T is 0; `Pair<A, B>` → B is 1), or -1. Used to map a type-param FIELD
+    // (`value: T`) to the receiver's concrete type ARG at the same position, for nested generic field
+    // access (`b.value` on a Box<Box<int>> → Box<int>). (OFI-202.)
+    fn struct_tparam_index(self, sid0: int, tpname: string) -> int {
+        let sid = self.base_of(sid0)
+        var idx = 0
+        var i = 0
+        loop {
+            if i >= self.sg_owner.len() {
+                break
+            }
+            if self.sg_owner[i] == sid {
+                if self.sg_tparam[i] == tpname {
+                    return idx
+                }
+                idx = idx + 1
+            }
+            i = i + 1
+        }
+        return 0 - 1
     }
 
 
@@ -4314,6 +4354,41 @@ struct CgcGen {
     // recv_container_ty returns the DECLARED type of a method-call receiver when it is a struct FIELD access
     // (`self.rects` / `obj.field`) — a `TyGeneric` carrying the container's value type-args (`Map<string,
     // Rect>`). Returns the sentinel `TyName("","")` for anything else (a local, a call result, …). P6 keystone.
+    // concrete_ty_of returns the CONCRETE type (with args) an expression has, resolving generic type-params
+    // through the receiver's stored container type — the self-hosted stand-in for stage-0's checker-stamped
+    // mono type. A LOCAL/PARAM binding's type comes from sc_ctype (recorded at SLet / param push); a field
+    // read `obj.field` substitutes: if the field's declared type is a type-PARAM of obj's struct (`value: T`),
+    // return obj's concrete type ARG at that param's position, so `b.value` on a Box<Box<int>> yields Box<int>
+    // and the chain `b.value.value` resolves one level at a time. A sentinel TyName("","") means "unknown".
+    // (OFI-202, un-dodged — the nested/chained generic field-access resolver.)
+    fn concrete_ty_of(self, e: ps.Expr) -> ps.Ty {
+        match e {
+            case EIdent(name) {
+                return self.lookup_ctype(name)
+            }
+            case EGet(object, field) {
+                let objty = self.concrete_ty_of(object.value)
+                let base = self.st.base_sid_of_ty(objty)
+                if base < 0 {
+                    return ps.TyName("", "")
+                }
+                let tpname = self.st.field_tpname_of(base, field)
+                if tpname != "" {
+                    let idx = self.st.struct_tparam_index(base, tpname)
+                    if idx >= 0 {
+                        return ty_arg_at(objty, idx)
+                    }
+                    return ps.TyName("", "")
+                }
+                return self.st.field_ty(base, field)
+            }
+            case _ {
+                return ps.TyName("", "")
+            }
+        }
+    }
+
+
     // binding_container_ty returns a binding's full generic-container type (with args) — from the `[T]`
     // annotation if present, else the RHS struct-literal's type (`SlotMap<Person>{…}`) — or a sentinel
     // TyName("","") when the binding is not a generic instance. Recorded via set_last_ctype. (OFI-202.)
@@ -4456,6 +4531,11 @@ struct CgcGen {
                     match args[0] {
                         case TyName(q2, sname) {
                             return self.st.sid_of(sname)
+                        }
+                        case TyGeneric(q3, gname, gargs) {
+                            return self.st.sid_of(gname)   // a generic-instance payload (Option<Box<int>>) → the
+                                                           // base struct sid; erased/boxed, so `case Some(b) { b.value }`
+                                                           // resolves via em_enum_field. (OFI-006/OFI-202, un-dodged.)
                         }
                         case _ {
                         }
@@ -5013,7 +5093,14 @@ struct CgcGen {
                 if osid >= 0 {
                     let fidx = self.st.field_index(osid, name)
                     if fidx >= 0 {
-                        return self.st.f_struct[self.st.flat_index(osid, fidx)]   // nested field's struct sid (or -1)
+                        let fs = self.st.f_struct[self.st.flat_index(osid, fidx)]   // nested field's struct sid (or -1)
+                        if fs >= 0 {
+                            return fs
+                        }
+                        // a TYPE-PARAM field (`value: T` in Box<T>) has no static f_struct — resolve it through
+                        // the receiver's concrete type args (`b.value` on Box<Box<int>> → Box<int>), so a chained
+                        // `b.value.value` resolves one level at a time. (OFI-202, un-dodged.)
+                        return self.st.sid_of_ty(self.concrete_ty_of(e))
                     }
                 }
                 return 0 - 1
