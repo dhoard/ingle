@@ -352,6 +352,8 @@ struct FnResolve {
     itab: IfaceTab             // user interface -> method names (witness method count/index), OFI-174 free-fn
     wit: WitTables             // per-em_fn FREE-FN witness rows (bound + determining-arg, with start/count) —
                                // for call-site witness threading of a bounded generic free fn (OFI-174)
+    ret_iface: [string]        // per-em_fn: the INTERFACE name a fn returns (`-> Shape`), else "" — so a method
+                               // call on an interface-returning call (`make(k).area()`) dispatches dynamically (OFI-013)
 }
 
 
@@ -3623,6 +3625,82 @@ fn fn_ret_struct_id(f: ps.FnDecl, stab: StructTab) -> int {
 
 // build_fn_ret_enum marks each body-bearing fn (parallel to build_fn_names) that returns an ENUM type, so a
 // `let o = f()` of an enum-returning call is tracked as an OWNED (droppable, move-into-call) binding.
+// iface_name_of_ty returns the interface NAME a type denotes (a plain TyName present in the interface table),
+// or "". An interface is never generic in Ingle, so only TyName is considered. (OFI-013.)
+fn iface_name_of_ty(itab: IfaceTab, ty: ps.Ty) -> string {
+    match ty {
+        case TyName(q, n) {
+            var i = 0
+            loop {
+                if i >= itab.m_iface.len() {
+                    break
+                }
+                if itab.m_iface[i] == n {
+                    return n
+                }
+                i = i + 1
+            }
+        }
+        case _ {
+        }
+    }
+    return ""
+}
+
+
+// fn_ret_iface_of returns the INTERFACE name fn `f` returns (`-> Shape`), or "" (no return / non-interface).
+fn fn_ret_iface_of(itab: IfaceTab, f: ps.FnDecl) -> string {
+    if f.ret.len() == 0 {
+        return ""
+    }
+    return iface_name_of_ty(itab, f.ret[0])
+}
+
+
+// build_fn_ret_iface is per-em_fn: the INTERFACE name a fn returns (`fn make(...) -> Shape` → "Shape"), else "".
+// Keyed by em_fn index like the other ret tables — so `make(...).area()` dispatches dynamically. (OFI-013.)
+fn build_fn_ret_iface(decls: [ps.Decl], itab: IfaceTab) -> [string] {
+    var out: [string] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    if f.ret.len() > 0 {
+                        out.append(iface_name_of_ty(itab, f.ret[0]))
+                    } else {
+                        out.append("")
+                    }
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        if methods[mi].ret.len() > 0 {
+                            out.append(iface_name_of_ty(itab, methods[mi].ret[0]))
+                        } else {
+                            out.append("")
+                        }
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 fn build_fn_ret_enum(decls: [ps.Decl], en: EnumTab) -> [bool] {
     var out: [bool] = []
     var i = 0
@@ -3718,6 +3796,8 @@ struct CgcGen {
                                // (own_into_slot on return), matching stage-0's erased-generic ownership (OFI-205)
     cur_owner: int             // the current method's OWNER struct sid (-1 for a free fn) — the witness fields live
                                // on `self` of this struct, so a bounded-method call reads em_enum_field(self, idx)
+    cur_ret_iface: string      // the INTERFACE name the current fn returns (`-> Shape`), else "" — so `return Sq{…}`
+                               // UPCASTS the struct to an interface value (OFI-013)
     cur_module: string         // the SOURCE-MODULE path of the function being emitted — an UNQUALIFIED free call
                                // to a name shared across merged modules (`_is_digit` in std/json + std/highlight)
                                // resolves to THIS module's definition first (matching stage-0's scope resolution)
@@ -4729,6 +4809,52 @@ struct CgcGen {
                 return self.sc_iface[i]
             }
             i = i - 1
+        }
+        return ""
+    }
+
+
+    // recv_iface returns the INTERFACE name a method-call receiver expression has (so the call dispatches
+    // dynamically), or "": an interface-typed binding/param (lookup_iface), an interface-returning free CALL
+    // (`make(k).area()` via res.ret_iface), or an interface-typed struct FIELD (`h.hero.area()`). (OFI-013.)
+    fn recv_iface(self, recv: ps.Expr) -> string {
+        match recv {
+            case EIdent(name) {
+                return self.lookup_iface(name)
+            }
+            case ECall(callee, args) {
+                match callee.value {
+                    case EIdent(name) {
+                        let fi = self.fn_index(name)
+                        if fi >= 0 && fi < self.res.ret_iface.len() {
+                            return self.res.ret_iface[fi]
+                        }
+                    }
+                    case EGet(obj, mname) {
+                        let sid = self.struct_sid_any(obj.value)
+                        if sid >= 0 {
+                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            if fi >= 0 && fi < self.res.ret_iface.len() {
+                                return self.res.ret_iface[fi]
+                            }
+                        }
+                        let qfi = self.qual_free_fi(obj.value, mname, args.len())
+                        if qfi >= 0 && qfi < self.res.ret_iface.len() {
+                            return self.res.ret_iface[qfi]
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case EGet(obj, fname) {
+                let sid = self.struct_sid_any(obj.value)
+                if sid >= 0 {
+                    return iface_name_of_ty(self.res.itab, self.st.field_ty(sid, fname))
+                }
+            }
+            case _ {
+            }
         }
         return ""
     }
@@ -6568,18 +6694,13 @@ struct CgcGen {
                     case _ {
                     }
                 }
-                // A DYNAMIC method call on an INTERFACE-typed receiver (`s.area()` where `s: Shape`) — dispatch
-                // through the interface value's vtable at run time (em_invoke on the fn-id at the interface method
-                // index), NOT a static struct-method call. (OFI-013, un-dodged.)
-                match object.value {
-                    case EIdent(recv) {
-                        let ifn = self.lookup_iface(recv)
-                        if ifn != "" {
-                            return self.emit_iface_dispatch(object.value, ifn, mname, args)
-                        }
-                    }
-                    case _ {
-                    }
+                // A DYNAMIC method call on an INTERFACE-typed receiver (`s.area()` where `s: Shape`, or
+                // `make(k).area()` where make returns Shape) — dispatch through the interface value's vtable at
+                // run time (em_invoke on the fn-id at the interface method index), NOT a static struct-method
+                // call. (OFI-013, un-dodged.)
+                let recv_ifn = self.recv_iface(object.value)
+                if recv_ifn != "" {
+                    return self.emit_iface_dispatch(object.value, recv_ifn, mname, args)
                 }
                 // A MODULE-QUALIFIED free call `mod.fn(args)` — the receiver is an import alias, not an
                 // in-scope binding (no cname, not a struct binding). The self-hosted path has no checker to
@@ -8357,6 +8478,24 @@ struct CgcGen {
     fn emit_stmt(mut self, s: ps.Stmt) {
         match s {
             case SReturn(value, line) {
+                // The fn returns an INTERFACE (`fn make(k) -> Shape`) and the value is a concrete struct — UPCAST
+                // it to an interface value (a Value, not an em_s). An already-interface value (`return s`, another
+                // interface-returning call) is NOT a struct, so it falls through to the normal Value return. (OFI-013.)
+                if self.cur_ret_iface != "" && value.len() > 0 && (self.struct_sid_of(value[0].value) >= 0 || self.boxed_sid_of(value[0].value) >= 0) {
+                    let up = self.emit_iface_upcast(value[0].value, self.cur_ret_iface)
+                    if self.scope_has_drops() {
+                        let r = self.fresh_var()
+                        println("{self.ind()}\{ Value v{r} = {up};")
+                        self.indent = self.indent + 1
+                        self.emit_drops(0)
+                        println("{self.ind()}return v{r};")
+                        self.indent = self.indent - 1
+                        println("{self.ind()}\}")
+                    } else {
+                        println("{self.ind()}return {up};")
+                    }
+                    return
+                }
                 if self.scope_has_drops() {
                     // Evaluate the value into a temp, drop the function's owned locals/params, then return it.
                     // The value goes through emit_concat_operand (own a moved binding / retain a borrow).
@@ -9656,7 +9795,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], sc_iface: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], sc_iface: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_ret_iface: fn_ret_iface_of(fnres.itab, f), cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
     // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
     // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
     // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
@@ -10643,7 +10782,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_modules = build_fn_modules(decls, decl_mods)  // per-em_fn source module (module-aware qualified resolution)
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
