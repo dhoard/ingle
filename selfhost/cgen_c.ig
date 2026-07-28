@@ -1390,8 +1390,10 @@ fn gen_param_mask_of(f: ps.FnDecl, owner_generics: [ps.GenericParam]) -> int {
         }
         if f.params[i].is_self == false {
             // A param is erased (a Value slot) if its type names a type-param of the METHOD or the OWNER struct
-            // (`val: V` in a Map<K,V> method) — both are erased in the C-emit's representation.
-            if f.params[i].qual != 2 && f.params[i].ty.len() > 0 && (ty_is_generic_param(f.params[i].ty[0], f.generics) || ty_is_generic_param(f.params[i].ty[0], owner_generics)) {
+            // (`val: V` in a Map<K,V> method) — both are erased in the C-emit's representation. Includes `move`
+            // generic params (`move a: T` in `max<T: Ord>`): a value-struct arg must still be BOXED into the
+            // erased slot; the borrow-vs-move distinction is applied at the drop site (arg_owning_temp_p), not here.
+            if f.params[i].ty.len() > 0 && (ty_is_generic_param(f.params[i].ty[0], f.generics) || ty_is_generic_param(f.params[i].ty[0], owner_generics)) {
                 mask = mask | (1 << vidx)
             }
             vidx = vidx + 1
@@ -4621,6 +4623,33 @@ struct CgcGen {
     // both an OWNED copy, dropped after the copy-out. NOT a boxed read: a nested value-struct field of a
     // VALUE struct (`v.inner` → a direct nested `.f` member, an em_s in place), a local/param, a struct
     // literal, or a value-struct-returning call — those read `.fN` straight.
+    // call_returns_erased_struct reports whether `e` is a call to a generic free fn that returns a bare
+    // type-param `T` bound to a struct at THIS call (`max<T: Ord>(a, b) -> T` with a Version arg) — so the
+    // result is an ERASED boxed value even though its struct is nominally is_value. Such a result must be
+    // UNBOXED before a `.field` read and is a fresh owned boxed temp (never a direct `.fN` C-member read).
+    // The determining-arg is the value-param typed as the returned type-param (fn_ret_det_arg). (OFI-202.)
+    fn call_returns_erased_struct(self, e: ps.Expr) -> bool {
+        match e {
+            case ECall(callee, args) {
+                match callee.value {
+                    case EIdent(name) {
+                        let fi = self.fn_index(name)
+                        if fi >= 0 && self.fn_ret_struct[fi] < 0 && fi < self.fn_ret_det_arg.len() && self.fn_ret_array[fi] == false && self.fn_ret_det_elem[fi] == false {
+                            let da = self.fn_ret_det_arg[fi]
+                            return da >= 0 && da < args.len() && self.struct_sid_any(args[da]) >= 0
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return false
+    }
+
+
     fn object_is_value_read(self, e: ps.Expr) -> bool {
         match e {
             case EGet(object, name) {
@@ -4628,6 +4657,9 @@ struct CgcGen {
             }
             case EIndex(object, index) {
                 return true                                    // em_index materialises the element as a boxed Value
+            }
+            case ECall(callee, args) {
+                return self.call_returns_erased_struct(e)      // a generic-T-returning call yields a BOXED value → unbox before `.field`
             }
             case _ {
                 return false
@@ -4644,7 +4676,9 @@ struct CgcGen {
             }
             case ECall(callee, args) {
                 let sid = self.struct_sid_any(e)
-                return sid >= 0 && self.st.is_value(sid) == false   // a call returning a boxed struct is a fresh owned temp
+                // a call returning a boxed struct is a fresh owned temp; so is a generic-T-returning call whose
+                // result is an ERASED boxed value struct (nominally is_value, but boxed at runtime). (OFI-202.)
+                return sid >= 0 && (self.st.is_value(sid) == false || self.call_returns_erased_struct(e))
             }
             case _ {
                 return false
@@ -4929,7 +4963,20 @@ struct CgcGen {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
                         if fi >= 0 {
-                            return self.fn_ret_struct[fi]
+                            let rs = self.fn_ret_struct[fi]
+                            if rs >= 0 {
+                                return rs
+                            }
+                            // a generic free fn returning a bare type-param `T` (`max<T: Ord>(a, b) -> T`): its
+                            // result struct is the DETERMINING arg's struct — the concrete type bound to T at this
+                            // call — so `max(v1, v2).n` resolves. The result is ERASED (boxed): object_is_value_read
+                            // / object_is_owning_temp route it through the unbox path. (OFI-202, un-dodged.)
+                            if fi < self.fn_ret_det_arg.len() && self.fn_ret_array[fi] == false && self.fn_ret_det_elem[fi] == false {
+                                let da = self.fn_ret_det_arg[fi]
+                                if da >= 0 && da < args.len() {
+                                    return self.struct_sid_any(args[da])
+                                }
+                            }
                         }
                     }
                     case EGet(object, mname) {
@@ -5876,8 +5923,11 @@ struct CgcGen {
     }
 
 
-    // param_is_gen_borrow reports whether value-param `pidx` of fn `fi` is an erased generic-T BORROW param.
-    fn param_is_gen_borrow(self, fi: int, pidx: int) -> bool {
+    // param_is_gen_tparam reports whether value-param `pidx` of fn `fi` is an erased generic type-param param
+    // (its type names a method/owner type-param), for ANY qualifier (borrow OR move) — a value-struct arg must
+    // be boxed into the erased Value slot either way. The drop-ownership split (borrow drops, move is owned) is
+    // applied separately via param_is_move. (OFI-176 F1 / OFI-202.)
+    fn param_is_gen_tparam(self, fi: int, pidx: int) -> bool {
         if fi < 0 || fi >= self.fn_param_gen_mask.len() {
             return false
         }
@@ -5902,7 +5952,7 @@ struct CgcGen {
     // value struct passed to a `val: V` generic param (`m.set(k, Rect{…})`) is boxed into the Value slot (a raw
     // em_s would blow the varargs/param ABI), like emit_field_consume does for a generic FIELD. OFI-218.
     fn emit_call_arg_gen(mut self, e: ps.Expr, fi: int, pidx: int) -> string {
-        if self.param_is_gen_borrow(fi, pidx) {
+        if self.param_is_gen_tparam(fi, pidx) {
             let vsid = self.struct_sid_of(e)
             if vsid >= 0 {
                 let bv = self.fresh_var()
@@ -5949,7 +5999,9 @@ struct CgcGen {
         if self.arg_is_owning_temp(e) {
             return true
         }
-        return self.param_is_gen_borrow(fi, pidx) && self.is_fresh_string_temp(e)
+        // a fresh string temp at a generic-T BORROW param is dropped by the caller; at a MOVE param the callee
+        // adopts it (dropping would double-free), so restrict this to non-move generic params. (OFI-176 F1.)
+        return self.param_is_gen_tparam(fi, pidx) && self.param_is_move(fi, pidx) == false && self.is_fresh_string_temp(e)
     }
 
 
