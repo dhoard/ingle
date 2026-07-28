@@ -7286,6 +7286,15 @@ struct CgcGen {
                     return self.emit_free_call(ufi, uargs)
                 }
             }
+            case ECall(icallee, iargs) {
+                // A call THROUGH the RESULT of a call (`pick(true)(9)` — pick returns a `fn(int)->int` closure):
+                // evaluate the callee expression to a closure value and dispatch via rt_call_closure. (OFI-206.)
+                return self.emit_closure_call(self.emit_expr(callee), args)
+            }
+            case EIndex(iarr, iix) {
+                // A call THROUGH an array element `fns[i](x)` — the element is a closure value. (OFI-206.)
+                return self.emit_closure_call(self.emit_expr(callee), args)
+            }
             case _ {
             }
         }
