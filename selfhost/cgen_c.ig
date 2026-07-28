@@ -413,6 +413,10 @@ struct FnResolve {
                                // call on an interface-returning call (`make(k).area()`) dispatches dynamically (OFI-013)
     param_iface: [[string]]    // per-em_fn, per value-param: the param's INTERFACE name (else "") — so a struct arg
                                // to an interface param is UPCAST at the call site (OFI-013)
+    ret_ok_str: [bool]         // per-em_fn: does it return Option<string>/Result<string,_>? — so `let raw = f()?`
+                               // binds a string and `raw.parse_int()` resolves (OFI-173)
+    ret_ok_struct: [int]       // per-em_fn: the Some/Ok payload STRUCT sid a fn returns (`-> Result<Config,_>`), else -1
+                               // — so `match load_config(t) { case Ok(cfg) }` types cfg's struct (OFI-173)
 }
 
 
@@ -3716,6 +3720,133 @@ fn fn_ret_iface_of(itab: IfaceTab, f: ps.FnDecl) -> string {
 }
 
 
+// ty_is_ok_string reports whether `ty` is an Option<string>/Result<string, _> — its Some/Ok payload is a string,
+// so `x?` on it yields a string. (OFI-173.)
+fn ty_is_ok_string(ty: ps.Ty) -> bool {
+    match ty {
+        case TyGeneric(q, n, args) {
+            if (n == "Option" || n == "Result") && args.len() >= 1 {
+                match args[0] {
+                    case TyName(q2, pn) {
+                        return q2 == "" && pn == "string"
+                    }
+                    case _ {
+                    }
+                }
+            }
+        }
+        case _ {
+        }
+    }
+    return false
+}
+
+
+// ty_opt_payload_sid returns the Some/Ok payload STRUCT sid of an Option<Struct>/Result<Struct,_> (a plain or
+// generic-instance struct → its base sid), else -1. The free counterpart of option_payload_concrete_sid. (OFI-173.)
+fn ty_opt_payload_sid(ty: ps.Ty, stab: StructTab) -> int {
+    match ty {
+        case TyGeneric(q, n, args) {
+            if (n == "Option" || n == "Result") && args.len() >= 1 {
+                match args[0] {
+                    case TyName(q2, sname) {
+                        return stab.sid_of(sname)
+                    }
+                    case TyGeneric(q3, gname, gargs) {
+                        return stab.sid_of(gname)
+                    }
+                    case _ {
+                    }
+                }
+            }
+        }
+        case _ {
+        }
+    }
+    return 0 - 1
+}
+
+
+// build_fn_ret_ok_struct is per-em_fn: the Some/Ok payload struct sid a fn returns (`-> Result<Config,_>` →
+// Config's sid), else -1 — so `match load_config(t) { case Ok(cfg) }` types cfg's struct. (OFI-173.)
+fn build_fn_ret_ok_struct(decls: [ps.Decl], stab: StructTab) -> [int] {
+    var out: [int] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    if f.ret.len() > 0 {
+                        out.append(ty_opt_payload_sid(f.ret[0], stab))
+                    } else {
+                        out.append(0 - 1)
+                    }
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        if methods[mi].ret.len() > 0 {
+                            out.append(ty_opt_payload_sid(methods[mi].ret[0], stab))
+                        } else {
+                            out.append(0 - 1)
+                        }
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
+// build_fn_ret_ok_str is per-em_fn: does the fn return Option<string>/Result<string,_> (so `f()?` is a string)?
+// Keyed by em_fn index like the other ret tables. (OFI-173.)
+fn build_fn_ret_ok_str(decls: [ps.Decl]) -> [bool] {
+    var out: [bool] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    out.append(f.ret.len() > 0 && ty_is_ok_string(f.ret[0]))
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        out.append(methods[mi].ret.len() > 0 && ty_is_ok_string(methods[mi].ret[0]))
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 // build_fn_ret_iface is per-em_fn: the INTERFACE name a fn returns (`fn make(...) -> Shape` → "Shape"), else "".
 // Keyed by em_fn index like the other ret tables — so `make(...).area()` dispatches dynamically. (OFI-013.)
 fn build_fn_ret_iface(decls: [ps.Decl], itab: IfaceTab) -> [string] {
@@ -4722,6 +4853,14 @@ struct CgcGen {
         match scrut {
             case ECall(callee, args) {
                 match callee.value {
+                    case EIdent(name) {
+                        // a FREE-function call returning Result<Struct,_>/Option<Struct> (`match load_config(t) {
+                        // case Ok(cfg) }`): the payload struct sid from the fn's recorded return payload. (OFI-173.)
+                        let fi = self.fn_index(name)
+                        if fi >= 0 && fi < self.res.ret_ok_struct.len() {
+                            return self.res.ret_ok_struct[fi]
+                        }
+                    }
                     case EGet(recv, mname) {
                         match self.recv_container_ty(recv.value) {
                             case TyGeneric(q, cname, cargs) {
@@ -8218,6 +8357,39 @@ struct CgcGen {
                 }
                 return false
             }
+            case ETry(operand) {
+                // `x?` on an Option<string>/Result<string,_> yields the STRING payload — so `let raw = field()?`
+                // binds a string and `raw.parse_int()` / `raw.len()` resolve. Resolve the operand's Ok/Some-payload
+                // string-ness from its callee (a free/method/module-qualified call). (OFI-173, un-dodged.)
+                match operand.value {
+                    case ECall(callee, args) {
+                        match callee.value {
+                            case EIdent(name) {
+                                let fi = self.fn_index(name)
+                                return fi >= 0 && fi < self.res.ret_ok_str.len() && self.res.ret_ok_str[fi]
+                            }
+                            case EGet(object, mname) {
+                                let sid = self.struct_sid_any(object.value)
+                                if sid >= 0 {
+                                    let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                                    if fi >= 0 && fi < self.res.ret_ok_str.len() {
+                                        return self.res.ret_ok_str[fi]
+                                    }
+                                }
+                                let qfi = self.qual_free_fi(object.value, mname, args.len())
+                                if qfi >= 0 && qfi < self.res.ret_ok_str.len() {
+                                    return self.res.ret_ok_str[qfi]
+                                }
+                            }
+                            case _ {
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
+                return false
+            }
             case _ {
                 return false
             }
@@ -10957,14 +11129,14 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_modules = build_fn_modules(decls, decl_mods)  // per-em_fn source module (module-aware qualified resolution)
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)) }
+    let stab = build_struct_tab(decls)
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
     let fn_ret_str = build_fn_ret_str(decls)
     let fn_ret_array = build_fn_ret_array(decls)
     let fn_ret_elem_kind = build_fn_ret_elem_kinds(decls)
-    let stab = build_struct_tab(decls)
     let etab = build_enum_tab(decls, stab.names)
     let ctab = build_const_tab(decls)
     let fn_ret_elem_struct = build_fn_ret_elem_structs(decls, stab.names)
