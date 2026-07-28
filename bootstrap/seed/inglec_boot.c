@@ -19114,6 +19114,19 @@ static Value em_fn_383(Value a0, Value a1) {
                                     drop_value(&g_em, v309);
                                     drop_value(&g_em, v308);
                                 }
+                            } else if (v282 == 4) {
+                                Value v311 = em_enum_field(&g_em, v281, 0);
+                                if (em_truthy(em_ge(INT_VAL((int64_t)v280), INT_VAL(0LL), 0))) {
+                                    int64_t v312 = (int64_t)AS_INT(({ Value v313 = em_enum_field(&g_em, a0, 23); Value v314 = em_fn_178(v313, INT_VAL((int64_t)v280), own_into_slot(&g_em, v273)); v314; }));
+                                    Value v315 = em_fn_270(a0, own_into_slot(&g_em, v311));
+                                    int64_t v316 = (int64_t)AS_INT(({ Value v317 = em_enum_field(&g_em, a0, 23); Value v318 = em_fn_164(v317, ({ Value v319 = em_enum_field(&g_em, a0, 23); Value v320 = em_fn_172(v319, INT_VAL((int64_t)v280), own_into_slot(&g_em, v273)); v320; })); v318; }));
+                                    if (em_truthy(INT_VAL((em_truthy(em_ge(INT_VAL((int64_t)v316), INT_VAL(0LL), 0)) && em_truthy(({ Value v321 = em_enum_field(&g_em, a0, 23); Value v322 = em_fn_181(v321, INT_VAL((int64_t)v316)); v322; }))) ? 1 : 0))) {
+                                        (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_265(a0), em_to_string(&g_em, v315, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ".f", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v312), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " = ", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_308(a0, own_into_slot(&g_em, em_enum_field(&g_em, v258, 0))), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ";", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
+                                    } else {
+                                        (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_265(a0), em_to_string(&g_em, v315, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ".f", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v312), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " = ", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_341(a0, own_into_slot(&g_em, em_enum_field(&g_em, v258, 0))), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ";", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
+                                    }
+                                    drop_value(&g_em, v315);
+                                }
                             } else {
                             }
                         }
@@ -19122,42 +19135,42 @@ static Value em_fn_383(Value a0, Value a1) {
                 }
             }
         } else if (v1 == 2) {
-            Value v311 = em_enum_field(&g_em, v0, 0);
+            Value v323 = em_enum_field(&g_em, v0, 0);
             {
-                Value v312 = em_enum_field(&g_em, v311, 0);
-                int v313 = em_tag(v312);
-                if (v313 == 7) {
-                    Value v314 = em_enum_field(&g_em, v312, 0);
-                    Value v315 = em_enum_field(&g_em, v312, 1);
+                Value v324 = em_enum_field(&g_em, v323, 0);
+                int v325 = em_tag(v324);
+                if (v325 == 7) {
+                    Value v326 = em_enum_field(&g_em, v324, 0);
+                    Value v327 = em_enum_field(&g_em, v324, 1);
                     {
-                        Value v316 = em_enum_field(&g_em, v314, 0);
-                        int v317 = em_tag(v316);
-                        if (v317 == 4) {
-                            Value v318 = em_enum_field(&g_em, v316, 0);
-                            Value v319 = em_fn_385(own_into_slot(&g_em, v318));
-                            if (em_truthy(em_neq_op(&g_em, ({ Value v320 = v319; if (IS_OBJ(v320)) OBJ_RETAIN(AS_OBJ(v320)); v320; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-                                Value v321 = em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_265(a0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(void)(", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v319, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(&g_em", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
-                                int64_t v322 = (int64_t)AS_INT(INT_VAL(0LL));
+                        Value v328 = em_enum_field(&g_em, v326, 0);
+                        int v329 = em_tag(v328);
+                        if (v329 == 4) {
+                            Value v330 = em_enum_field(&g_em, v328, 0);
+                            Value v331 = em_fn_385(own_into_slot(&g_em, v330));
+                            if (em_truthy(em_neq_op(&g_em, ({ Value v332 = v331; if (IS_OBJ(v332)) OBJ_RETAIN(AS_OBJ(v332)); v332; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+                                Value v333 = em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_265(a0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(void)(", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v331, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(&g_em", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
+                                int64_t v334 = (int64_t)AS_INT(INT_VAL(0LL));
                                 for (;;) {
-                                    if (em_truthy(em_ge(INT_VAL((int64_t)v322), em_array_len(v315), 0))) {
+                                    if (em_truthy(em_ge(INT_VAL((int64_t)v334), em_array_len(v327), 0))) {
                                         break;
                                     }
-                                    { Value v323 = em_add(&g_em, em_add(&g_em, own_into_slot(&g_em, v321), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_308(a0, own_into_slot(&g_em, em_index(&g_em, v315, INT_VAL((int64_t)v322)))), 0);
-                                        drop_value(&g_em, v321);
-                                        v321 = v323;
+                                    { Value v335 = em_add(&g_em, em_add(&g_em, own_into_slot(&g_em, v333), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_308(a0, own_into_slot(&g_em, em_index(&g_em, v327, INT_VAL((int64_t)v334)))), 0);
+                                        drop_value(&g_em, v333);
+                                        v333 = v335;
                                     }
-                                    v322 = (int64_t)AS_INT(em_add(&g_em, ({ Value v324 = INT_VAL((int64_t)v322); if (IS_OBJ(v324)) OBJ_RETAIN(AS_OBJ(v324)); v324; }), INT_VAL(1LL), 0));
+                                    v334 = (int64_t)AS_INT(em_add(&g_em, ({ Value v336 = INT_VAL((int64_t)v334); if (IS_OBJ(v336)) OBJ_RETAIN(AS_OBJ(v336)); v336; }), INT_VAL(1LL), 0));
                                 }
-                                (void)(em_println(&g_em, em_add(&g_em, own_into_slot(&g_em, v321), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "));", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
-                                drop_value(&g_em, v321);
+                                (void)(em_println(&g_em, em_add(&g_em, own_into_slot(&g_em, v333), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "));", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
+                                drop_value(&g_em, v333);
                             } else {
-                                (void)(em_fn_384(a0, own_into_slot(&g_em, em_enum_field(&g_em, v311, 0))));
+                                (void)(em_fn_384(a0, own_into_slot(&g_em, em_enum_field(&g_em, v323, 0))));
                             }
-                            drop_value(&g_em, v319);
-                        } else if (v317 == 8) {
-                            Value v325 = em_enum_field(&g_em, v316, 0);
-                            Value v326 = em_enum_field(&g_em, v316, 1);
-                            (void)(em_fn_384(a0, own_into_slot(&g_em, em_enum_field(&g_em, v311, 0))));
+                            drop_value(&g_em, v331);
+                        } else if (v329 == 8) {
+                            Value v337 = em_enum_field(&g_em, v328, 0);
+                            Value v338 = em_enum_field(&g_em, v328, 1);
+                            (void)(em_fn_384(a0, own_into_slot(&g_em, em_enum_field(&g_em, v323, 0))));
                         } else {
                         }
                     }
@@ -19165,12 +19178,12 @@ static Value em_fn_383(Value a0, Value a1) {
                 }
             }
         } else if (v1 == 11) {
-            Value v327 = em_enum_field(&g_em, v0, 0);
-            Value v328 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_373(a0, v327));
+            Value v339 = em_enum_field(&g_em, v0, 0);
+            Value v340 = em_enum_field(&g_em, v0, 1);
+            (void)(em_fn_373(a0, v339));
         } else if (v1 == 10) {
-            Value v329 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_374(a0, own_into_slot(&g_em, em_enum_field(&g_em, v329, 0))));
+            Value v341 = em_enum_field(&g_em, v0, 0);
+            (void)(em_fn_374(a0, own_into_slot(&g_em, em_enum_field(&g_em, v341, 0))));
         } else {
         }
     }

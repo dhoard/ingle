@@ -6960,12 +6960,12 @@ struct CgcGen {
 
     // emit_call emits a user free-function call `f(args)` → `em_fn_<index>(<args>)`, or a built-in array
     // method (`arr.len()` → em_array_len, `arr.append(x)` → em_array_append) when the callee is `recv.m`.
-    // emit_closure_arg renders one argument to an indirect closure call, mirroring stage-0's emit_value_arg: a
-    // value struct passed BY VALUE (an em_s aggregate — a literal / value-struct binding / param) is BOXED into
-    // the erased Value slot (em_box_struct, non-flat-aware). Everything else — a scalar, a refcounted borrow, an
-    // owned local, or a value struct ALREADY read from an erased slot (em_enum_field/em_index → already a Value)
-    // — is emitted as a plain BORROW; rt_call_closure retains heap args at runtime, so no own_into_slot. (OFI-206.)
-    fn emit_closure_arg(mut self, e: ps.Expr) -> string {
+    // emit_value_arg emits an expression into an erased Value SLOT (a closure arg, a value-struct's boxed field
+    // slot), mirroring stage-0's emit_value_arg: a value struct passed BY VALUE (an em_s aggregate — a literal /
+    // value-struct binding / param) is BOXED into the Value slot (em_box_struct, non-flat-aware). Everything else
+    // — a scalar, a refcounted borrow, an owned local, or a value struct ALREADY read from an erased slot
+    // (em_enum_field/em_index → already a Value) — is emitted as a plain BORROW (no own_into_slot). (OFI-206.)
+    fn emit_value_arg(mut self, e: ps.Expr) -> string {
         let vsid = self.struct_sid_of(e)
         if vsid >= 0 && self.object_is_value_read(e) == false {
             let bv = self.fresh_var()
@@ -6995,7 +6995,7 @@ struct CgcGen {
                 // The callee is ERASED, so a value-struct arg passed BY VALUE is BOXED across the indirect call
                 // (stage-0's emit_value_arg: box a value struct, else emit the operand as a plain BORROW —
                 // rt_call_closure retains heap args at runtime, so no own_into_slot/move here). (OFI-206.)
-                s = s + self.emit_closure_arg(args[i])
+                s = s + self.emit_value_arg(args[i])
                 i = i + 1
             }
             s = s + " \}"
@@ -9919,6 +9919,24 @@ struct CgcGen {
                                         let ie = self.emit_expr(idx.value)
                                         let val = self.emit_field_consume(vsid, name, value.value)
                                         println("{self.ind()}\{ Value v{av} = {ae}; Value v{iv} = {ie}; Value v{ev} = em_index(&g_em, v{av}, v{iv}); em_set_field(&g_em, v{ev}, {fidx}, {val}); em_set_index(&g_em, v{av}, v{iv}, v{ev}); \}")
+                                    }
+                                }
+                                case EIdent(vname) {
+                                    // A DIRECT value-struct local field write `c.n = X` (c stored as an em_s
+                                    // aggregate): a plain C MEMBER assign `v0.f{idx} = <rhs>`. An inline value-
+                                    // struct field takes the RAW struct (em_s = em_s); a scalar / boxed Value
+                                    // slot takes emit_value_arg (a value struct boxed, else a plain read). Was
+                                    // silently DROPPED (object is an EIdent, not EGet/EIndex), losing every
+                                    // `c.field = …` write on a value-struct local. Mirrors stage-0. (OFI-054.)
+                                    if vsid >= 0 {
+                                        let fidx = self.st.field_index(vsid, name)
+                                        let cn = self.lookup_cname(vname)
+                                        let fsid = self.st.sid_of_ty(self.st.field_ty(vsid, name))
+                                        if fsid >= 0 && self.st.is_value(fsid) {
+                                            println("{self.ind()}{cn}.f{fidx} = {self.emit_expr(value.value)};")
+                                        } else {
+                                            println("{self.ind()}{cn}.f{fidx} = {self.emit_value_arg(value.value)};")
+                                        }
                                     }
                                 }
                                 case _ {
