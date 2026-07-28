@@ -7551,6 +7551,33 @@ struct CgcGen {
                                 let el = self.emit_consume_arg(args[0])
                                 return "(\{ Value v{fv} = {av}; Value v{iv} = {ixe}; Value v{ev} = em_index(&g_em, v{fv}, v{iv}); em_array_append(&g_em, v{ev}, {el}); em_set_index(&g_em, v{fv}, v{iv}, v{ev}); INT_VAL(0); \})"
                             }
+                            case EGet(inner, fname) {
+                                // Appending to an ARRAY FIELD of an INDEXED boxed-struct element
+                                // (`cs[i].lines.append(x)`): a NESTED read-modify-writeback. em_index materialises
+                                // the element (a transient copy for a packed element; a fresh alias otherwise), then
+                                // the field must be taken OWNED (em_field_owned — em_enum_field alone would append
+                                // into a copy the grown pointer never leaves), appended, the grown field written
+                                // BACK (em_set_field), and the element written back (em_set_index). Without both
+                                // writebacks the append is LOST. Mirrors stage-0. (OFI-072.)
+                                match inner.value {
+                                    case EIndex(arr, ix) {
+                                        let esid = self.struct_sid_any(inner.value)
+                                        if esid >= 0 {
+                                            let fidx = self.st.field_index(esid, fname)
+                                            let fv = self.fresh_var()
+                                            let av = self.emit_expr(arr.value)
+                                            let iv = self.fresh_var()
+                                            let ixe = self.emit_expr(ix.value)
+                                            let ev = self.fresh_var()
+                                            let gv = self.fresh_var()
+                                            let el = self.emit_consume_arg(args[0])
+                                            return "(\{ Value v{fv} = {av}; Value v{iv} = {ixe}; Value v{ev} = em_index(&g_em, v{fv}, v{iv}); Value v{gv} = em_field_owned(&g_em, v{ev}, {fidx}); em_array_append(&g_em, v{gv}, {el}); em_set_field(&g_em, v{ev}, {fidx}, v{gv}); em_set_index(&g_em, v{fv}, v{iv}, v{ev}); INT_VAL(0); \})"
+                                        }
+                                    }
+                                    case _ {
+                                    }
+                                }
+                            }
                             case _ {
                             }
                         }
@@ -10173,6 +10200,23 @@ struct CgcGen {
                         let bsid = self.boxed_sid_of(object.value)
                         if bsid >= 0 {
                             let fidx = self.st.field_index(bsid, name)
+                            // Assigning a field of an INDEXED element (`cs[i].tags = […]`): em_index materialises
+                            // the element, so the mutated element must be written BACK with em_set_index or the
+                            // whole-field overwrite is LOST (the same RMW the append-through-index needs). (OFI-072.)
+                            match object.value {
+                                case EIndex(arr, ix) {
+                                    let av = self.fresh_var()
+                                    let ave = self.emit_expr(arr.value)
+                                    let iv = self.fresh_var()
+                                    let ixe = self.emit_expr(ix.value)
+                                    let ev = self.fresh_var()
+                                    let rval = self.emit_field_consume(bsid, name, value.value)
+                                    println("{self.ind()}\{ Value v{av} = {ave}; Value v{iv} = {ixe}; Value v{ev} = em_index(&g_em, v{av}, v{iv}); em_set_field(&g_em, v{ev}, {fidx}, {rval}); em_set_index(&g_em, v{av}, v{iv}, v{ev}); \}")
+                                    return
+                                }
+                                case _ {
+                                }
+                            }
                             let o = self.emit_expr(object.value)
                             let val = self.emit_field_consume(bsid, name, value.value)   // the field CONSUMES the value (`[]` at the field's kind)
                             println("{self.ind()}em_set_field(&g_em, {o}, {fidx}, {val});")
