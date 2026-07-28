@@ -3694,6 +3694,8 @@ struct CgcGen {
     sc_tp_tname: [string]      // ...for a binding whose type is the OWNER struct's TYPE-PARAM (a `case Some(k)` payload of
                                // a [Option<K>] field): that type-param's name ("K"), so `k.eq(x)` dispatches through self's
                                // witness field like a `key: K` param — the match-payload analogue of cur_tp_pname (OFI-174), else ""
+    sc_iface: [string]         // ...for an INTERFACE-typed binding/param (`let s: Shape = …` / `fn f(s: Shape)`): the interface
+                               // NAME, so a method call `s.area()` dispatches DYNAMICALLY through the value's vtable (OFI-013), else ""
     sc_render: [int]           // ...its interpolation render-kind (int_kind: 0 int, 8 f32, 9 float, 10 bool, 1..7 sized), for `{x}`
     indent: int                // current C indentation depth (1 = the function-body level, 4 spaces each)
     st: StructTab              // the declared-struct table (value/boxed classification + field resolution)
@@ -3788,6 +3790,7 @@ struct CgcGen {
         self.sc_opt_payload.append(0 - 1)     // default: not an Option/Result-of-struct binding (set_last_opt_payload overrides)
         self.sc_ctype.append(ps.TyName("", ""))   // default: no tracked container type (set_last_ctype overrides for generic containers)
         self.sc_tp_tname.append("")           // default: not an owner-type-param binding (set_last_tp_tname overrides)
+        self.sc_iface.append("")              // default: not an interface-typed binding (set_last_iface overrides)
         self.sc_render.append(0)              // default: int render-kind (set_last_render overrides for float/bool/sized)
     }
 
@@ -4281,6 +4284,7 @@ struct CgcGen {
         var nop: [int] = []
         var nct: [ps.Ty] = []
         var ntp: [string] = []
+        var nif: [string] = []
         var i = 0
         loop {
             if i >= mark {
@@ -4304,6 +4308,7 @@ struct CgcGen {
             nop.append(self.sc_opt_payload[i])
             nct.append(self.sc_ctype[i])
             ntp.append(self.sc_tp_tname[i])
+            nif.append(self.sc_iface[i])
             i = i + 1
         }
         self.sc_elem_struct = nes
@@ -4324,6 +4329,7 @@ struct CgcGen {
         self.sc_opt_payload = nop
         self.sc_ctype = nct
         self.sc_tp_tname = ntp
+        self.sc_iface = nif
     }
 
 
@@ -4702,6 +4708,108 @@ struct CgcGen {
     // whose type is the owner's K), so `k.eq(x)` dispatches through self's witness field. Called right after push.
     fn set_last_tp_tname(mut self, name: string) {
         self.sc_tp_tname[self.sc_tp_tname.len() - 1] = name
+    }
+
+
+    // set_last_iface records the INTERFACE name of the most-recently pushed binding (`let s: Shape = …` / a
+    // `s: Shape` param), so a method call `s.area()` dispatches dynamically through the value's vtable. Called
+    // right after push.
+    fn set_last_iface(mut self, name: string) {
+        self.sc_iface[self.sc_iface.len() - 1] = name
+    }
+
+
+    fn lookup_iface(self, name: string) -> string {
+        var i = self.sc_name.len() - 1
+        loop {
+            if i < 0 {
+                break
+            }
+            if self.sc_name[i] == name {
+                return self.sc_iface[i]
+            }
+            i = i - 1
+        }
+        return ""
+    }
+
+
+    // is_interface reports whether type name `name` is a user-declared `interface` (used as a VALUE type for
+    // dynamic dispatch) — present in the interface table. The prelude bounds Hash/Eq are NOT value interfaces.
+    fn is_interface(self, name: string) -> bool {
+        var i = 0
+        loop {
+            if i >= self.res.itab.m_iface.len() {
+                break
+            }
+            if self.res.itab.m_iface[i] == name {
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+
+    // ty_interface_name returns the interface name a type annotation denotes (`Shape`), or "" — a plain TyName
+    // that is a user interface. (An interface is never generic in Ingle, so only TyName is considered.)
+    fn ty_interface_name(self, ty: ps.Ty) -> string {
+        match ty {
+            case TyName(q, n) {
+                if self.is_interface(n) {
+                    return n
+                }
+            }
+            case _ {
+            }
+        }
+        return ""
+    }
+
+
+    // emit_iface_upcast wraps a concrete struct value in an interface value: alloc_interface(&g_em, <boxed
+    // receiver>, <vtable>) where the vtable is em_enum(0,0,nmethods, INT_VAL(fnid)…) in interface method-decl
+    // order (emit_witness builds exactly that shape). A value-struct receiver is boxed via em_box_struct; an
+    // already-boxed value passes through. The interface value uniquely OWNS receiver+vtable (dropped together).
+    fn emit_iface_upcast(mut self, structexpr: ps.Expr, iface: string) -> string {
+        let sid = self.struct_sid_of(structexpr)
+        var recv = ""
+        if sid >= 0 {
+            let fc = self.st.field_count(sid)
+            let v = self.fresh_var()
+            recv = "(\{ em_s{sid} v{v} = {self.emit_expr(structexpr)}; em_box_struct(&g_em, {sid}, (Value*)&v{v}, {fc}); \})"
+        } else {
+            recv = self.emit_consume_arg(structexpr)
+        }
+        let bsid = self.boxed_sid_of(structexpr)
+        var sname = ""
+        if sid >= 0 {
+            sname = self.st.names[sid]
+        } else {
+            if bsid >= 0 {
+                sname = self.st.names[bsid]
+            }
+        }
+        return "alloc_interface(&g_em, {recv}, {self.emit_witness(iface, sname)})"
+    }
+
+
+    // emit_iface_dispatch lowers a dynamic method call on an interface-typed receiver `s.area()` to a vtable
+    // trampoline: read the method fn-id from the receiver's vtable at the interface method index (midx), then
+    // em_invoke it with the receiver + args. The receiver is evaluated ONCE into a temp (vtable + receiver reads).
+    fn emit_iface_dispatch(mut self, recv: ps.Expr, iface: string, mname: string, args: [ps.Expr]) -> string {
+        let midx = index_of_str(iface_methods(self.res.itab, iface), mname)
+        let v = self.fresh_var()
+        var s = "(\{ Value v{v} = {self.emit_expr(recv)}; em_invoke(&g_em, AS_INT(em_enum_field(&g_em, AS_INTERFACE(v{v})->vtable, {midx})), (Value[])\{ AS_INTERFACE(v{v})->receiver"
+        var i = 0
+        loop {
+            if i >= args.len() {
+                break
+            }
+            s = s + ", " + self.emit_expr(args[i])
+            i = i + 1
+        }
+        return s + " \}); \})"
     }
 
 
@@ -6088,7 +6196,10 @@ struct CgcGen {
                 // it at its own scope exit).
                 let sid = self.lookup_struct(name)
                 let is_boxed_struct = sid >= 0 && self.st.is_value(sid) == false
-                if self.lookup_drop(name) && self.lookup_array(name) == false && is_boxed_struct == false {
+                // an INTERFACE-typed binding is passed as a BORROW (like a boxed struct / array): the owner keeps
+                // it and drops it at its own scope exit; own_into_slot'ing it would leak a reference. (OFI-013.)
+                let is_iface = self.lookup_iface(name) != ""
+                if self.lookup_drop(name) && self.lookup_array(name) == false && is_boxed_struct == false && is_iface == false {
                     return "own_into_slot(&g_em, {self.lookup_cname(name)})"
                 }
                 if self.lookup_refc(name) && is_boxed_struct == false {
@@ -6452,6 +6563,19 @@ struct CgcGen {
                     case EIdent(recv) {
                         if self.lookup_cname(recv) == "" && self.lookup_struct(recv) < 0 && self.en.is_case_variant(mname) {
                             return self.emit_enum_ctor(mname, args)
+                        }
+                    }
+                    case _ {
+                    }
+                }
+                // A DYNAMIC method call on an INTERFACE-typed receiver (`s.area()` where `s: Shape`) — dispatch
+                // through the interface value's vtable at run time (em_invoke on the fn-id at the interface method
+                // index), NOT a static struct-method call. (OFI-013, un-dodged.)
+                match object.value {
+                    case EIdent(recv) {
+                        let ifn = self.lookup_iface(recv)
+                        if ifn != "" {
+                            return self.emit_iface_dispatch(object.value, ifn, mname, args)
                         }
                     }
                     case _ {
@@ -8277,6 +8401,25 @@ struct CgcGen {
                 // unboxed from the Value (`int64_t vN = (int64_t)AS_INT(<rhs>)`); a string binding is an
                 // owned Value (dropped at scope exit). (cgen_c.c:STMT_LET.)
                 let id = self.fresh_var()
+                // An INTERFACE-typed binding (`let s: Shape = Sq{…}`): the RHS is UPCAST to an interface value
+                // (alloc_interface + vtable) when it is a concrete struct, or MOVED in when it is already an
+                // interface value. Owned (a Value dropped at scope exit); a method call on it dispatches
+                // dynamically through the vtable (lookup_iface). (OFI-013, un-dodged.)
+                if ty.len() > 0 {
+                    let ifn = self.ty_interface_name(ty[0])
+                    if ifn != "" {
+                        var irhs = ""
+                        if self.struct_sid_of(value.value) >= 0 || self.boxed_sid_of(value.value) >= 0 {
+                            irhs = self.emit_iface_upcast(value.value, ifn)
+                        } else {
+                            irhs = self.emit_consume_arg(value.value)
+                        }
+                        println("{self.ind()}Value v{id} = {irhs};")
+                        self.push(name, "v{id}", 0 - 1, false, true, false, 0 - 1)
+                        self.set_last_iface(ifn)
+                        return
+                    }
+                }
                 let ssid = self.struct_sid_of(value.value)
                 let kind = self.scalar_kind_of(value.value)
                 if ssid >= 0 {
@@ -9513,7 +9656,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], sc_iface: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
     // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
     // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
     // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
@@ -9610,6 +9753,14 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
                 g.set_last_elem_aek(eaek)
                 g.set_last_elem_is_array(peia)
                 g.set_last_elem_elem_kind(peek)
+            }
+            if f.params[p].ty.len() > 0 {
+                // An INTERFACE-typed param (`s: Shape`) — the arg is an interface Value; a method call `s.area()`
+                // dispatches dynamically through its vtable. (OFI-013, un-dodged.)
+                let pifn = g.ty_interface_name(f.params[p].ty[0])
+                if pifn != "" {
+                    g.set_last_iface(pifn)
+                }
             }
             if psid >= 0 {
                 g.set_last_struct(psid)           // value param → read via aN.fM; boxed param → a borrowed Value
