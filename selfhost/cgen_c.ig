@@ -417,6 +417,8 @@ struct FnResolve {
                                // binds a string and `raw.parse_int()` resolves (OFI-173)
     ret_ok_struct: [int]       // per-em_fn: the Some/Ok payload STRUCT sid a fn returns (`-> Result<Config,_>`), else -1
                                // — so `match load_config(t) { case Ok(cfg) }` types cfg's struct (OFI-173)
+    mut_self_value: [bool]     // per-em_fn: is it a POINTER-RECEIVER mut-self value method? — so `c.m()` passes
+                               // `&c` (a value-struct field write reaches the caller's struct) (OFI-054)
 }
 
 
@@ -1850,6 +1852,61 @@ fn param_value_sid(f: ps.FnDecl, has_self: bool, stab: StructTab, owner_sid: int
 }
 
 
+// method_is_mut_self reports whether a method's receiver is `mut self` (params[0] is self with qual 1 = mut).
+fn method_is_mut_self(m: ps.FnDecl) -> bool {
+    return m.params.len() > 0 && m.params[0].is_self && m.params[0].qual == 1
+}
+
+
+// is_mut_self_value reports whether `f` is a `mut self` method on a VALUE struct — the POINTER-RECEIVER case:
+// self is passed as `em_s<owner> *a0` (not a by-value copy), so field writes reach the caller's struct. A
+// boxed/rc `mut self` is already shared through its Value pointer (no change); a value struct copied by value
+// would lose the mutation. Such a method canNOT be dispatched through em_invoke (the vtable unboxes a copy),
+// so it is excluded from the trampoline and only reachable by a direct `em_fn_N(&recv, …)` call. Mirrors
+// stage-0 (em_s0 *a0 + (*a0).fN). (OFI-054.)
+fn is_mut_self_value(f: ps.FnDecl, has_self: bool, owner_sid: int, stab: StructTab) -> bool {
+    return has_self && owner_sid >= 0 && stab.is_value(owner_sid) && method_is_mut_self(f)
+}
+
+
+// build_fn_mut_self_value marks each body-bearing fn (parallel to build_fn_ret_structs' walk order) as a
+// pointer-receiver mut-self value method, so a call site knows to pass `&receiver`. Free fns are always false.
+fn build_fn_mut_self_value(decls: [ps.Decl], stab: StructTab) -> [bool] {
+    var out: [bool] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    out.append(false)
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                let osid = stab.sid_of(name)
+                let ownval = osid >= 0 && stab.is_value(osid)
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        out.append(ownval && method_is_mut_self(methods[mi]))
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 // fn_ret_value_struct returns the VALUE-struct sid `f` returns (a `em_s<sid>` C return type), or -1.
 fn fn_ret_value_struct(f: ps.FnDecl, stab: StructTab) -> int {
     if f.ret.len() > 0 {
@@ -1908,7 +1965,11 @@ fn fn_param_list(f: ps.FnDecl, has_self: bool, stab: StructTab, owner_sid: int) 
         }
         let psid = param_value_sid(f, has_self, stab, owner_sid, i)
         if psid >= 0 {
-            s = s + "em_s{psid} a{i}"
+            if i == 0 && is_mut_self_value(f, has_self, owner_sid, stab) {
+                s = s + "em_s{psid} *a{i}"   // a POINTER receiver — a mut-self value method mutates the caller's struct
+            } else {
+                s = s + "em_s{psid} a{i}"
+            }
         } else {
             s = s + "Value a{i}"
         }
@@ -7425,7 +7486,11 @@ struct CgcGen {
                             if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 {
                                 mrtype = "em_s{self.fn_ret_struct[fi]}"   // a VALUE-struct method return: em_s aggregate, not Value
                             }
-                            s = s + "{mrtype} c{rid} = em_fn_{fi}(" + self.emit_expr(object.value)   // self inline
+                            var mselfarg = self.emit_expr(object.value)   // self inline
+                            if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
+                                mselfarg = "&" + mselfarg                 // a POINTER-RECEIVER mut-self value method — pass &recv (OFI-054)
+                            }
+                            s = s + "{mrtype} c{rid} = em_fn_{fi}(" + mselfarg
                             var j = 0
                             loop {
                                 if j >= argids.len() {
@@ -7447,7 +7512,11 @@ struct CgcGen {
                             }
                             return s + "c{rid}; \})"
                         }
-                        var s = "em_fn_{fi}(" + self.emit_expr(object.value)   // self (em_s value / boxed Value)
+                        var selfarg = self.emit_expr(object.value)   // self (em_s value / boxed Value)
+                        if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
+                            selfarg = "&" + selfarg                  // a POINTER-RECEIVER mut-self value method — pass &recv (OFI-054)
+                        }
+                        var s = "em_fn_{fi}(" + selfarg
                         var i = 0
                         loop {
                             if i >= args.len() {
@@ -10540,7 +10609,13 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     let lam_caps = nv - lam_pstr.len()
     var ai = 0
     if has_self {
-        g.push("self", "a0", 0 - 1, false, false, false, 0 - 1)
+        // A POINTER-RECEIVER mut-self value method takes `em_s *a0`, so `self` is `(*a0)` — every `self.field`
+        // read/write then lowers to `(*a0).fN`, reaching the caller's struct (mutations persist). (OFI-054.)
+        var self_cname = "a0"
+        if is_mut_self_value(f, has_self, owner_sid, st) {
+            self_cname = "(*a0)"
+        }
+        g.push("self", self_cname, 0 - 1, false, false, false, 0 - 1)
         if owner_sid >= 0 {
             g.set_last_struct(owner_sid)          // `self` is the owning struct (value → a0.fN, boxed → em_enum_field)
         }
@@ -11501,7 +11576,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
     let stab = build_struct_tab(decls)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
@@ -11606,7 +11681,12 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
                         break
                     }
                     if methods[mi].has_body {
-                        emit_invoke_case(methods[mi], inv, true, stab, owner)
+                        // A POINTER-RECEIVER mut-self value method can't dispatch through the trampoline (em_invoke
+                        // would unbox a COPY, losing the mutation) — skip its case but KEEP its em_fn index. It is
+                        // reachable only by a direct `em_fn_N(&recv, …)` call. Mirrors stage-0. (OFI-054.)
+                        if is_mut_self_value(methods[mi], true, owner, stab) == false {
+                            emit_invoke_case(methods[mi], inv, true, stab, owner)
+                        }
                         inv = inv + 1
                     }
                     mi = mi + 1
