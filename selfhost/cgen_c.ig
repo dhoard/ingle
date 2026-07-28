@@ -5802,6 +5802,26 @@ struct CgcGen {
                     }
                     return sa + ")"
                 }
+                // A NON-value but INLINE-PACKABLE struct element (a struct with a STRING/ENUM single-Value field,
+                // `Cell{tag: string, n: int}`) is ALSO packed into an em_struct_array — is_value gates pass-by-value
+                // (rejects the heap field), but inline-packing only needs a fixed shape (no array / nested-boxed
+                // field). Each element is emitted DIRECTLY as a boxed em_struct (it already IS boxed, not an em_s to
+                // em_box_struct); `arr[i]` reads a materialised boxed copy and `arr[i].field = v` writes it back
+                // (the RMW). Previously this fell to the boxed em_array path, so packed writebacks were lost. (OFI-061.)
+                let pkid = self.struct_sid_any(elems[0])
+                if pkid >= 0 && self.st.is_inline_packable(pkid) {
+                    let esid2 = self.st.base_of(pkid)
+                    var sa = "em_struct_array(&g_em, {elems.len()}, {esid2}"
+                    var j = 0
+                    loop {
+                        if j >= elems.len() {
+                            break
+                        }
+                        sa = sa + ", " + self.emit_consume_arg(elems[j])
+                        j = j + 1
+                    }
+                    return sa + ")"
+                }
                 let ek = self.elem_kind_of_expr(elems[0])
                 var s = "em_array(&g_em, {elems.len()}, {ek}"
                 var i = 0
