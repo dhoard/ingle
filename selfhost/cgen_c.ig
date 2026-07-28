@@ -1858,6 +1858,9 @@ fn param_value_sid(f: ps.FnDecl, has_self: bool, stab: StructTab, owner_sid: int
         if f.params[p].is_self == false {
             if ci == pi {
                 if f.params[p].ty.len() > 0 {
+                    if ty_name_is_owner_generic(f.params[p].ty[0], owner_sid, stab) {
+                        return 0 - 1                  // an erased owner type-param param (`item: T`) is a boxed Value (OFI-053)
+                    }
                     let s = ty_struct_sid(f.params[p].ty[0], stab.names)
                     if s >= 0 && stab.is_value(s) {
                         return s
@@ -1928,9 +1931,27 @@ fn build_fn_mut_self_value(decls: [ps.Decl], stab: StructTab) -> [bool] {
 }
 
 
-// fn_ret_value_struct returns the VALUE-struct sid `f` returns (a `em_s<sid>` C return type), or -1.
-fn fn_ret_value_struct(f: ps.FnDecl, stab: StructTab) -> int {
+// ty_name_is_owner_generic reports whether a type node names one of `owner_sid`'s struct generic params
+// (`-> T` / `item: T` inside `Box<T>`) — the ERASED boxed type, not a same-named user struct. (OFI-053.)
+fn ty_name_is_owner_generic(t: ps.Ty, owner_sid: int, stab: StructTab) -> bool {
+    match t {
+        case TyName(q, n) {
+            return q == "" && stab.name_is_owner_generic(owner_sid, n)
+        }
+        case _ {
+            return false
+        }
+    }
+}
+
+
+// fn_ret_value_struct returns the VALUE-struct sid `f` returns (a `em_s<sid>` C return type), or -1. An erased
+// owner type-param return (`-> T` where T is `owner_sid`'s generic param) is a boxed Value → -1. (OFI-053.)
+fn fn_ret_value_struct(f: ps.FnDecl, stab: StructTab, owner_sid: int) -> int {
     if f.ret.len() > 0 {
+        if ty_name_is_owner_generic(f.ret[0], owner_sid, stab) {
+            return 0 - 1
+        }
         let sid = ty_struct_sid(f.ret[0], stab.names)
         if sid >= 0 && stab.is_value(sid) {
             return sid
@@ -1941,8 +1962,8 @@ fn fn_ret_value_struct(f: ps.FnDecl, stab: StructTab) -> int {
 
 
 // fn_ret_ctype is `f`'s C return type: `em_s<sid>` for a value-struct return, else `Value`.
-fn fn_ret_ctype(f: ps.FnDecl, stab: StructTab) -> string {
-    let sid = fn_ret_value_struct(f, stab)
+fn fn_ret_ctype(f: ps.FnDecl, stab: StructTab, owner_sid: int) -> string {
+    let sid = fn_ret_value_struct(f, stab, owner_sid)
     if sid >= 0 {
         return "em_s{sid}"
     }
@@ -2352,6 +2373,29 @@ struct StructTab {
             i = i + 1
         }
         return 0 - 1
+    }
+
+
+    // name_is_owner_generic reports whether `name` is one of `owner_sid`'s struct GENERIC PARAMETERS — so a
+    // method's `-> T` / `item: T` where T is the owner's type-param is the ERASED (boxed Value) type, NOT a
+    // same-named user `struct T`. Without this, by-name resolution mis-types the erased slot as the user struct
+    // and the C signatures don't match (OFI-053, un-dodged). Uses the sg_owner/sg_tparam struct-generics table.
+    fn name_is_owner_generic(self, owner_sid: int, name: string) -> bool {
+        if owner_sid < 0 {
+            return false
+        }
+        let base = self.base_of(owner_sid)
+        var i = 0
+        loop {
+            if i >= self.sg_owner.len() {
+                break
+            }
+            if self.sg_owner[i] == base && self.sg_tparam[i] == name {
+                return true
+            }
+            i = i + 1
+        }
+        return false
     }
 
 
@@ -3030,7 +3074,12 @@ fn build_struct_tab(decls: [ps.Decl]) -> StructTab {
                     fnm.append(fields[fi].name)
                     fty_arr.append(fty)                 // keep the declared field type (with generic args) for later
                     ftpn.append(field_tpname_ty(fty, generics))   // "K" for a bare type-param field, else "" (witness dispatch)
-                    fsd.append(field_struct_sid_g(fty, names))   // generic-aware: a Map<K,V> field → base Map sid (method dispatch)
+                    if ty_is_generic_param(fty, generics) {
+                        fsd.append(0 - 1)                        // a bare owner type-param FIELD (`item: T`) is erased to a
+                                                                 // boxed Value — never a same-named user struct (OFI-053)
+                    } else {
+                        fsd.append(field_struct_sid_g(fty, names))   // generic-aware: a Map<K,V> field → base Map sid (method dispatch)
+                    }
                     let aek = array_elem_kind_ty(fty)   // 0 for string/array/struct (boxed), 1..11 for a scalar
                     fa.append(aek)
                     fsc.append(aek != 0)
@@ -3799,17 +3848,18 @@ fn build_fn_ret_structs(decls: [ps.Decl], stab: StructTab) -> [int] {
         match decls[i] {
             case DFn(f) {
                 if f.has_body {
-                    out.append(fn_ret_struct_id(f, stab))
+                    out.append(fn_ret_struct_id(f, stab, 0 - 1))
                 }
             }
             case DStruct(name, generics, impls, fields, methods, kind) {
+                let osid = stab.sid_of(name)
                 var mi = 0
                 loop {
                     if mi >= methods.len() {
                         break
                     }
                     if methods[mi].has_body {
-                        out.append(fn_ret_struct_id(methods[mi], stab))
+                        out.append(fn_ret_struct_id(methods[mi], stab, osid))
                     }
                     mi = mi + 1
                 }
@@ -3824,8 +3874,11 @@ fn build_fn_ret_structs(decls: [ps.Decl], stab: StructTab) -> [int] {
 
 
 // fn_ret_struct_id is the struct sid (value OR boxed) `f` returns, or -1 if it does not return a struct.
-fn fn_ret_struct_id(f: ps.FnDecl, stab: StructTab) -> int {
+fn fn_ret_struct_id(f: ps.FnDecl, stab: StructTab, owner_sid: int) -> int {
     if f.ret.len() > 0 {
+        if ty_name_is_owner_generic(f.ret[0], owner_sid, stab) {
+            return 0 - 1                          // an erased owner type-param return (`-> T`) → not a concrete struct (OFI-053)
+        }
         return stab.sid_of_ty(f.ret[0])
     }
     return 0 - 1
@@ -10766,6 +10819,9 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
                     }
                 }
                 psid = st.sid_of_ty(f.params[p].ty[0])   // value OR boxed struct sid this param carries (incl. a generic instance)
+                if ty_name_is_owner_generic(f.params[p].ty[0], owner_sid, st) {
+                    psid = 0 - 1                         // an erased owner type-param param (`item: T`) is a boxed Value, not a user struct (OFI-053)
+                }
             }
             // A lifted lambda's own param (typeless in the AST) takes its type from the recorded call context:
             // a string param is OWNED (dropped at exit); a scalar carries its width-kind. (ai == the non-self
@@ -10854,7 +10910,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
         }
         p = p + 1
     }
-    println("static {fn_ret_ctype(f, st)} em_fn_{idx}({fn_param_list(f, has_self, st, owner_sid)}) \{")
+    println("static {fn_ret_ctype(f, st, owner_sid)} em_fn_{idx}({fn_param_list(f, has_self, st, owner_sid)}) \{")
     var i = 0
     loop {
         if i >= f.body.len() {
@@ -10868,7 +10924,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if g.scope_has_drops() {
         g.emit_drops(0)
     }
-    let rsid = fn_ret_value_struct(f, st)
+    let rsid = fn_ret_value_struct(f, st, owner_sid)
     if rsid >= 0 {
         println("    return (em_s{rsid})\{0\};")
     } else {
@@ -10986,7 +11042,7 @@ fn emit_invoke_case(f: ps.FnDecl, idx: int, has_self: bool, stab: StructTab, own
         }
         j = j + 1
     }
-    let rsid = fn_ret_value_struct(f, stab)
+    let rsid = fn_ret_value_struct(f, stab, owner_sid)
     if rsid >= 0 {
         println("            em_s{rsid} r = em_fn_{idx}({args});")
         wit_slot_drops(wc)
@@ -11736,7 +11792,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
         match decls[i] {
             case DFn(f) {
                 if f.has_body {
-                    println("static {fn_ret_ctype(f, stab)} em_fn_{fwd}({fn_param_list(f, false, stab, 0 - 1)});")
+                    println("static {fn_ret_ctype(f, stab, 0 - 1)} em_fn_{fwd}({fn_param_list(f, false, stab, 0 - 1)});")
                     fwd = fwd + 1
                 }
             }
@@ -11748,7 +11804,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
                         break
                     }
                     if methods[mi].has_body {
-                        println("static {fn_ret_ctype(methods[mi], stab)} em_fn_{fwd}({fn_param_list(methods[mi], true, stab, owner)});")
+                        println("static {fn_ret_ctype(methods[mi], stab, owner)} em_fn_{fwd}({fn_param_list(methods[mi], true, stab, owner)});")
                         fwd = fwd + 1
                     }
                     mi = mi + 1
@@ -11765,7 +11821,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
         if lf >= lc.lams.len() {
             break
         }
-        println("static {fn_ret_ctype(lc.lams[lf], stab)} em_fn_{total + lf}({fn_param_list(lc.lams[lf], false, stab, 0 - 1)});")
+        println("static {fn_ret_ctype(lc.lams[lf], stab, 0 - 1)} em_fn_{total + lf}({fn_param_list(lc.lams[lf], false, stab, 0 - 1)});")
         lf = lf + 1
     }
     println("")
