@@ -5031,6 +5031,30 @@ struct CgcGen {
     }
 
 
+    // value_opt_payload_sid infers an Option/Result-of-struct binding's payload sid from its CONSTRUCTOR VALUE
+    // (`let opt = Some(Pt{…})`) when there is no type annotation to read — the value-side analogue of
+    // option_payload_concrete_sid. Returns the struct sid of a `Some(x)`/`Ok(x)` argument that is a struct, else -1.
+    // So a later `match opt { case Some(p) { p.x } }` recovers p's struct (via lookup_opt_payload). (OFI-173.)
+    fn value_opt_payload_sid(self, e: ps.Expr) -> int {
+        match e {
+            case ECall(callee, args) {
+                match callee.value {
+                    case EIdent(name) {
+                        if (name == "Some" || name == "Ok") && args.len() == 1 {
+                            return self.struct_sid_of(args[0])
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return 0 - 1
+    }
+
+
     // lookup_tp_tname returns the OWNER type-param name a param-name is typed as (`key` → "K"), or "".
     fn lookup_tp_tname(self, name: string) -> string {
         // a match-payload binding whose type is an owner type-param (`case Some(k)` of a [Option<K>] field) is
@@ -6645,6 +6669,9 @@ struct CgcGen {
                 if self.lookup_cname(name) == "" && self.en.is_variant(name) == false && self.consts.lookup_idx(name) >= 0 {
                     return self.emit_expr(e)   // a folded int constant (INT_VAL literal) — not a heap borrow, no retain-dance
                 }
+                if self.lookup_cname(name) == "" && self.en.is_variant(name) == false && self.fn_index(name) >= 0 {
+                    return self.emit_expr(e)   // a named FN used as a VALUE (`let g = double`) — a FRESH em_closure temp, not a borrow (OFI-206)
+                }
                 if self.lookup_drop(name) {
                     if consuming {
                         return self.move_binding(name)   // `+` consumes → move the owned binding out
@@ -6933,6 +6960,21 @@ struct CgcGen {
 
     // emit_call emits a user free-function call `f(args)` → `em_fn_<index>(<args>)`, or a built-in array
     // method (`arr.len()` → em_array_len, `arr.append(x)` → em_array_append) when the callee is `recv.m`.
+    // emit_closure_arg renders one argument to an indirect closure call, mirroring stage-0's emit_value_arg: a
+    // value struct passed BY VALUE (an em_s aggregate — a literal / value-struct binding / param) is BOXED into
+    // the erased Value slot (em_box_struct, non-flat-aware). Everything else — a scalar, a refcounted borrow, an
+    // owned local, or a value struct ALREADY read from an erased slot (em_enum_field/em_index → already a Value)
+    // — is emitted as a plain BORROW; rt_call_closure retains heap args at runtime, so no own_into_slot. (OFI-206.)
+    fn emit_closure_arg(mut self, e: ps.Expr) -> string {
+        let vsid = self.struct_sid_of(e)
+        if vsid >= 0 && self.object_is_value_read(e) == false {
+            let bv = self.fresh_var()
+            return "(\{ em_s{vsid} v{bv} = {self.emit_expr(e)}; em_box_struct(&g_em, {vsid}, (Value*)&v{bv}, {self.st.field_count(vsid)}); \})"
+        }
+        return self.emit_expr(e)
+    }
+
+
     // emit_closure_call renders a call THROUGH a closure VALUE (a fn-typed local/param): rt_call_closure(&g_em,
     // <closure>, <argc>, (Value[])\{ args \}, em_invoke). The args are borrows — rt_call_closure retains heap
     // args at runtime (mirrors cgen_c.c's closure_call path + the VM's OP_CALL_CLOSURE).
@@ -6950,7 +6992,10 @@ struct CgcGen {
                 if i > 0 {
                     s = s + ", "
                 }
-                s = s + self.emit_expr(args[i])
+                // The callee is ERASED, so a value-struct arg passed BY VALUE is BOXED across the indirect call
+                // (stage-0's emit_value_arg: box a value struct, else emit the operand as a plain BORROW —
+                // rt_call_closure retains heap args at runtime, so no own_into_slot/move here). (OFI-206.)
+                s = s + self.emit_closure_arg(args[i])
                 i = i + 1
             }
             s = s + " \}"
@@ -7746,6 +7791,45 @@ struct CgcGen {
     // the args emitted before it). The global lifted-body pass has no call context, so THIS is where a lambda
     // param's string/scalar nature is fixed — from the input array's element (map/filter/sort) or the init
     // value (reduce). Fires only for a call whose callee is a HOF (fn_hof_srcs non-empty). OFI-206 follow-on.
+    // record_annotated_lambda records a lambda's param typing from a fn-TYPE ANNOTATION on its binding
+    // (`let g: fn(Point)->int = |q| q.x`) — the OTHER source of lambda param types besides a HOF arg. Keyed by the
+    // lambda's predicted lifted slot (cur_lambda, since the value is emitted right after). Stride-3 like
+    // record_hof_lambdas: is_str, scalar kind, struct sid per param. (OFI-206.)
+    fn record_annotated_lambda(mut self, ty: ps.Ty, value: ps.Expr) {
+        match value {
+            case ELambda(lparams, body) {
+                match ty {
+                    case TyFn(fparams, fret) {
+                        if fparams.len() != lparams.len() || fparams.len() > 2 {
+                            return
+                        }
+                        self.lam_recs.append(self.cur_lambda)
+                        self.lam_recs.append(lparams.len())
+                        var pi = 0
+                        loop {
+                            if pi >= lparams.len() {
+                                break
+                            }
+                            var is_str = 0
+                            if is_string_ty(fparams[pi]) {
+                                is_str = 1
+                            }
+                            self.lam_recs.append(is_str)
+                            self.lam_recs.append(ty_scalar_kind(fparams[pi]))
+                            self.lam_recs.append(self.st.sid_of_ty(fparams[pi]))
+                            pi = pi + 1
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+    }
+
+
     fn record_hof_lambdas(mut self, fi: int, args: [ps.Expr]) {
         let base = fi * 6                            // fn_hof_srcs is a FLAT stride-6 table; scalar-index throughout
         if fi < 0 || base + 5 >= self.fn_hof_srcs.len() {
@@ -8964,6 +9048,29 @@ struct CgcGen {
     }
 
 
+    // is_fn_value_binding reports whether a `let` binds a first-class FUNCTION VALUE (a closure) — a fn-TYPE
+    // annotation (`let g: fn(Point)->int = …`), a lambda literal, or a bare named-fn used as a value
+    // (`let g = double`). A closure is a heap object, so the binding is OWNED: dropped at scope exit and
+    // own_into_slot'd when passed to an owning param (a fn-typed param) — else a reused closure is freed by the
+    // first callee and the next use is a use-after-free. Mirrors stage-0's fn-value binding ownership. (OFI-206.)
+    fn is_fn_value_binding(self, ty: [ps.Ty], e: ps.Expr) -> bool {
+        if ty.len() > 0 && is_fn_ty(ty[0]) {
+            return true
+        }
+        match e {
+            case ELambda(p, b) {
+                return true
+            }
+            case EIdent(name) {
+                return self.lookup_cname(name) == "" && self.en.is_variant(name) == false && self.fn_index(name) >= 0
+            }
+            case _ {
+            }
+        }
+        return false
+    }
+
+
     // emit_or_cond returns the parenthesised C disjunction for an or-pattern `case a | b | c`: each
     // alternative is a variant-tag test (`tag == vi`) or a literal equality (`em_eq_op`), OR'd with
     // `||`. The `||` short-circuits exactly like the VM's OR-of-tests, so both backends agree. Mirrors
@@ -9085,6 +9192,10 @@ struct CgcGen {
                 // interface value. Owned (a Value dropped at scope exit); a method call on it dispatches
                 // dynamically through the vtable (lookup_iface). (OFI-013, un-dodged.)
                 if ty.len() > 0 {
+                    // A fn-TYPE annotation on a lambda binding (`let g: fn(Point)->int = |q| q.x`) is the OTHER
+                    // source (besides a HOF arg) of the lambda's param struct typing — record it before the value's
+                    // em_closure is emitted (cur_lambda is the lambda's lifted slot at this point). (OFI-206.)
+                    self.record_annotated_lambda(ty[0], value.value)
                     let ifn = self.ty_interface_name(ty[0])
                     if ifn != "" {
                         var irhs = ""
@@ -9146,7 +9257,7 @@ struct CgcGen {
                     // string/enum the plain predicates miss (is_string_expr has no field/element case). A SLICE
                     // `arr[lo..hi]` is owned/dropped like an array (em_slice returns a fresh owned view), but is
                     // bound WITHOUT a retain-dance — emit_concat_operand emits the bare em_slice. (slices §.)
-                    let owned = self.is_string_expr(value.value) || arr || self.is_enum_expr(value.value) || bsid >= 0 || self.ret_owns(value.value)
+                    let owned = self.is_string_expr(value.value) || arr || self.is_enum_expr(value.value) || bsid >= 0 || self.ret_owns(value.value) || self.is_fn_value_binding(ty, value.value)
                     // An owned array local carries its ELEMENT scalar kind so a later `xs[i]` types as a scalar —
                     // from the `[T]` annotation if present, else inferred from the initialiser.
                     var elem_sk = 0 - 1
@@ -9214,6 +9325,13 @@ struct CgcGen {
                         let ops = self.option_payload_concrete_sid(ty[0])
                         if ops >= 0 {
                             self.set_last_opt_payload(ops)
+                        }
+                    } else {
+                        // No annotation (`let opt = Some(Pt{…})`) — infer the payload struct from the constructor
+                        // value instead, so `match opt { case Some(p) { p.x } }` still tracks p's struct. (OFI-173.)
+                        let vops = self.value_opt_payload_sid(value.value)
+                        if vops >= 0 {
+                            self.set_last_opt_payload(vops)
                         }
                     }
                     if owned {
