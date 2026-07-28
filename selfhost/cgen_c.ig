@@ -3774,6 +3774,8 @@ struct CgcGen {
                                // witness field like a `key: K` param — the match-payload analogue of cur_tp_pname (OFI-174), else ""
     sc_iface: [string]         // ...for an INTERFACE-typed binding/param (`let s: Shape = …` / `fn f(s: Shape)`): the interface
                                // NAME, so a method call `s.area()` dispatches DYNAMICALLY through the value's vtable (OFI-013), else ""
+    sc_elem_iface: [string]    // ...for a `[Interface]` array binding (`shapes: [Shape]`): the ELEMENT interface name, so a
+                               // for-loop var (`for sh in shapes`) and `shapes[i]` dispatch dynamically (OFI-013), else ""
     sc_render: [int]           // ...its interpolation render-kind (int_kind: 0 int, 8 f32, 9 float, 10 bool, 1..7 sized), for `{x}`
     indent: int                // current C indentation depth (1 = the function-body level, 4 spaces each)
     st: StructTab              // the declared-struct table (value/boxed classification + field resolution)
@@ -3871,6 +3873,7 @@ struct CgcGen {
         self.sc_ctype.append(ps.TyName("", ""))   // default: no tracked container type (set_last_ctype overrides for generic containers)
         self.sc_tp_tname.append("")           // default: not an owner-type-param binding (set_last_tp_tname overrides)
         self.sc_iface.append("")              // default: not an interface-typed binding (set_last_iface overrides)
+        self.sc_elem_iface.append("")         // default: not a [Interface] array binding (set_last_elem_iface overrides)
         self.sc_render.append(0)              // default: int render-kind (set_last_render overrides for float/bool/sized)
     }
 
@@ -4365,6 +4368,7 @@ struct CgcGen {
         var nct: [ps.Ty] = []
         var ntp: [string] = []
         var nif: [string] = []
+        var nef: [string] = []
         var i = 0
         loop {
             if i >= mark {
@@ -4389,6 +4393,7 @@ struct CgcGen {
             nct.append(self.sc_ctype[i])
             ntp.append(self.sc_tp_tname[i])
             nif.append(self.sc_iface[i])
+            nef.append(self.sc_elem_iface[i])
             i = i + 1
         }
         self.sc_elem_struct = nes
@@ -4410,6 +4415,7 @@ struct CgcGen {
         self.sc_ctype = nct
         self.sc_tp_tname = ntp
         self.sc_iface = nif
+        self.sc_elem_iface = nef
     }
 
 
@@ -4814,6 +4820,28 @@ struct CgcGen {
     }
 
 
+    // set_last_elem_iface records the ELEMENT interface name of the most-recently pushed `[Interface]` array
+    // binding, so a for-loop var over it and `arr[i]` dispatch dynamically. Called right after push.
+    fn set_last_elem_iface(mut self, name: string) {
+        self.sc_elem_iface[self.sc_elem_iface.len() - 1] = name
+    }
+
+
+    fn lookup_elem_iface(self, name: string) -> string {
+        var i = self.sc_name.len() - 1
+        loop {
+            if i < 0 {
+                break
+            }
+            if self.sc_name[i] == name {
+                return self.sc_elem_iface[i]
+            }
+            i = i - 1
+        }
+        return ""
+    }
+
+
     // recv_iface returns the INTERFACE name a method-call receiver expression has (so the call dispatches
     // dynamically), or "": an interface-typed binding/param (lookup_iface), an interface-returning free CALL
     // (`make(k).area()` via res.ret_iface), or an interface-typed struct FIELD (`h.hero.area()`). (OFI-013.)
@@ -4851,6 +4879,17 @@ struct CgcGen {
                 let sid = self.struct_sid_any(obj.value)
                 if sid >= 0 {
                     return iface_name_of_ty(self.res.itab, self.st.field_ty(sid, fname))
+                }
+            }
+            case EIndex(arr, ix) {
+                // an element of a `[Interface]` array binding (`shapes[i].area()`) — the array tracks its element
+                // interface. (OFI-013.)
+                match arr.value {
+                    case EIdent(aname) {
+                        return self.lookup_elem_iface(aname)
+                    }
+                    case _ {
+                    }
                 }
             }
             case _ {
@@ -4936,6 +4975,32 @@ struct CgcGen {
             i = i + 1
         }
         return s + " \}); \})"
+    }
+
+
+    // ty_array_elem_iface returns the ELEMENT interface name of a `[Interface]` array type (`[Shape]` → "Shape"),
+    // else "". (OFI-013.)
+    fn ty_array_elem_iface(self, ty: ps.Ty) -> string {
+        if is_array_ty(ty) {
+            return self.ty_interface_name(elem_ty_of(ty))
+        }
+        return ""
+    }
+
+
+    // emit_iface_array builds an array literal of interface values: em_array(&g_em, n, 0, <upcast e0>, …) — each
+    // concrete struct element is UPCAST to an interface value (a boxed AEK-0 element). (OFI-013.)
+    fn emit_iface_array(mut self, elems: [ps.Expr], iface: string) -> string {
+        var s = "em_array(&g_em, {elems.len()}, 0"
+        var i = 0
+        loop {
+            if i >= elems.len() {
+                break
+            }
+            s = s + ", " + self.emit_iface_upcast(elems[i], iface)
+            i = i + 1
+        }
+        return s + ")"
     }
 
 
@@ -5785,6 +5850,13 @@ struct CgcGen {
     // empty `[]` builds the array at the FIELD's declared element kind (an inline `[Struct]` field →
     // em_struct_array; else em_array(0, aek)), not the default 0; otherwise it consumes like any container arg.
     fn emit_field_consume(mut self, sid: int, fname: string, value: ps.Expr) -> string {
+        // An INTERFACE-typed field (`Scene { hero: Square{…} }` where `hero: Shape`) — UPCAST the concrete struct
+        // value to an interface value at construction, so `scene.hero.area()` dispatches through its vtable. An
+        // already-interface value (a `[Shape]` element is separate) passes through. (OFI-013, un-dodged.)
+        let fifn = iface_name_of_ty(self.res.itab, self.st.field_ty(sid, fname))
+        if fifn != "" && (self.struct_sid_of(value) >= 0 || self.boxed_sid_of(value) >= 0) {
+            return self.emit_iface_upcast(value, fifn)
+        }
         match value {
             case EArray(elems, lines) {
                 if elems.len() == 0 {
@@ -8558,6 +8630,22 @@ struct CgcGen {
                         self.set_last_iface(ifn)
                         return
                     }
+                    // A `[Interface]` array binding (`let shapes: [Shape] = [Circle{…}, Square{…}]`) — each struct
+                    // element is UPCAST to an interface value; the binding tracks its element interface so a
+                    // for-loop var / `shapes[i]` dispatches dynamically. Owned array, dropped at scope exit. (OFI-013.)
+                    let eifn = self.ty_array_elem_iface(ty[0])
+                    if eifn != "" {
+                        match value.value {
+                            case EArray(elems, lines) {
+                                println("{self.ind()}Value v{id} = {self.emit_iface_array(elems, eifn)};")
+                                self.push(name, "v{id}", 0 - 1, false, true, true, 0 - 1)
+                                self.set_last_elem_iface(eifn)
+                                return
+                            }
+                            case _ {
+                            }
+                        }
+                    }
                 }
                 let ssid = self.struct_sid_of(value.value)
                 let kind = self.scalar_kind_of(value.value)
@@ -8770,7 +8858,19 @@ struct CgcGen {
                         // Type the loop variable by the iterable's ELEMENT struct so `t.field` resolves — a
                         // `for t in turns` over a `[Turn]` binds each `t` as a Turn.
                         let lv_esid = self.array_elem_struct_of(iter.value)
-                        if lv_esid >= 0 {
+                        var lv_eifn = ""
+                        match iter.value {
+                            case EIdent(itn) {
+                                lv_eifn = self.lookup_elem_iface(itn)
+                            }
+                            case _ {
+                            }
+                        }
+                        if lv_eifn != "" {
+                            // A `[Interface]` element (`for sh in shapes`) — the loop var is an interface value, so
+                            // `sh.area()` dispatches dynamically through its vtable. (OFI-013.)
+                            self.set_last_iface(lv_eifn)
+                        } else if lv_esid >= 0 {
                             self.set_last_struct(lv_esid)
                         } else if self.array_elem_is_refc_leaf(iter.value) {
                             // A string/enum element (`for line in lines` over a [string]) — mark the loop var a
@@ -9795,7 +9895,7 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
     if idx >= 0 && idx < fnres.modules.len() {
         cur_mod = fnres.modules[idx]
     }
-    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], sc_iface: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_ret_iface: fn_ret_iface_of(fnres.itab, f), cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
+    var g = CgcGen{ next_var: 0, sc_name: [], sc_cname: [], sc_kind: [], sc_unboxed: [], sc_drop: [], sc_array: [], sc_elem_kind: [], sc_elem_aek: [], sc_elem_is_array: [], sc_elem_elem_kind: [], sc_elem_struct: [], sc_refc: [], sc_tyvar: [], sc_struct: [], sc_render: [], indent: 1, st: st, en: en, fn_names: fn_names, res: fnres, fn_ret_kind: fn_ret_kind, fn_ret_render: fn_ret_render, fn_ret_opt_param: fn_ret_opt_param, fn_ret_str: fn_ret_str, fn_ret_array: fn_ret_array, fn_ret_elem_kind: fn_ret_elem_kind, fn_ret_elem_struct: fn_ret_elem_struct, fn_ret_struct: fn_ret_struct, fn_ret_enum: fn_ret_enum, sc_opt_payload: [], sc_ctype: [], sc_tp_tname: [], sc_iface: [], sc_elem_iface: [], consts: consts, cur_gopt: [], cur_owner: owner_sid, cur_ret_iface: fn_ret_iface_of(fnres.itab, f), cur_module: cur_mod, cur_tp_pname: [], cur_tp_tname: [], cur_wit_tp: [], cur_wit_bound: [], cur_lambda: lambda_start, fn_ret_det_arg: fn_ret_det_arg, fn_ret_det_elem: fn_ret_det_elem, fn_ret_lam_arg: fn_ret_lam_arg, fn_ret_lam_in: fn_ret_lam_in, fn_hof_srcs: fn_hof_srcs, fn_param_gen_mask: fn_param_gen_mask, lam_recs: [], extern_names: extern_names, extern_ret_kind: extern_ret_kind, extern_ret_str: extern_ret_str, nursery_ids: [] }
     // A FREE bounded generic fn carries hidden witness params w0, w1, … in (type-param, bound) layout order.
     // Record that layout so a bounded-method call in the body resolves the receiver's (type-param, bound) to the
     // right w{N}. A struct method dispatches through self's witness FIELDS instead (cur_owner >= 0). (OFI-174.)
