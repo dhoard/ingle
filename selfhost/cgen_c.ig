@@ -458,11 +458,32 @@ fn ty_scalar_kind(t: ps.Ty) -> int {
             if name == "int" || name == "i64" {
                 return 0
             }
-            if name == "float" || name == "f64" {
-                return 9                       // f64 (C double) — the language's default float
+            if name == "i8" {
+                return 1
+            }
+            if name == "i16" {
+                return 2
+            }
+            if name == "i32" {
+                return 3
+            }
+            if name == "u8" {
+                return 4
+            }
+            if name == "u16" {
+                return 5
+            }
+            if name == "u32" {
+                return 6
+            }
+            if name == "u64" {
+                return 7
             }
             if name == "f32" {
                 return 8
+            }
+            if name == "float" || name == "f64" {
+                return 9                       // f64 (C double) — the language's default float
             }
             return 0 - 1
         }
@@ -7188,7 +7209,9 @@ struct CgcGen {
                 // num_kind) — modulo 2^width, no trap. The args are borrowed scalars; num_kind 0 (i64 subset).
                 if args.len() == 2 && (name == "wrapping_add" || name == "wrapping_sub" || name == "wrapping_mul") {
                     let opn = byte_slice(name, 9, name.len())   // drop the "wrapping_" prefix → add / sub / mul
-                    return "em_wrap_{opn}({self.emit_expr(args[0])}, {self.emit_expr(args[1])}, 0)"
+                    // The wrap is modulo 2^WIDTH — the num_kind is the operands' width (u8(250)+u8(10) wraps at
+                    // 2^8 → 4, not i64). Take it from the operand kinds, not a hardcoded i64. (OFI-123.)
+                    return "em_wrap_{opn}({self.emit_expr(args[0])}, {self.emit_expr(args[1])}, {self.binop_float_kind(args[0], args[1])})"
                 }
                 if self.lookup_cname(name) != "" {
                     // A call THROUGH a fn-typed local/param (`f(v)` where `f: fn(T)->U`) — a local binding a
@@ -8158,6 +8181,15 @@ struct CgcGen {
         if lk == 8 || rk == 8 {
             return 8
         }
+        // A SIZED-int operand (i8..u64, kinds 1-7) makes the op run at that WIDTH — the runtime num_kind drives
+        // width-correct wrapping/overflow (`half + half + 1` on u64 wraps exactly, not i64 UB). The corpus's
+        // sized arithmetic is same-width, so preferring either operand's sized kind agrees. (OFI-123.)
+        if lk >= 1 && lk <= 7 {
+            return lk
+        }
+        if rk >= 1 && rk <= 7 {
+            return rk
+        }
         return 0
     }
 
@@ -8204,6 +8236,9 @@ struct CgcGen {
                         let ck = numeric_typename_kind(name)
                         if ck >= 0 {
                             return ck                     // a numeric conversion `let a = i32(n)` → a sized scalar
+                        }
+                        if args.len() == 2 && (name == "wrapping_add" || name == "wrapping_sub" || name == "wrapping_mul") {
+                            return self.binop_float_kind(args[0], args[1])   // wrapping_* returns its operands' width (u8 → 4)
                         }
                         if name == "len" && args.len() == 1 && self.is_array_expr(args[0]) {
                             return 0                      // the free-function form `len(a)` returns an int scalar (i64), like `a.len()`
@@ -9339,7 +9374,16 @@ struct CgcGen {
                     }
                 }
                 let ssid = self.struct_sid_of(value.value)
-                let kind = self.scalar_kind_of(value.value)
+                var kind = self.scalar_kind_of(value.value)
+                if ty.len() > 0 {
+                    // The type ANNOTATION is authoritative for a scalar binding's width (`let a: u8 = 250` stores
+                    // uint8_t, renders unsigned) — the value's own kind (an int literal defaults to i64) does not
+                    // carry the declared width. Only overrides when the annotation is itself a scalar. (OFI-123.)
+                    let ak = ty_scalar_kind(ty[0])
+                    if ak >= 0 {
+                        kind = ak
+                    }
+                }
                 if ssid >= 0 {
                     // A VALUE-struct binding: stored as the C `em_s<sid>` aggregate (value semantics, no drop).
                     if self.object_is_value_read(value.value) {
@@ -9358,7 +9402,11 @@ struct CgcGen {
                     let ct = scalar_ctype(kind)
                     println("{self.ind()}{ct} v{id} = ({ct}){self.scalar_extract(kind)}({self.emit_expr(value.value)});")
                     self.push(name, "v{id}", kind, true, false, false, 0 - 1)        // unboxed C scalar storage
-                    if self.render_kind_of_expr(value.value) == 10 {
+                    if kind >= 1 && kind <= 7 {
+                        // A SIZED-int binding renders at its declared width (an INT_VAL is untagged as to
+                        // signedness/width, so `{a}` needs the render-kind; a FLOAT_VAL carries its own tag). (OFI-123.)
+                        self.set_last_render(kind)
+                    } else if self.render_kind_of_expr(value.value) == 10 {
                         self.set_last_render(10)     // a bool-valued binding (`let ok = a.contains(k)`) renders true/false
                     }
                 } else {
