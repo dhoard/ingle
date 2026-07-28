@@ -525,6 +525,9 @@ fn is_array_ty(t: ps.Ty) -> bool {
         case TyArray(elem) {
             return true
         }
+        case TyGeneric(q, n, args) {
+            return n == "Slice" && args.len() >= 1   // a `Slice<T>` view is array-like (len / index / for-loop)
+        }
         case _ {
             return false
         }
@@ -533,10 +536,37 @@ fn is_array_ty(t: ps.Ty) -> bool {
 
 
 // elem_ty_of returns the element type of an array annotation `[T]` (or the type itself if not an array).
+// is_slice_expr reports whether `e` is a slice view `arr[lo..hi]` — an EIndex whose index is a range. A slice
+// is a BORROW of its source (not owned/dropped), array-like for len/index/iteration. (slices §.)
+fn is_slice_expr(e: ps.Expr) -> bool {
+    match e {
+        case EIndex(object, index) {
+            match index.value {
+                case ERange(lo, hi) {
+                    return true
+                }
+                case _ {
+                    return false
+                }
+            }
+        }
+        case _ {
+            return false
+        }
+    }
+}
+
+
 fn elem_ty_of(t: ps.Ty) -> ps.Ty {
     match t {
         case TyArray(elem) {
             return elem.value
+        }
+        case TyGeneric(q, n, args) {
+            if n == "Slice" && args.len() >= 1 {
+                return args[0]                       // `Slice<int>`'s element is int
+            }
+            return t
         }
         case _ {
             return t
@@ -5556,6 +5586,15 @@ struct CgcGen {
                 return s + ")"
             }
             case EIndex(object, index) {
+                // A RANGE index `arr[lo..hi]` is a zero-copy SLICE view → em_slice(&g_em, arr, lo, hi) (borrows the
+                // source; read-only, non-escaping). An `arr.slice(lo,hi)` copy is the array-method path. (slices §.)
+                match index.value {
+                    case ERange(lo, hi) {
+                        return "em_slice(&g_em, {self.emit_expr(object.value)}, {self.emit_expr(lo.value)}, {self.emit_expr(hi.value)})"
+                    }
+                    case _ {
+                    }
+                }
                 // An index read `arr[i]` → em_index(&g_em, arr, i) (bounds-checked; returns the element
                 // WITHOUT retaining — the array keeps ownership). Object then index in source order (OFI-166).
                 let o = self.emit_expr(object.value)
@@ -6530,6 +6569,11 @@ struct CgcGen {
 
 
     fn emit_concat_operand(mut self, e: ps.Expr, consuming: bool) -> string {
+        // A SLICE `arr[lo..hi]` is a fresh BORROW view — bound/consumed as-is (em_slice), NOT retained like an
+        // array-element read (which the EIndex arm below would do). It is not dropped either. (slices §.)
+        if is_slice_expr(e) {
+            return self.emit_expr(e)
+        }
         match e {
             case EIdent(name) {
                 if self.lookup_cname(name) == "" && self.en.is_variant(name) == false && self.consts.lookup_idx(name) >= 0 {
@@ -7934,6 +7978,15 @@ struct CgcGen {
                 return 0 - 1
             }
             case EIndex(object, index) {
+                // a RANGE index `arr[lo..hi]` is a SLICE (array-like value), NOT a scalar — so a `let win = arr[lo..hi]`
+                // binds an array, not an int. (slices §.)
+                match index.value {
+                    case ERange(lo, hi) {
+                        return 0 - 1
+                    }
+                    case _ {
+                    }
+                }
                 // `arr[i]` of a scalar-element array is that element's scalar kind (a boxed element → -1).
                 return self.index_elem_kind(object.value)
             }
@@ -8503,6 +8556,14 @@ struct CgcGen {
                 return sid >= 0 && self.st.field_is_array(sid, name)
             }
             case EIndex(object, index) {
+                // a SLICE `arr[lo..hi]` is array-like — em_array_len / em_index / for-loop all work on the view.
+                match index.value {
+                    case ERange(lo, hi) {
+                        return true
+                    }
+                    case _ {
+                    }
+                }
                 // `grid[i]` of a `[[T]]` binding is itself an ARRAY (so `grid[i].len()` → em_array_len,
                 // `grid[i][j]` resolves) — OFI-219.
                 match object.value {
@@ -9012,7 +9073,9 @@ struct CgcGen {
                     let bsid = self.boxed_sid_of(value.value)                            // a BOXED struct local (owned, like an array)
                     // string / array / enum / boxed-struct local is owned/dropped; ret_owns also catches a
                     // refcounted FIELD / ELEMENT / owning-temp read (`let w = self.peek().text`) whose owned
-                    // string/enum the plain predicates miss (is_string_expr has no field/element case).
+                    // string/enum the plain predicates miss (is_string_expr has no field/element case). A SLICE
+                    // `arr[lo..hi]` is owned/dropped like an array (em_slice returns a fresh owned view), but is
+                    // bound WITHOUT a retain-dance — emit_concat_operand emits the bare em_slice. (slices §.)
                     let owned = self.is_string_expr(value.value) || arr || self.is_enum_expr(value.value) || bsid >= 0 || self.ret_owns(value.value)
                     // An owned array local carries its ELEMENT scalar kind so a later `xs[i]` types as a scalar —
                     // from the `[T]` annotation if present, else inferred from the initialiser.
