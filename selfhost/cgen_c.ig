@@ -728,6 +728,20 @@ fn method_opt_payload_param(m: ps.FnDecl, owner_generics: [ps.GenericParam]) -> 
                 }
             }
         }
+        case TyArray(elem) {
+            // a `[V]`-returning container method (`SlotMap<V>.values() -> [V]`): the owner type-param the ELEMENT
+            // exposes, so `let vs = arena.values(); vs[i].x` types the element from the receiver's concrete arg.
+            // Consumers disambiguate this from the Option/Result payload case via fn_ret_array. (OFI-202.)
+            match elem.value {
+                case TyName(q3, ename) {
+                    if q3 == "" {
+                        return generic_index(owner_generics, ename)
+                    }
+                }
+                case _ {
+                }
+            }
+        }
         case _ {
         }
     }
@@ -3843,6 +3857,31 @@ struct CgcGen {
 
     // subject_is_gopt reports whether a match scrutinee is a GENERIC Option/Result param (recorded in cur_gopt),
     // so its `case Some(v)` / `case Ok(v)` payload binds an erased T — a refcounted borrow (OFI-205).
+    // ty_opt_payload_is_tvar reports whether `ty` is an Option<T>/Result<T,_> whose payload T is a bare
+    // TYPE-VARIABLE (not a known struct, scalar, or string) — so its Some/Ok payload is an ERASED boxed value,
+    // retained on consume. Distinguishes Option<V> (V a type-param → erased) from Option<Rect> (a concrete
+    // struct, unboxed to em_s) and Option<int> (a scalar). (OFI-202.)
+    fn ty_opt_payload_is_tvar(self, ty: ps.Ty) -> bool {
+        match ty {
+            case TyGeneric(q, n, args) {
+                if (n == "Option" || n == "Result") && args.len() >= 1 {
+                    match args[0] {
+                        case TyName(q2, pname) {
+                            return q2 == "" && self.st.sid_of(pname) < 0 && ty_scalar_kind(args[0]) < 0 && pname != "string"
+                        }
+                        case _ {
+                            return false
+                        }
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return false
+    }
+
+
     fn subject_is_gopt(self, e: ps.Expr) -> bool {
         match e {
             case EIdent(name) {
@@ -3855,6 +3894,23 @@ struct CgcGen {
                         return true
                     }
                     i = i + 1
+                }
+                return false
+            }
+            case EIndex(arr, ix) {
+                // an element of a `[Option<T>]`/`[Result<T,_>]` array field where T is a type-param
+                // (`self.items[i]` in a SlotMap<V> whose items: [Option<V>]) — its Some/Ok payload is an
+                // ERASED boxed borrow, so `case Some(v)` binds v refcounted and `vs.append(v)` retains it
+                // (own_into_slot), matching stage-0 and avoiding a double-free at drop. (OFI-202, un-dodged.)
+                match arr.value {
+                    case EGet(obj, fname) {
+                        let osid = self.struct_sid_any(obj.value)
+                        if osid >= 0 {
+                            return self.ty_opt_payload_is_tvar(elem_ty_of(self.st.field_ty(osid, fname)))
+                        }
+                    }
+                    case _ {
+                    }
                 }
                 return false
             }
@@ -4459,8 +4515,9 @@ struct CgcGen {
                                     return 0 - 1
                                 }
                                 let idx = self.fn_ret_opt_param[fi]
-                                if idx < 0 || idx >= cargs.len() {
-                                    return 0 - 1
+                                if idx < 0 || idx >= cargs.len() || self.fn_ret_array[fi] {
+                                    return 0 - 1   // an ARRAY return uses fn_ret_opt_param for its ELEMENT type-param
+                                                   // (value_elem_struct), not an Option/Result payload — skip here.
                                 }
                                 return self.st.sid_of_ty(cargs[idx])
                             }
@@ -7254,7 +7311,26 @@ struct CgcGen {
                         if sid >= 0 {
                             let fi = self.fn_index("{self.st.names[sid]}.{mname}")
                             if fi >= 0 {
-                                return self.fn_ret_elem_struct[fi]
+                                let es = self.fn_ret_elem_struct[fi]
+                                if es >= 0 {
+                                    return es
+                                }
+                                // a generic-container method returning `[V]` (`arena.values()` on a SlotMap<Particle>):
+                                // its static element struct is erased (-1) — resolve it from the receiver's concrete
+                                // type-arg at the return element's owner-type-param index (fn_ret_opt_param on an
+                                // ARRAY return), so `vs[i].x` types the element. (OFI-202, un-dodged.)
+                                if fi < self.fn_ret_array.len() && self.fn_ret_array[fi] && fi < self.fn_ret_opt_param.len() && self.fn_ret_opt_param[fi] >= 0 {
+                                    match self.recv_container_ty(object.value) {
+                                        case TyGeneric(q, cname, cargs) {
+                                            let idx = self.fn_ret_opt_param[fi]
+                                            if idx >= 0 && idx < cargs.len() {
+                                                return self.st.base_sid_of_ty(cargs[idx])
+                                            }
+                                        }
+                                        case _ {
+                                        }
+                                    }
+                                }
                             }
                         }
                         let qfi = self.qual_free_fi(object.value, mname, args.len())
