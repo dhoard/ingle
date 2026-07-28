@@ -7323,7 +7323,23 @@ struct CgcGen {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
                         if fi >= 0 {
-                            return self.fn_ret_elem_struct[fi]
+                            let es = self.fn_ret_elem_struct[fi]
+                            if es >= 0 {
+                                return es
+                            }
+                            // a generic free fn returning `[T]` (`pair<T>(a, b) -> [T]`): the element struct is the
+                            // concrete T bound at THIS call — from the determining arg (fn_ret_det_arg). If that arg
+                            // is itself `[T]` (det_elem, `sort<T>(xs:[T])->[T]`) the element = the arg's element
+                            // struct; otherwise (arg is a bare T) the element = the arg's struct. (OFI-202.)
+                            if fi < self.fn_ret_det_arg.len() && self.fn_ret_array[fi] {
+                                let da = self.fn_ret_det_arg[fi]
+                                if da >= 0 && da < args.len() {
+                                    if self.fn_ret_det_elem[fi] {
+                                        return self.array_elem_struct_of(args[da])
+                                    }
+                                    return self.struct_sid_any(args[da])
+                                }
+                            }
                         }
                     }
                     case EGet(object, mname) {
@@ -7388,6 +7404,24 @@ struct CgcGen {
             case EArray(elems, lines) {
                 if elems.len() > 0 {
                     return self.is_array_expr(elems[0])
+                }
+            }
+            case ECall(callee, args) {
+                // a generic free fn returning `[T]` where T is bound to an ARRAY at this call
+                // (`pair<T>([1,2,3], [9,8]) -> [T]` → [[int]]): its element is itself an array, so `xss[i].len()`
+                // is em_array_len. The determining arg (bare T, not [T]) is the array. (OFI-202, un-dodged.)
+                match callee.value {
+                    case EIdent(name) {
+                        let fi = self.fn_index(name)
+                        if fi >= 0 && fi < self.fn_ret_det_arg.len() && self.fn_ret_array[fi] && self.fn_ret_det_elem[fi] == false {
+                            let da = self.fn_ret_det_arg[fi]
+                            if da >= 0 && da < args.len() {
+                                return self.is_array_expr(args[da])
+                            }
+                        }
+                    }
+                    case _ {
+                    }
                 }
             }
             case _ {
