@@ -5554,7 +5554,50 @@ struct CgcGen {
                 return true                                    // em_index materialises the element as a boxed Value
             }
             case ECall(callee, args) {
-                return self.call_returns_erased_struct(e)      // a generic-T-returning call yields a BOXED value → unbox before `.field`
+                if self.call_returns_erased_struct(e) {
+                    return true                                 // a generic-T-returning call yields a BOXED value → unbox before `.field`
+                }
+                // arr.remove_last() / arr.remove_at(i) return the element as a BOXED Value (moved out of a packed
+                // value-struct array), so binding it to a value-struct local / a `.field` read must UNBOX. (OFI-054.)
+                match callee.value {
+                    case EGet(recv, mname) {
+                        if (mname == "remove_last" || mname == "remove_at") && self.is_array_expr(recv.value) {
+                            let sid = self.struct_sid_of(e)
+                            return sid >= 0 && self.st.is_value(sid)
+                        }
+                    }
+                    case _ {
+                    }
+                }
+                return false
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
+    // is_addressable_value_place reports whether `e` is a fully-addressable value-struct lvalue CHAIN — a
+    // value-struct LOCAL (`f`), or a `.field` chain off one where every hop is an inline value-struct field
+    // (`f.a`, `f.a.b`). Such a place emits as a direct C member chain (`v.f0.f1`), so a field write is an
+    // in-place member assign — NOT the boxed unbox-modify-rebox path (which a boxed parent needs). (OFI-155.)
+    fn is_addressable_value_place(self, e: ps.Expr) -> bool {
+        match e {
+            case EIdent(name) {
+                let sid = self.lookup_struct(name)
+                return sid >= 0 && self.st.is_value(sid) && self.lookup_boxed_vstruct(name) == false
+            }
+            case EGet(obj, fname) {
+                if self.is_addressable_value_place(obj.value) == false {
+                    return false
+                }
+                let osid = self.struct_sid_of(obj.value)
+                if osid < 0 {
+                    return false
+                }
+                let fsid = self.st.sid_of_ty(self.st.field_ty(osid, fname))
+                return fsid >= 0 && self.st.is_value(fsid)
             }
             case _ {
                 return false
@@ -9529,6 +9572,11 @@ struct CgcGen {
                             self.set_last_iface(lv_eifn)
                         } else if lv_esid >= 0 {
                             self.set_last_struct(lv_esid)
+                            if self.st.is_value(lv_esid) {
+                                // A VALUE-struct element: em_index materialises it as a BOXED Value, so `e.field`
+                                // reads via em_enum_field, not a `.fN` value read. Mark it boxed-vstruct. (OFI-054.)
+                                self.set_last_boxed_vstruct(true)
+                            }
                         } else if self.array_elem_is_refc_leaf(iter.value) {
                             // A string/enum element (`for line in lines` over a [string]) — mark the loop var a
                             // refcounted borrow so `line.split()` and other string/enum methods resolve. em_index
@@ -9958,6 +10006,23 @@ struct CgcGen {
                             // .name on the aggregate, then re-box + em_set_field it BACK into the parent. Was silently
                             // DROPPED (bsid<0 fell through the old `if`), losing every `self.ui.style.*` write. (OFI-218)
                             let vsid = self.struct_sid_of(object.value)
+                            if self.is_addressable_value_place(object.value) {
+                                // A fully-addressable value-struct chain (`f.a.x = X`, f a flat value-struct local):
+                                // a DIRECT member-chain assign `v.f{pfidx}.f{fidx} = <rhs>` — no boxed parent to
+                                // unbox. An inline value-struct target field takes the raw struct, a scalar/boxed
+                                // Value slot takes emit_value_arg. Mirrors stage-0's addressable path. (OFI-155.)
+                                if vsid >= 0 {
+                                    let fidx = self.st.field_index(vsid, name)
+                                    let ob = self.emit_expr(object.value)
+                                    let fsid = self.st.sid_of_ty(self.st.field_ty(vsid, name))
+                                    if fsid >= 0 && self.st.is_value(fsid) {
+                                        println("{self.ind()}{ob}.f{fidx} = {self.emit_expr(value.value)};")
+                                    } else {
+                                        println("{self.ind()}{ob}.f{fidx} = {self.emit_value_arg(value.value)};")
+                                    }
+                                }
+                                return
+                            }
                             match object.value {
                                 case EGet(parent, vfield) {
                                     let psid = self.struct_sid_any(parent.value)
