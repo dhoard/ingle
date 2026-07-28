@@ -20486,7 +20486,7 @@ static Value em_fn_407(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
                 (void)(em_fn_259(v2, INT_VAL((int64_t)v26)));
             }
             if (em_truthy(em_gt(em_array_len(em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v17)), 3)), INT_VAL(0LL), 0))) {
-                if (em_truthy(em_fn_405(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v17)), 3), INT_VAL(0LL))), em_enum_field(&g_em, a0, 1)))) {
+                if (em_truthy(INT_VAL((em_truthy(em_fn_405(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v17)), 3), INT_VAL(0LL))), em_enum_field(&g_em, a0, 1))) || em_truthy(em_fn_148(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v17)), 3), INT_VAL(0LL))), a3, a4))) ? 1 : 0))) {
                     (void)(em_fn_245(v2, INT_VAL(1)));
                     (void)(em_fn_247(v2, INT_VAL(1)));
                 }

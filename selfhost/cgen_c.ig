@@ -10878,8 +10878,12 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
                 g.set_last_elem_struct(pesid)     // struct-array param → `a[i]` types as a boxed struct
             }
             if f.params[p].ty.len() > 0 {
-                // An erased generic-`T` param (`d: T`) is a refcounted borrow — own_into_slot on return (OFI-205).
-                if ty_is_generic_param(f.params[p].ty[0], f.generics) {
+                // An erased generic-`T` param (`d: T`, or a generic-struct METHOD's `value: V` where V is the
+                // OWNER's type-param) is a refcounted borrow — consuming it into a container / returning it uses
+                // own_into_slot (a retain of the erased, possibly-heap value). Without the owner-generic case, a
+                // `SlotMap<V>.insert(value: V)` stored `value` WITHOUT retaining → the caller's later drop was a
+                // use-after-free. (OFI-205 / OFI-053.)
+                if ty_is_generic_param(f.params[p].ty[0], f.generics) || ty_name_is_owner_generic(f.params[p].ty[0], owner_sid, st) {
                     g.set_last_refc(true)
                     g.set_last_tyvar(true)        // mark it a type-param read source, so `var acc = <this>` inherits (F2)
                 }
