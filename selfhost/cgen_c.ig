@@ -5738,6 +5738,30 @@ struct CgcGen {
                 }
                 return 0
             }
+            case EBinary(op, l, r) {
+                // a comparison / logical operator (< <= > >= == != && ||, binop_id 6..13) yields a bool → render
+                // "true"/"false"; arithmetic / bitwise render at their numeric kind (i64 / float / sized). Without
+                // this a `{a < b}` hole rendered the raw 1/0 instead of true/false. (OFI-202, un-dodged.)
+                let bid = ps.binop_id(op)
+                if bid >= 6 && bid <= 13 {
+                    return 10
+                }
+                let sk = self.scalar_kind_of(e)
+                if sk >= 0 {
+                    return sk
+                }
+                return 0
+            }
+            case EUnary(op, operand) {
+                if ps.unop_id(op) == 2 {
+                    return 10                        // logical not `!x` → a bool hole renders true/false
+                }
+                let sk = self.scalar_kind_of(e)
+                if sk >= 0 {
+                    return sk
+                }
+                return 0
+            }
             case _ {
                 return 0
             }
@@ -8156,6 +8180,9 @@ struct CgcGen {
                     let ct = scalar_ctype(kind)
                     println("{self.ind()}{ct} v{id} = ({ct}){self.scalar_extract(kind)}({self.emit_expr(value.value)});")
                     self.push(name, "v{id}", kind, true, false, false, 0 - 1)        // unboxed C scalar storage
+                    if self.render_kind_of_expr(value.value) == 10 {
+                        self.set_last_render(10)     // a bool-valued binding (`let ok = a.contains(k)`) renders true/false
+                    }
                 } else {
                     let arr = self.is_array_expr(value.value)
                     let bsid = self.boxed_sid_of(value.value)                            // a BOXED struct local (owned, like an array)
@@ -8214,6 +8241,9 @@ struct CgcGen {
                         println("{self.ind()}Value v{id} = {self.emit_concat_operand(value.value, true)};")
                     }
                     self.push(name, "v{id}", 0 - 1, false, owned, arr, elem_sk)
+                    if self.render_kind_of_expr(value.value) == 10 {
+                        self.set_last_render(10)     // a bool-valued binding (`let cmp = a < b`) renders true/false
+                    }
                     if bsid >= 0 {
                         self.set_last_struct(bsid)          // track the boxed-struct sid so `c.field` resolves
                         // A GENERIC-CONTAINER binding (`var arena = SlotMap<Person>{…}`, `var m = Map<K,V>{…}`):
