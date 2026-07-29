@@ -69,6 +69,8 @@ let OP_ARRAY_LEN: int = 58
 let OP_ARRAY_APPEND: int = 59
 let OP_ARRAY_POP: int = 60
 let OP_ARRAY_REMOVE_AT: int = 61
+let OP_SLICE: int = 62            // arr[lo..hi] — a zero-copy borrowed view
+let OP_SLICE_COPY: int = 63       // arr.slice(lo, hi) — a fresh owned copy of the range
 let OP_STR_LEN: int = 64
 let OP_STR_CHARS: int = 65
 let OP_STR_CHAR_COUNT: int = 66
@@ -4974,6 +4976,9 @@ struct Chunk {
                         if mname == "split" && self.expr_type_kind(object.value) == 0 - 3 {
                             return -2                     // `s.split(sep)` -> an owned [string]
                         }
+                        if mname == "slice" && self.expr_type_kind(object.value) == 0 - 2 {
+                            return -2                     // `arr.slice(lo, hi)` -> a fresh owned array copy
+                        }
                     }
                     case _ {
                     }
@@ -5021,6 +5026,19 @@ struct Chunk {
                         }
                         if mname == "split" {
                             return 0 - 3                  // s.split(sep) -> a [string]: string elements
+                        }
+                        if mname == "slice" {
+                            // arr.slice(lo, hi) preserves the source array's element type (so `mid[i]` types).
+                            match object.value {
+                                case EIdent(an) {
+                                    let sl = self.resolve_slot(an)
+                                    if sl >= 0 && sl < self.slot_elem.len() && self.slot_array[sl] {
+                                        return self.slot_elem[sl]
+                                    }
+                                }
+                                case _ {
+                                }
+                            }
                         }
                         // A generic-struct field method returning `[K]` (`self.si.keys()`, si: Map<string,int>):
                         // the base method's fn_ret_elem is the erased K, so substitute the field's concrete
@@ -6885,6 +6903,10 @@ struct Chunk {
                     } else if mname == "remove_at" {
                         self.gen_expr(args[0], line)
                         self.emit(OP_ARRAY_REMOVE_AT)
+                    } else if mname == "slice" {
+                        self.gen_expr(args[0], line)      // lo
+                        self.gen_expr(args[1], line)      // hi
+                        self.emit(OP_SLICE_COPY)          // a fresh owned copy of [lo, hi)
                     } else {
                         cg_internal_error("unknown array method `.{mname}` (OFI-218 P1)")
                     }
@@ -6997,6 +7019,10 @@ struct Chunk {
                     } else if mname == "remove_at" {
                         self.gen_expr(args[0], line)         // `.remove_at(i)` -> remove + return element i
                         self.emit(OP_ARRAY_REMOVE_AT)
+                    } else if mname == "slice" {
+                        self.gen_expr(args[0], line)         // lo
+                        self.gen_expr(args[1], line)         // hi
+                        self.emit(OP_SLICE_COPY)             // `.slice(lo, hi)` -> a fresh owned copy of [lo, hi)
                     } else {
                         cg_internal_error("unknown array method `.{mname}` on an expression receiver (OFI-218 P1)")
                     }
@@ -8359,6 +8385,20 @@ struct Chunk {
                     } else {
                         self.emit(OP_GET_FIELD)
                     }
+                    self.emit_idx(self.struct_field_index(tk, name))
+                    return true
+                }
+                // A field read off an ALL-SCALAR (multi-slot) struct RESULT — a call `mk(1,2).x` returns the
+                // struct as N exploded leaf slots (RETURN_STRUCT N). BOX_STRUCT collapses them into a heap struct,
+                // then GET_FIELD_OWNED extracts the field and drops the box. Mirrors stage-0's `CALL; BOX_STRUCT;
+                // GET_FIELD_OWNED`. (OFI-224 VM-parity — the deferred multi-slot-call-result carve-out.)
+                if tk >= 0 && self.value_is_multislot(object) {
+                    let ln = self.cur_line
+                    self.gen_expr(object, ln)
+                    self.cur_line = ln
+                    self.emit(OP_BOX_STRUCT)
+                    self.emit_idx(tk)
+                    self.emit(OP_GET_FIELD_OWNED)
                     self.emit_idx(self.struct_field_index(tk, name))
                     return true
                 }
