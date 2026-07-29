@@ -10232,11 +10232,14 @@ struct Chunk {
                         self.declare_binding(name, 1, -1, false, true, false, false)   // owned enum: droppable, not a string
                     } else if eek >= 0 {
                         self.gen_expr(value.value, value.line)      // INDEX
-                        if self.struct_all_scalar(eek) {
+                        if is_var == false && self.struct_all_scalar(eek) {
+                            // an IMMUTABLE `let t = arr[i]` of an all-scalar element explodes into leaf slots
                             self.emit(OP_UNBOX_STRUCT)
                             self.emit_idx(eek)
                             self.declare_binding(name, self.struct_field_count(eek), eek, false, false, false, false)
                         } else {
+                            // a MUTABLE `var t = arr[i]` (or a boxed-field struct element) stays BOXED, so a later
+                            // `t.field = v` mutates it via SET_FIELD (a multi-slot local has no field-store path).
                             self.declare_binding(name, 1, eek, false, true, true, false)
                         }
                     } else {
