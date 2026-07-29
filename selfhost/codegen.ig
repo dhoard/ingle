@@ -4996,6 +4996,12 @@ struct Chunk {
                         if mname == "slice" && self.expr_type_kind(object.value) == 0 - 2 {
                             return -2                     // `arr.slice(lo, hi)` -> a fresh owned array copy
                         }
+                        if mname == "remove_last" || mname == "remove_at" {
+                            let ec = self.array_recv_elem_code(object.value)
+                            if ec >= 0 {
+                                return ec                 // `arr.remove_last()` -> the array's struct element sid
+                            }
+                        }
                     }
                     case _ {
                     }
@@ -7997,6 +8003,30 @@ struct Chunk {
     }
 
 
+    // gen_struct_array_elem pushes one element of an INLINE-PACKED struct array (`[Pt{..}, mk(..)]`) as a BOXED
+    // struct, because OP_NEW_STRUCT_ARRAY pops `count` boxed structs and copies each one's packed bytes in (then
+    // reclaims the shell). An all-scalar struct LITERAL is boxed via NEW_STRUCT (gen_struct_construct boxed=true);
+    // a struct-returning CALL lands its result multi-slot (exploded), so BOX_STRUCT collapses it to one box; any
+    // other element is already a single boxed value (gen_consume). OFI-224 VM-parity.
+    fn gen_struct_array_elem(mut self, e: ps.Expr, line: int, esid: int) {
+        match e {
+            case EStructLit(ty, fields) {
+                self.gen_struct_construct(e, line, true)
+                return
+            }
+            case _ {
+            }
+        }
+        if is_call_expr(e) && self.array_elem_struct_sid(e) >= 0 {
+            self.gen_expr(e, line)
+            self.emit(OP_BOX_STRUCT)
+            self.emit_idx(esid)
+            return
+        }
+        self.gen_consume(e, line)
+    }
+
+
     // array_elem_type_code classifies an array's ELEMENT type `[T]` -> `T` for per-slot tracking: a struct
     // element returns its sid (>= 0), a string element -3, an enum/refcounted element -4, anything else -1.
     // Lets `let x = arr[i]` / `f(arr[i])` know x's type (boxed struct / string / enum / scalar) without a
@@ -8015,6 +8045,54 @@ struct Chunk {
             }
         }
         return elem_type_code(elem_ty, self.st_names, self.et_names)
+    }
+
+
+    // array_recv_elem_code returns the ELEMENT type code of an array RECEIVER expression (an array local, or
+    // an array-typed struct field): a struct element's sid (>= 0), -3 string, -4 enum, -1 scalar/unknown. Used
+    // to type `let x = arr.remove_last()` / `arr.remove_at(i)` — those return the array's element, so a struct
+    // element sid must flow to the binding for `x.field` to resolve (OFI-224 VM-parity).
+    fn array_recv_elem_code(self, object: ps.Expr) -> int {
+        match object {
+            case EIdent(name) {
+                let slot = self.resolve_slot(name)
+                if slot >= 0 && slot < self.slot_array.len() && self.slot_array[slot] {
+                    return self.slot_elem[slot]
+                }
+            }
+            case EGet(inner, fname) {
+                let osid = self.expr_type_kind(inner.value)
+                if osid >= 0 {
+                    return self.field_elem_code(osid, fname)
+                }
+            }
+            case _ {
+            }
+        }
+        return -1
+    }
+
+
+    // rhs_is_array_pop_struct reports whether `e` is `arr.remove_last()` / `arr.remove_at(i)` on a STRUCT array.
+    // ARRAY_POP / ARRAY_REMOVE_AT return the element BOXED (one Value), so binding it to a MULTI-SLOT (all-scalar)
+    // struct local needs an UNBOX_STRUCT to explode it into leaf slots — mirrors stage-0's `ARRAY_POP; UNBOX_STRUCT`.
+    fn rhs_is_array_pop_struct(self, e: ps.Expr) -> bool {
+        match e {
+            case ECall(callee, args, _) {
+                match callee.value {
+                    case EGet(object, mname) {
+                        if mname == "remove_last" || mname == "remove_at" {
+                            return self.array_recv_elem_code(object.value) >= 0
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return false
     }
 
 
@@ -9799,19 +9877,24 @@ struct Chunk {
                 }
             }
             case EArray(elems, lines) {
+                var esid = 0 - 1
+                if elems.len() > 0 {
+                    esid = self.array_elem_struct_sid(elems[0])
+                }
+                let inline_pack = esid >= 0 && self.struct_array_inline(esid)
                 var ai = 0
                 loop {
                     if ai >= elems.len() {
                         break
                     }
-                    self.gen_consume(elems[ai], lines[ai])   // each element at its own source line (a string INCREFs)
+                    if inline_pack {
+                        self.gen_struct_array_elem(elems[ai], lines[ai], esid)   // each element BOXED for NEW_STRUCT_ARRAY
+                    } else {
+                        self.gen_consume(elems[ai], lines[ai])   // each element at its own source line (a string INCREFs)
+                    }
                     ai = ai + 1
                 }
-                var esid = 0 - 1
-                if elems.len() > 0 {
-                    esid = self.array_elem_struct_sid(elems[0])
-                }
-                if esid >= 0 && self.struct_array_inline(esid) {
+                if inline_pack {
                     // a literal of inline-packable STRUCT elements (`[json.member(..), ..]`) packs INLINE.
                     self.emit(OP_NEW_STRUCT_ARRAY)
                     self.emit_idx(elems.len())
@@ -10288,6 +10371,10 @@ struct Chunk {
                         self.slot_elem[self.slot_elem.len() - 1] = self.expr_ret_elem(value.value)   // so `xs[i]` knows its element kind
                     } else if rk >= 0 && is_var == false && self.struct_all_scalar(rk) {
                         self.gen_expr(value.value, value.line)       // CALL -> RETURN_STRUCT span slots
+                        if self.rhs_is_array_pop_struct(value.value) {
+                            self.emit(OP_UNBOX_STRUCT)               // remove_last/at yields a BOXED element -> explode
+                            self.emit_idx(rk)
+                        }
                         self.declare_binding(name, self.struct_field_count(rk), rk, false, false, false, false)
                     } else if rk >= 0 && self.struct_all_scalar(rk) == false {
                         // A boxed (refcounted-field) struct returned by a call is boxed regardless of
