@@ -3238,6 +3238,42 @@ struct FnInstColl {
     }
 
 
+    // struct_has_method reports whether struct `name` DECLARES a method `mname`. Used to gate generic-method
+    // instance registration: a built-in intrinsic like `.clone()` (which any value struct answers, but which
+    // has no template body) must NOT register a phantom `Struct.clone<targs>` instance — it would take an
+    // fn-table slot with no body and dangle every later CALL index (OFI-082). A USER-declared `clone` still
+    // registers (check.c: a user method named clone wins over the intrinsic).
+    fn struct_has_method(self, name: string, mname: string) -> bool {
+        var i = 0
+        loop {
+            if i >= self.decls.len() {
+                break
+            }
+            match self.decls[i] {
+                case DStruct(sname, generics, impls, fields, methods, kind) {
+                    if sname == name {
+                        var mi = 0
+                        loop {
+                            if mi >= methods.len() {
+                                break
+                            }
+                            if methods[mi].name == mname {
+                                return true
+                            }
+                            mi = mi + 1
+                        }
+                        return false
+                    }
+                }
+                case _ {
+                }
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+
     // bounded_key builds a bounded generic call's instance key from its (type-param, bound) rows' determining
     // arguments — the pre-pass mirror of Chunk.bounded_call_key.
     fn bounded_key(self, name: string, args: [ps.Expr]) -> string {
@@ -3352,7 +3388,7 @@ struct FnInstColl {
                             case EIdent(rname) {
                                 let rty = scope_type(self.snames, self.stypes, rname)
                                 let rargs = scope_type(self.snames, self.styargs, rname)
-                                if rty != "" && rargs != "" && self.struct_named(rty) {
+                                if rty != "" && rargs != "" && self.struct_named(rty) && self.struct_has_method(rty, mname) {
                                     self.register("{rty}.{mname}", rargs)
                                 } else if rname == "self" && self.cur_self_struct != "" && self.cur_self_args != "" {
                                     // a TRANSITIVE self-call inside a method-instance body (`self._index(..)` in
@@ -5211,6 +5247,9 @@ struct Chunk {
                                 return ec                 // `arr.remove_last()` -> the array's struct element sid
                             }
                         }
+                        if mname == "clone" {
+                            return self.expr_type_kind(object.value)   // `.clone()` -> the receiver's own type
+                        }
                     }
                     case _ {
                     }
@@ -5259,8 +5298,8 @@ struct Chunk {
                         if mname == "split" {
                             return 0 - 3                  // s.split(sep) -> a [string]: string elements
                         }
-                        if mname == "slice" {
-                            // arr.slice(lo, hi) preserves the source array's element type (so `mid[i]` types).
+                        if mname == "slice" || mname == "clone" {
+                            // arr.slice(lo, hi) / arr.clone() preserve the source array's element type (`mid[i]`).
                             match object.value {
                                 case EIdent(an) {
                                     let sl = self.resolve_slot(an)
@@ -6417,6 +6456,12 @@ struct Chunk {
                             case EIdent(rname) {
                                 let rslot = self.resolve_slot(rname)
                                 if rslot >= 0 && self.slot_struct[rslot] >= 0 {
+                                    // `.clone()` returns the SAME instance type as its receiver, so a
+                                    // `let n = m.clone()` binding inherits m's generic-instance targs — else
+                                    // `n.set(..)` on a `Map<int,int>` mis-resolves to the base generic (OFI-082).
+                                    if mname == "clone" && args.len() == 0 {
+                                        return rname
+                                    }
                                     let fi = self.resolve_call_fn_index(callee.value)
                                     if fi >= 0 && fi < self.fn_ret_sid.len() && self.fn_ret_sid[fi] == self.slot_struct[rslot] {
                                         return rname
@@ -7154,7 +7199,43 @@ struct Chunk {
     }
 
 
+    // expr_reads_as_copy mirrors stage-0's predicate (src/codegen.c): reading `e` materialises an owned COPY
+    // disconnected from storage rather than the live handle. An INDEX clones the element; a field whose OWN type
+    // is a nested inline (all-scalar) value struct boxes a copy; a field of either is a copy too (recurse). A
+    // plain local/param, or a boxed (array/string/map) field of a live struct, yields the shared handle.
+    fn expr_reads_as_copy(self, e: ps.Expr) -> bool {
+        match e {
+            case EIndex(object, index) {
+                return true
+            }
+            case EGet(object, fname) {
+                let fk = self.expr_type_kind(e)   // the field's OWN type kind
+                if fk >= 0 && fk < self.st_kinds.len() && self.st_kinds[fk] == 0 && self.struct_all_scalar(fk) {
+                    return true   // an inline multi-slot value-struct field reads as a boxed copy
+                }
+                return self.expr_reads_as_copy(object.value)
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
     fn gen_method_call(mut self, object: ps.Expr, mname: string, args: [ps.Expr], arg_names: [string], line: int) {
+        // `.clone()` (OFI-082) — a value-struct / array deep copy. If the receiver already reads as an owned COPY
+        // (an INDEX, or a field reached through one), OP_INDEX/boxing produced the independent value — emit as-is.
+        // A borrow (a plain local/param, a boxed field of a live struct) shares the owner's handle, so deep-clone
+        // it with OP_INCREF (own_into_slot: clone a value-struct/array, retain a refcounted leaf). Mirrors stage-0.
+        // The result type is the receiver's, so a `let d = c.clone()` binding (typed by expr_ret_kind) resolves d.f.
+        if mname == "clone" && args.len() == 0 {
+            self.cur_line = line
+            self.gen_expr(object, line)
+            if !self.expr_reads_as_copy(object) {
+                self.emit(OP_INCREF)
+            }
+            return
+        }
         // A method call on an INTERFACE-value receiver (`s.area()` where s: Shape) dispatches DYNAMICALLY: push
         // the receiver + args (borrows), then CALL_DYN <method's vtable slot> <arg count>. The VM reads the
         // method's fn-index from the value's baked vtable and calls it with the unboxed receiver.
