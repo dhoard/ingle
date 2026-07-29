@@ -504,6 +504,19 @@ fn ty_is_string(ty: ps.Ty) -> bool {
 }
 
 
+// nt_base_kind classifies a newtype's BASE type into the render/flow kind a newtype value carries: -3 string,
+// -2 array, -1 scalar/int (the default). A newtype erases to its base, so its ctor value flows as this kind.
+fn nt_base_kind(ty: ps.Ty) -> int {
+    if ty_is_string(ty) {
+        return 0 - 3
+    }
+    if ty_is_array(ty) {
+        return 0 - 2
+    }
+    return 0 - 1
+}
+
+
 // StructTable holds every struct's layout (id = declaration order) so codegen can decide representation
 // (all-scalar = multi-slot, else boxed), order construction fields, and resolve field indices.
 struct StructTable {
@@ -2205,6 +2218,12 @@ struct WitInfo {
     hof_name: [string]      // HOF lambda-typing table: a fn with a fn-typed param (OFI-218 P3)
     hof_fpi: [int]          // ...its fn-typed param index
     hof_srcs: [string]      // ...the "{argidx}{w|e}"-per-lambda-param source key (reduce -> "1w_0e")
+    nt_name: [string]       // NEWTYPE table (`type X = base [where pred]`, OFI-149/150): the declared type name
+    nt_base: [int]          // ...its base-type render kind (-3 string, -1 scalar/int, -2 array) — a newtype value
+                            //   flows AS its base; a ctor `X(v)` erases to `v` (identity), string base INCREFs
+    nt_pred_owner: [int]    // REFINEMENT predicate table: the nt_name index this `where` predicate belongs to
+    nt_pred_e: [ps.Expr]    // ...the predicate expr (over `self`), checked at construction via CONTRACT_CHECK
+    nt_pred_line: [int]     // ...the predicate's source line
 }
 
 
@@ -2612,6 +2631,40 @@ fn build_wit_info(decls: [ps.Decl]) -> WitInfo {
     var mrp_tpidx: [int] = []
     var mre_tpidx: [int] = []
     var mrb_tpidx: [int] = []
+    var nt_name: [string] = []
+    var nt_base: [int] = []
+    var nt_pred_owner: [int] = []
+    var nt_pred_e: [ps.Expr] = []
+    var nt_pred_line: [int] = []
+    // Collect NEWTYPE / REFINEMENT declarations (`type X = base [where pred]`): the name + base render kind, and
+    // each `where` predicate expr (element-wise, since the [Box<Expr>] pred array is move-only) — OFI-149/150.
+    var nti = 0
+    loop {
+        if nti >= decls.len() {
+            break
+        }
+        match decls[nti] {
+            case DType(name, base, pred) {
+                let bk = nt_base_kind(base.value)
+                let owner = nt_name.len()
+                nt_name.append(name)
+                nt_base.append(bk)
+                var pj = 0
+                loop {
+                    if pj >= pred.len() {
+                        break
+                    }
+                    nt_pred_owner.append(owner)
+                    nt_pred_e.append(pred[pj].value)
+                    nt_pred_line.append(pred[pj].line)
+                    pj = pj + 1
+                }
+            }
+            case _ {
+            }
+        }
+        nti = nti + 1
+    }
     var i = 0
     loop {
         if i >= decls.len() {
@@ -2793,7 +2846,7 @@ fn build_wit_info(decls: [ps.Decl]) -> WitInfo {
         ifm_ret_kind.append(0)
         if_names.append("Ord")
     }
-    return WitInfo { if_names: if_names, ifm_iface: ifm_iface, ifm_name: ifm_name, ifm_owning: ifm_owning, ifm_ret_str: ifm_ret_str, ifm_ret_kind: ifm_ret_kind, gb_fn: gb_fn, gb_tpname: gb_tpname, gb_bound: gb_bound, gb_argidx: gb_argidx, impl_struct: impl_struct, impl_iface: impl_iface, sg_struct: sg_struct, sg_tparam: sg_tparam, sg_bound: sg_bound, gret_fn: gret_fn, gret_arr: gret_arr, gret_argidx: gret_argidx, gret_bare: gret_bare, mpe_key: mpe_key, mpe_flags: mpe_flags, mrp_key: mrp_key, mrp_tpidx: mrp_tpidx, mre_tpidx: mre_tpidx, mrb_tpidx: mrb_tpidx, hof_name: hof_name, hof_fpi: hof_fpi, hof_srcs: hof_srcs }
+    return WitInfo { if_names: if_names, ifm_iface: ifm_iface, ifm_name: ifm_name, ifm_owning: ifm_owning, ifm_ret_str: ifm_ret_str, ifm_ret_kind: ifm_ret_kind, gb_fn: gb_fn, gb_tpname: gb_tpname, gb_bound: gb_bound, gb_argidx: gb_argidx, impl_struct: impl_struct, impl_iface: impl_iface, sg_struct: sg_struct, sg_tparam: sg_tparam, sg_bound: sg_bound, gret_fn: gret_fn, gret_arr: gret_arr, gret_argidx: gret_argidx, gret_bare: gret_bare, mpe_key: mpe_key, mpe_flags: mpe_flags, mrp_key: mrp_key, mrp_tpidx: mrp_tpidx, mre_tpidx: mre_tpidx, mrb_tpidx: mrb_tpidx, hof_name: hof_name, hof_fpi: hof_fpi, hof_srcs: hof_srcs, nt_name: nt_name, nt_base: nt_base, nt_pred_owner: nt_pred_owner, nt_pred_e: nt_pred_e, nt_pred_line: nt_pred_line }
 }
 
 
@@ -4099,6 +4152,13 @@ struct Chunk {
     hof_name: [string]          // HOF lambda-typing table (GLOBAL): a fn with a fn-typed param (OFI-218 P3)
     hof_fpi: [int]
     hof_srcs: [string]
+    nt_name: [string]           // NEWTYPE table (GLOBAL, OFI-149/150): `type X = base [where pred]` — name,
+    nt_base: [int]              // ...base render kind (a newtype flows AS its base; a ctor `X(v)` erases to `v`)
+    nt_pred_owner: [int]        // REFINEMENT predicate table (GLOBAL): the nt_name index each `where` pred belongs to
+    nt_pred_e: [ps.Expr]        // ...the predicate expr (over `self`), CONTRACT_CHECK'd at construction
+    nt_pred_line: [int]         // ...its source line
+    refine_self_arg: [ps.Expr]  // while emitting a refinement predicate, the ctor ARG that `self` substitutes to
+                                // (0 or 1 element); a bare `self` read emits this expr instead of a slot (OFI-150)
     wit_tpname: [string]        // THIS fn's witness slots, in order: slot k's type-param name (k = 0..n_wit-1)
     wit_bound: [string]         // ...and slot k's bound interface name (the leading hidden params)
     wit_slot: [int]             // ...and the actual local slot each witness occupies (leading, before value params)
@@ -5003,6 +5063,10 @@ struct Chunk {
             case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
+                        let nti = cg_index_of(self.nt_name, name)
+                        if nti >= 0 {
+                            return self.nt_base[nti]          // a newtype ctor `X(v)` yields v typed as X's base
+                        }
                         let nk = native_ret_kind(name)
                         if nk != 0 - 4 {
                             return nk                         // a builtin returning an owned object
@@ -9675,6 +9739,17 @@ struct Chunk {
                 }
             }
             case EIdent(name) {
+                if name == "self" && self.refine_self_arg.len() > 0 {
+                    // inside a refinement predicate, `self` IS the ctor argument — emit that expr in place. Clear
+                    // the substitution while emitting it so the arg's OWN `self` (`Pct(self.v)`) resolves to the
+                    // real receiver, then restore it for the next `self` occurrence in the predicate (OFI-150).
+                    var saved: [ps.Expr] = []
+                    saved.append(self.refine_self_arg[0])
+                    self.refine_self_arg = []
+                    self.gen_expr(saved[0], line)
+                    self.refine_self_arg = saved
+                    return
+                }
                 let slot = self.resolve_slot(name)
                 if slot >= 0 {
                     self.emit(OP_GET_LOCAL)
@@ -9911,6 +9986,31 @@ struct Chunk {
                         if name == "clock" && args.len() == 0 {
                             self.cur_line = line
                             self.emit(OP_CLOCK)
+                            return
+                        }
+                        // A NEWTYPE / REFINEMENT constructor `X(v)` (`type X = base [where pred]`, OFI-149/150): the
+                        // type erases to its base at zero cost, so the ctor is IDENTITY — no CALL. For a REFINEMENT
+                        // type, each `where` predicate is emitted with `self` substituted by the arg, then
+                        // CONTRACT_CHECK'd (a construction-time proof); the arg value is left as the newtype value.
+                        let ntci = cg_index_of(self.nt_name, name)
+                        if ntci >= 0 && args.len() == 1 {
+                            var pk = 0
+                            loop {
+                                if pk >= self.nt_pred_owner.len() {
+                                    break
+                                }
+                                if self.nt_pred_owner[pk] == ntci {
+                                    self.refine_self_arg = []
+                                    self.refine_self_arg.append(args[0])   // `self` in the predicate -> the ctor arg
+                                    self.gen_expr(self.nt_pred_e[pk], self.nt_pred_line[pk])
+                                    self.refine_self_arg = []
+                                    self.cur_line = line
+                                    self.emit(OP_CONTRACT_CHECK)
+                                    self.emit_idx(self.add_string("refinement '{name}' violated (line {line})"))
+                                }
+                                pk = pk + 1
+                            }
+                            self.gen_consume(args[0], line)   // identity erase (a string-base newtype INCREFs)
                             return
                         }
                         // An `extern "c"` registry call lowers to CALL_C <registry index> <op>, NOT a normal
@@ -12493,7 +12593,18 @@ fn compile_fn(f: ps.FnDecl, fn_names: [string], fn_module: [int], cur_module: in
         el.append(f.ens_lines[ek])
         ek = ek + 1
     }
-    var ch = Chunk { code: code, lines: lines, const_is_float: cif, const_int: ci, const_float: cf, strings: strs, locals: locals, local_str: lstr, local_drop: ldr, cur_line: 0, fn_names: clone_strs(fn_names), fn_module: clone_ints(fn_module), cur_module: cur_module, fn_ret_str: clone_bools(fn_rets.str), fn_ret_arr: clone_bools(fn_rets.arr), fn_ret_elem: clone_ints(fn_rets.elem), fn_ret_sid: clone_ints(fn_rets.sid), fn_ret_enum: clone_bools(fn_rets.enm), fn_ret_kind: clone_ints(fn_rets.kind), fn_ret_ok: clone_ints(fn_rets.ok), fn_ret_err: clone_ints(fn_rets.err), ext_names: clone_strs(fn_rets.ext_names), ext_kinds: clone_ints(fn_rets.ext_kinds), ext_pquals: clone_strs(fn_rets.ext_pquals), lambda_base: lambda_base, lifted: [], generic_fns: clone_strs(generic_fns), generic_pquals: clone_strs(generic_pquals), fn_inst_keys: clone_strs(fn_inst_keys), inst_base: inst_base, cont_targets: conts, loop_bases: loopb, break_jumps: brkj, break_bases: brkb, slot_struct: sslot, slot_boxed: sbox, slot_array: sarr, slot_elem: selem, slot_elem_targs: [], slot_kind: skind, slot_iface: [], st_mod: clone_ints(fn_rets.st_mod), et_mod: clone_ints(fn_rets.et_mod), imp_from: clone_ints(fn_rets.imp_from), imp_alias: clone_strs(fn_rets.imp_alias), imp_to: clone_ints(fn_rets.imp_to), cur_ret_elem: 0 - 99, cur_return_span: 0, ret_box_struct: false, self_is_generic: false, cur_fn_name: f.name, fn_ens_e: ee, fn_ens_l: el, ret_kind: ret_k, st_names: clone_strs(structs.names), st_kinds: clone_ints(structs.kinds), st_fowner: clone_ints(structs.f_owner), st_fname: clone_strs(structs.f_name), st_fscalar: clone_bools(structs.f_scalar), st_fstring: clone_bools(structs.f_string), st_farray: clone_bools(structs.f_array), st_fstruct: clone_ints(structs.f_struct), st_felem: clone_ints(structs.f_elem), st_felem2: clone_ints(structs.f_elem2), st_farrkind: clone_ints(structs.f_arrkind), st_fenum: clone_bools(structs.f_enum), st_fkind: clone_ints(structs.f_kind), st_ftpname: clone_strs(structs.f_tpname), st_ftpidx: clone_ints(structs.f_tpidx), st_felem_payload: clone_ints(structs.f_elem_payload), st_felem_payload_tp: clone_strs(structs.f_elem_payload_tp), st_felem_tpidx: clone_ints(structs.f_elem_tpidx), st_ftargs: clone_strs(structs.f_targs), inst_keys: clone_strs(instances), et_names: clone_strs(enums.e_names), ev_owner: clone_ints(enums.v_owner), ev_name: clone_strs(enums.v_name), ev_tag: clone_ints(enums.v_tag), ev_arity: clone_ints(enums.v_arity), ev_fvar: clone_ints(enums.vf_var), ev_fstring: clone_bools(enums.vf_string), ev_fstruct: clone_ints(enums.vf_struct), ev_farray: clone_bools(enums.vf_array), ev_felem: clone_ints(enums.vf_elem), ev_fenum: clone_bools(enums.vf_enum), ev_fkind: clone_ints(enums.vf_kind), ev_ftpidx: clone_ints(enums.vf_tpidx), ev_fname: clone_strs(enums.vf_name), erecv_name: [], erecv_targs: [], gc_names: clone_strs(globals.names), gc_kind: clone_ints(globals.kind), gc_ival: clone_ints(globals.ival), gc_sval: clone_strs(globals.sval), gc_bval: clone_bools(globals.bval), gc_fval: clone_floats(globals.fval), gc_line: clone_ints(globals.line), expected_key: "", if_names: clone_strs(wit.if_names), ifm_iface: clone_ints(wit.ifm_iface), ifm_name: clone_strs(wit.ifm_name), ifm_owning: clone_bools(wit.ifm_owning), ifm_ret_str: clone_bools(wit.ifm_ret_str), ifm_ret_kind: clone_ints(wit.ifm_ret_kind), gb_fn: clone_strs(wit.gb_fn), gb_tpname: clone_strs(wit.gb_tpname), gb_bound: clone_strs(wit.gb_bound), gb_argidx: clone_ints(wit.gb_argidx), impl_struct: clone_strs(wit.impl_struct), impl_iface: clone_strs(wit.impl_iface), sg_struct: clone_strs(wit.sg_struct), sg_tparam: clone_strs(wit.sg_tparam), sg_bound: clone_strs(wit.sg_bound), gret_fn: clone_strs(wit.gret_fn), gret_arr: clone_bools(wit.gret_arr), gret_argidx: clone_ints(wit.gret_argidx), gret_bare: clone_bools(wit.gret_bare), mpe_key: clone_strs(wit.mpe_key), mpe_flags: clone_strs(wit.mpe_flags), mrp_key: clone_strs(wit.mrp_key), mrp_tpidx: clone_ints(wit.mrp_tpidx), mre_tpidx: clone_ints(wit.mre_tpidx), mrb_tpidx: clone_ints(wit.mrb_tpidx), hof_name: clone_strs(wit.hof_name), hof_fpi: clone_ints(wit.hof_fpi), hof_srcs: clone_strs(wit.hof_srcs), wit_tpname: [], wit_bound: [], wit_slot: [], tp_pslot: [], tp_pname: [], gopt_params: [], cur_tp_names: [], cur_tp_types: [], cur_self_args: "", copy_tparams: [], at_base_generic: false, mwit_tpname: [], mwit_bound: [], mwit_field: [], mrecv_name: [], mrecv_args: [], prcv_name: [], prcv_args: [], amelem_name: [], amelem_key: [], aei_name: [], aei_iface: [], pending_lambda_str: [] }
+    // Copy the global NEWTYPE predicate exprs into this Chunk element-wise (like `ee` — an [ps.Expr] has no
+    // clone helper, and passing wit.nt_pred_e directly would move it out of the shared WitInfo).
+    var ntpe: [ps.Expr] = []
+    var ntp = 0
+    loop {
+        if ntp >= wit.nt_pred_e.len() {
+            break
+        }
+        ntpe.append(wit.nt_pred_e[ntp])
+        ntp = ntp + 1
+    }
+    var ch = Chunk { code: code, lines: lines, const_is_float: cif, const_int: ci, const_float: cf, strings: strs, locals: locals, local_str: lstr, local_drop: ldr, cur_line: 0, fn_names: clone_strs(fn_names), fn_module: clone_ints(fn_module), cur_module: cur_module, fn_ret_str: clone_bools(fn_rets.str), fn_ret_arr: clone_bools(fn_rets.arr), fn_ret_elem: clone_ints(fn_rets.elem), fn_ret_sid: clone_ints(fn_rets.sid), fn_ret_enum: clone_bools(fn_rets.enm), fn_ret_kind: clone_ints(fn_rets.kind), fn_ret_ok: clone_ints(fn_rets.ok), fn_ret_err: clone_ints(fn_rets.err), ext_names: clone_strs(fn_rets.ext_names), ext_kinds: clone_ints(fn_rets.ext_kinds), ext_pquals: clone_strs(fn_rets.ext_pquals), lambda_base: lambda_base, lifted: [], generic_fns: clone_strs(generic_fns), generic_pquals: clone_strs(generic_pquals), fn_inst_keys: clone_strs(fn_inst_keys), inst_base: inst_base, cont_targets: conts, loop_bases: loopb, break_jumps: brkj, break_bases: brkb, slot_struct: sslot, slot_boxed: sbox, slot_array: sarr, slot_elem: selem, slot_elem_targs: [], slot_kind: skind, slot_iface: [], st_mod: clone_ints(fn_rets.st_mod), et_mod: clone_ints(fn_rets.et_mod), imp_from: clone_ints(fn_rets.imp_from), imp_alias: clone_strs(fn_rets.imp_alias), imp_to: clone_ints(fn_rets.imp_to), cur_ret_elem: 0 - 99, cur_return_span: 0, ret_box_struct: false, self_is_generic: false, cur_fn_name: f.name, fn_ens_e: ee, fn_ens_l: el, ret_kind: ret_k, st_names: clone_strs(structs.names), st_kinds: clone_ints(structs.kinds), st_fowner: clone_ints(structs.f_owner), st_fname: clone_strs(structs.f_name), st_fscalar: clone_bools(structs.f_scalar), st_fstring: clone_bools(structs.f_string), st_farray: clone_bools(structs.f_array), st_fstruct: clone_ints(structs.f_struct), st_felem: clone_ints(structs.f_elem), st_felem2: clone_ints(structs.f_elem2), st_farrkind: clone_ints(structs.f_arrkind), st_fenum: clone_bools(structs.f_enum), st_fkind: clone_ints(structs.f_kind), st_ftpname: clone_strs(structs.f_tpname), st_ftpidx: clone_ints(structs.f_tpidx), st_felem_payload: clone_ints(structs.f_elem_payload), st_felem_payload_tp: clone_strs(structs.f_elem_payload_tp), st_felem_tpidx: clone_ints(structs.f_elem_tpidx), st_ftargs: clone_strs(structs.f_targs), inst_keys: clone_strs(instances), et_names: clone_strs(enums.e_names), ev_owner: clone_ints(enums.v_owner), ev_name: clone_strs(enums.v_name), ev_tag: clone_ints(enums.v_tag), ev_arity: clone_ints(enums.v_arity), ev_fvar: clone_ints(enums.vf_var), ev_fstring: clone_bools(enums.vf_string), ev_fstruct: clone_ints(enums.vf_struct), ev_farray: clone_bools(enums.vf_array), ev_felem: clone_ints(enums.vf_elem), ev_fenum: clone_bools(enums.vf_enum), ev_fkind: clone_ints(enums.vf_kind), ev_ftpidx: clone_ints(enums.vf_tpidx), ev_fname: clone_strs(enums.vf_name), erecv_name: [], erecv_targs: [], gc_names: clone_strs(globals.names), gc_kind: clone_ints(globals.kind), gc_ival: clone_ints(globals.ival), gc_sval: clone_strs(globals.sval), gc_bval: clone_bools(globals.bval), gc_fval: clone_floats(globals.fval), gc_line: clone_ints(globals.line), expected_key: "", if_names: clone_strs(wit.if_names), ifm_iface: clone_ints(wit.ifm_iface), ifm_name: clone_strs(wit.ifm_name), ifm_owning: clone_bools(wit.ifm_owning), ifm_ret_str: clone_bools(wit.ifm_ret_str), ifm_ret_kind: clone_ints(wit.ifm_ret_kind), gb_fn: clone_strs(wit.gb_fn), gb_tpname: clone_strs(wit.gb_tpname), gb_bound: clone_strs(wit.gb_bound), gb_argidx: clone_ints(wit.gb_argidx), impl_struct: clone_strs(wit.impl_struct), impl_iface: clone_strs(wit.impl_iface), sg_struct: clone_strs(wit.sg_struct), sg_tparam: clone_strs(wit.sg_tparam), sg_bound: clone_strs(wit.sg_bound), gret_fn: clone_strs(wit.gret_fn), gret_arr: clone_bools(wit.gret_arr), gret_argidx: clone_ints(wit.gret_argidx), gret_bare: clone_bools(wit.gret_bare), mpe_key: clone_strs(wit.mpe_key), mpe_flags: clone_strs(wit.mpe_flags), mrp_key: clone_strs(wit.mrp_key), mrp_tpidx: clone_ints(wit.mrp_tpidx), mre_tpidx: clone_ints(wit.mre_tpidx), mrb_tpidx: clone_ints(wit.mrb_tpidx), hof_name: clone_strs(wit.hof_name), hof_fpi: clone_ints(wit.hof_fpi), hof_srcs: clone_strs(wit.hof_srcs), nt_name: clone_strs(wit.nt_name), nt_base: clone_ints(wit.nt_base), nt_pred_owner: clone_ints(wit.nt_pred_owner), nt_pred_e: ntpe, nt_pred_line: clone_ints(wit.nt_pred_line), refine_self_arg: [], wit_tpname: [], wit_bound: [], wit_slot: [], tp_pslot: [], tp_pname: [], gopt_params: [], cur_tp_names: [], cur_tp_types: [], cur_self_args: "", copy_tparams: [], at_base_generic: false, mwit_tpname: [], mwit_bound: [], mwit_field: [], mrecv_name: [], mrecv_args: [], prcv_name: [], prcv_args: [], amelem_name: [], amelem_key: [], aei_name: [], aei_iface: [], pending_lambda_str: [] }
     ch.cur_return_span = ch.return_struct_span(f.ret)
     ch.cur_ret_elem = ch.ret_elem_code(f.ret)
     // A method of a GENERIC struct (Box<T>, SlotMap<V>) uses the erased BOXED-struct convention: an all-scalar
