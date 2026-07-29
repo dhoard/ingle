@@ -7303,6 +7303,15 @@ struct Chunk {
                     }
                 }
             }
+            case EStructLit(ty, fields) {
+                // A value-struct LITERAL arg (`f(Pt{9, 1})`) spreads to its N field slots on the stack — count
+                // the field span, not 1, or the CALL arity under-counts by (N-1). (OFI-224 VM-parity.)
+                let sid = self.type_struct_id(ty.value)
+                if sid >= 0 && self.struct_all_scalar(sid) {
+                    self.gen_expr(e, line)
+                    return self.struct_field_count(sid)
+                }
+            }
             case _ {
             }
         }
@@ -10345,7 +10354,25 @@ struct Chunk {
                         self.emit_drops()
                         self.emit(OP_RETURN)
                     } else if self.cur_return_span > 0 {
-                        self.gen_expr(value[0].value, value[0].line) // struct construction -> span slots
+                        // Returning an all-scalar (multi-slot) struct: the value must occupy all N leaf slots. A
+                        // struct LITERAL / call already spreads to N slots via gen_expr; but a BARE struct local
+                        // or param (`return p`) is one binding whose gen_expr pushes ONE GET_LOCAL — so spread it
+                        // to N GET_LOCALs (base..base+N-1) to match RETURN_STRUCT's span. (OFI-224 VM-parity.)
+                        let mslot = self.multislot_local_slot(value[0].value)
+                        if mslot >= 0 {
+                            self.cur_line = value[0].line
+                            var k = 0
+                            loop {
+                                if k >= self.cur_return_span {
+                                    break
+                                }
+                                self.emit(OP_GET_LOCAL)
+                                self.emit_idx(mslot + k)
+                                k = k + 1
+                            }
+                        } else {
+                            self.gen_expr(value[0].value, value[0].line) // struct construction / call -> span slots
+                        }
                         self.emit_drops()
                         self.emit(OP_RETURN_STRUCT)
                         self.emit_idx(self.cur_return_span)
