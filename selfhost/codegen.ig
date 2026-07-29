@@ -7065,8 +7065,11 @@ struct Chunk {
                     self.cur_line = line
                     if self.is_owning_temp_obj(object) {
                         self.gen_expr(object, line)
-                        if is_call_expr(object) && self.struct_all_scalar(tk) {
-                            self.emit(OP_BOX_STRUCT)     // a multi-slot struct returned by a call -> one box
+                        if is_call_expr(object) && self.struct_all_scalar(tk) && self.method_call_boxed_result_sid(object) < 0 {
+                            // a multi-slot struct returned EXPLODED by a call (a free fn / non-value-struct-recv
+                            // method) -> one box. A value-struct method already BOX_STRUCTs its result (site 1),
+                            // so re-boxing it here would double-box the receiver.
+                            self.emit(OP_BOX_STRUCT)
                             self.emit_idx(tk)
                         }
                         self.emit(OP_PICK)
@@ -7075,6 +7078,11 @@ struct Chunk {
                         self.emit(OP_CALL)
                         self.emit_idx(midx)
                         self.emit_idx(1 + n)
+                        let rsid = self.call_result_box_sid(midx)
+                        if rsid >= 0 {
+                            self.emit(OP_BOX_STRUCT)     // collapse a multi-slot result before dropping the receiver
+                            self.emit_idx(rsid)
+                        }
                         self.emit(OP_DROP_UNDER)
                     } else if plan.keep == 0 {
                         self.gen_expr(object, line)
@@ -7402,6 +7410,50 @@ struct Chunk {
             let sid = self.expr_type_kind(e)
             if sid >= 0 && sid < self.st_names.len() && self.struct_all_scalar(sid) {
                 return sid
+            }
+        }
+        return 0 - 1
+    }
+
+
+    // method_call_boxed_result_sid returns the MULTI-SLOT (all-scalar) struct sid a `recv.m(..)` method call
+    // returns when `recv` is a value-struct LOCAL (a non-boxed struct binding/param), else -1. Such a call goes
+    // through the owned-receiver path that BOX_STRUCTs its multi-slot result to one box (call_result_box_sid),
+    // so a `let q = recv.m(..)` binding must UNBOX_STRUCT it back into leaf slots — mirrors stage-0's
+    // `CALL; BOX_STRUCT; DROP_UNDER; UNBOX_STRUCT` for a value-struct-method result bound directly. OFI-224.
+    fn method_call_boxed_result_sid(self, e: ps.Expr) -> int {
+        match e {
+            case ECall(callee, args, an) {
+                match callee.value {
+                    case EGet(recv, mname) {
+                        match recv.value {
+                            case EIdent(rname) {
+                                let slot = self.resolve_slot(rname)
+                                if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] == false {
+                                    let sname = self.st_names[self.slot_struct[slot]]
+                                    let midx = self.resolve_method_index(rname, sname, mname)
+                                    return self.call_result_box_sid(midx)
+                                }
+                            }
+                            case _ {
+                                // an OWNING-TEMP receiver (a CHAINED call `a.scaled(3).add(b)`): the inner call's
+                                // boxed result is the receiver, and this call's owning-temp path BOX_STRUCTs its own
+                                // multi-slot result too (site 2), so the binding must UNBOX it.
+                                if self.is_owning_temp_obj(recv.value) {
+                                    let rtk = self.expr_type_kind(recv.value)
+                                    if rtk >= 0 {
+                                        let midx = self.resolve_field_method_index(recv.value, self.st_names[rtk], mname)
+                                        return self.call_result_box_sid(midx)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
             }
         }
         return 0 - 1
@@ -10374,8 +10426,10 @@ struct Chunk {
                         self.slot_elem[self.slot_elem.len() - 1] = self.expr_ret_elem(value.value)   // so `xs[i]` knows its element kind
                     } else if rk >= 0 && is_var == false && self.struct_all_scalar(rk) {
                         self.gen_expr(value.value, value.line)       // CALL -> RETURN_STRUCT span slots
-                        if self.rhs_is_array_pop_struct(value.value) {
-                            self.emit(OP_UNBOX_STRUCT)               // remove_last/at yields a BOXED element -> explode
+                        if self.rhs_is_array_pop_struct(value.value) || self.method_call_boxed_result_sid(value.value) >= 0 {
+                            // remove_last/at yields a BOXED element; a value-struct METHOD call BOX_STRUCTs its
+                            // multi-slot result (owned-receiver path) — either way, explode the box into leaf slots.
+                            self.emit(OP_UNBOX_STRUCT)
                             self.emit_idx(rk)
                         }
                         self.declare_binding(name, self.struct_field_count(rk), rk, false, false, false, false)
