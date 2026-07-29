@@ -196,10 +196,27 @@ struct Writer {
     // struct); a field whose type IS a type parameter takes the substituted argument's kind (so Box<int>'s
     // `value` packs as I64, not boxed).
     fn emit_one_struct(mut self, name: string, fields: [ps.Field], structs: cg.StructTable,
-                       gparams: [string], gargs: [string], nwit: int) {
+                       gparams: [string], gargs: [string], nwit: int, fn_names: [string]) {
         self.emit_str(name)
-        self.emit_u8(0)             // flags: is_rc | is_resource<<1 (TODO)
-        self.emit_svarint(0 - 1)    // drop_fn (TODO)
+        // flags = is_rc | is_resource<<1, drop_fn = the `{name}.drop` method's fn-index (or -1). A generic
+        // struct INSTANCE (gparams non-empty) is never rc/resource and carries no drop (check.c bans generic
+        // rc/resource structs), so it stays 0/-1 — matching stage-0's layout for a Box<T> instance.
+        var flags = 0
+        var drop_fn = 0 - 1
+        if gparams.len() == 0 {
+            let sid = cg.cg_index_of(structs.names, name)
+            if sid >= 0 && sid < structs.kinds.len() {
+                let kind = structs.kinds[sid]      // 0 plain / 1 rc / 2 resource
+                if kind == 1 {
+                    flags = 1
+                } else if kind == 2 {
+                    flags = 2
+                }
+            }
+            drop_fn = cg.cg_index_of(fn_names, name + ".drop")   // -1 when the struct declares no `drop`
+        }
+        self.emit_u8(flags)
+        self.emit_svarint(drop_fn)
         self.emit_uvarint(fields.len() + nwit)
         var fi = 0
         loop {
@@ -246,7 +263,7 @@ struct Writer {
     // the monomorphized generic-struct instances (Box<Expr>, …) — each with its BASE struct's name + fields
     // (an erased generic-parameter field maps to boxed through the same kind map, matching stage 0's
     // append-model layout for a Box<Aggregate>).
-    fn emit_struct_table(mut self, decls: [ps.Decl], instances: [string], structs: cg.StructTable) {
+    fn emit_struct_table(mut self, decls: [ps.Decl], instances: [string], structs: cg.StructTable, fn_names: [string]) {
         var i = 0
         loop {
             if i >= decls.len() {
@@ -255,7 +272,7 @@ struct Writer {
             match decls[i] {
                 case DStruct(name, generics, impls, fields, methods, kind) {
                     let none: [string] = []
-                    self.emit_one_struct(name, fields, structs, none, none, struct_witness_count(generics))
+                    self.emit_one_struct(name, fields, structs, none, none, struct_witness_count(generics), fn_names)
                 }
                 case _ {
                 }
@@ -288,7 +305,7 @@ struct Writer {
                             let gargs = type_args(instances[ii])
                             // A bounded generic struct's INSTANCE carries the same hidden witness fields as its
                             // base (Map<string,int> is 4 fields: buckets, count, + Hash/Eq witnesses) (OFI-174).
-                            self.emit_one_struct(name, fields, structs, gnames, gargs, struct_witness_count(generics))
+                            self.emit_one_struct(name, fields, structs, gnames, gargs, struct_witness_count(generics), fn_names)
                         }
                     }
                     case _ {
@@ -622,7 +639,7 @@ fn serialize_program(decls: [ps.Decl], mod_of: [int], sources: [string], imp_fro
     w.emit_uvarint(variant_count)
 
     // Struct-type table.
-    w.emit_struct_table(decls, instances, structs)
+    w.emit_struct_table(decls, instances, structs, fn_names)
 
     // Enum-variant table.
     var vi = 0
