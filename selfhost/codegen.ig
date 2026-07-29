@@ -7381,7 +7381,17 @@ struct Chunk {
                     if mname == "len" {
                         self.emit(OP_ARRAY_LEN)
                     } else if mname == "append" {
-                        self.gen_append_value(args[0], line)
+                        let e2 = self.slot_elem2[slot]
+                        if array_lit_is_empty(args[0]) && e2 != 0 - 99 {
+                            // an empty `[]` appended to a nested-array LOCAL `[[T]]`: create the inner array with
+                            // the receiver's 2nd-level element AEK, not the int default — else its elements pack as
+                            // raw ints and `grid[i][j]` reads back a non-string (renders a pointer, OFI-072).
+                            self.emit(OP_NEW_ARRAY)
+                            self.emit_idx(0)
+                            self.emit(self.aek_from_elem_code(e2))
+                        } else {
+                            self.gen_append_value(args[0], line)
+                        }
                         self.emit(OP_ARRAY_APPEND)
                     } else if mname == "remove_last" {
                         self.emit(OP_ARRAY_POP)
