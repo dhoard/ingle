@@ -5010,11 +5010,17 @@ struct Chunk {
     // slot); an owned temporary (literal/concat/construction) needs neither.
     fn gen_consume(mut self, e: ps.Expr, line: int) {
         let inc = self.is_str_local_read(e)
+        let rcread = self.is_rc_struct_read(e)
         let mvslot = self.move_local_slot(e)
         let barr = self.is_borrowed_array_read(e)
         let bstruct = self.is_borrowed_struct_read(e)
         self.gen_expr(e, line)
         if inc {
+            self.emit(OP_INCREF)
+        } else if rcread {
+            // an `rc struct` is SHARED (refcounted): consuming one into a new owner (an array append, a
+            // struct/enum field, a return) INCREFs a fresh reference and leaves the source live — it must NOT
+            // move-out (nil the slot), which would strand every later use of the shared value (OFI-224 VM-parity).
             self.emit(OP_INCREF)
         } else if mvslot >= 0 {
             let zidx = self.add_const_int(0)
@@ -5027,6 +5033,26 @@ struct Chunk {
             self.emit(OP_INCREF)                     // a BORROWED array (a borrow param) aliased into an OWNER
         } else if bstruct {
             self.emit(OP_INCREF)                     // a BORROWED boxed struct aliased into an OWNER (moves_local==2)
+        }
+    }
+
+
+    // is_rc_struct_read reports whether `e` reads an `rc struct` LOCAL (kind 1). An rc value is refcounted and
+    // SHARED, so consuming it into a new owner INCREFs (never moves) — the source stays a valid owner. Unlike a
+    // resource struct (kind 2, uniquely owned → moved) or a plain boxed value struct.
+    fn is_rc_struct_read(self, e: ps.Expr) -> bool {
+        match e {
+            case EIdent(name) {
+                let slot = self.resolve_slot(name)
+                if slot < 0 || slot >= self.slot_struct.len() {
+                    return false
+                }
+                let sid = self.slot_struct[slot]
+                return sid >= 0 && sid < self.st_kinds.len() && self.st_kinds[sid] == 1
+            }
+            case _ {
+                return false
+            }
         }
     }
 
@@ -8904,6 +8930,12 @@ struct Chunk {
     // type-param field like `Box<T>.value`) is NOT inline-packable (a shallow copy would alias/double-free) —
     // mirrors src/check.c:array_inline_struct_id (`sz==16 && !is_refcounted -> not inline`).
     fn struct_array_inline(self, id: int) -> bool {
+        // An rc / resource struct is refcounted / drop-bearing -> ALWAYS boxed in an array, never inline-packed,
+        // even when all its fields are scalar. So INDEX of such an element is a BORROW (GET_FIELD), not an owned
+        // clone (GET_FIELD_OWNED) — mirrors struct_all_scalar's kind guard (OFI-224 VM-parity).
+        if id >= 0 && id < self.st_kinds.len() && self.st_kinds[id] != 0 {
+            return false
+        }
         var i = 0
         var seen = false
         loop {
