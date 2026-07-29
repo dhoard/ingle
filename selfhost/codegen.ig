@@ -5402,6 +5402,9 @@ struct Chunk {
                         if sid >= 0 {
                             return sid
                         }
+                        if cg_index_of(self.et_names, head_name(pn)) >= 0 {
+                            return 0 - 4        // an ENUM payload (`case Ok(v)` over Result<Json, …>): refcounted
+                        }
                         return 0 - 1
                     }
                 }
@@ -11507,6 +11510,10 @@ struct Chunk {
                                 // field table, so enum_subject_tp_code can't — OFI-224 VM-parity).
                                 let ppc = self.subject_prelude_payload_code(value.value, cases[ci].pattern.variant)
                                 if ppc == 0 - 3 {
+                                    self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, true, false, false, false)
+                                } else if ppc == 0 - 4 {
+                                    // an ENUM payload — a refcounted single Value: INCREF when consumed (is_str),
+                                    // but a BORROW (the scrutinee owns it) so never dropped here.
                                     self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, true, false, false, false)
                                 } else if ppc == 0 - 2 {
                                     self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, false, false, false, true)
