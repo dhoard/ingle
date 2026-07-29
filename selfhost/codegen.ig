@@ -9046,7 +9046,11 @@ struct Chunk {
                     }
                     case EIndex(arr, idx) {
                         let ec = self.index_elem_code(object.value)
-                        if ec >= 0 && self.struct_array_inline(ec) {
+                        if ec >= 0 && ec < self.st_kinds.len() && self.st_kinds[ec] == 0 {
+                            // `arr[i].field = v` where arr's element is a VALUE struct (kind 0) — INLINE-packed OR
+                            // boxed: INDEX materialises a fresh copy/clone, so SET_FIELD into it then write the
+                            // whole copy back with SET_INDEX (else the mutation is lost). An rc/resource element
+                            // (kind != 0) is a live shared borrow — handled by the base case (a direct SET_FIELD).
                             let saved = self.locals.len()
                             self.gen_expr(object.value, line)      // materialise a COPY of arr[i]
                             let scratch = self.locals.len()
