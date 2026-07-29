@@ -77,6 +77,7 @@ let OP_STR_CHAR_COUNT: int = 66
 let OP_STR_BYTES: int = 67
 let OP_STR_SPLIT: int = 68
 let OP_STR_PARSE_INT: int = 69
+let OP_CLOCK: int = 73
 let OP_TO_STRING: int = 74
 let OP_NURSERY_BEGIN: int = 75
 let OP_CONTRACT_CHECK: int = 76
@@ -9879,6 +9880,37 @@ struct Chunk {
                             let pidx = self.add_const_int(0)
                             self.emit(OP_CONST)
                             self.emit_idx(pidx)
+                            return
+                        }
+                        // len(x): the FREE-function form of `.len()` — an intrinsic, not a real function. A string
+                        // arg lowers to STR_LEN, an array (the default) to ARRAY_LEN (mirrors the method dispatch).
+                        if name == "len" && args.len() == 1 {
+                            self.gen_expr(args[0], line)
+                            self.cur_line = line
+                            if self.expr_type_kind(args[0]) == 0 - 3 {
+                                self.emit(OP_STR_LEN)
+                            } else {
+                                self.emit(OP_ARRAY_LEN)
+                            }
+                            return
+                        }
+                        // assert(cond [, msg]): evaluate the condition, CONTRACT_CHECK it (a fault with a static
+                        // message on failure), then a CONST 0 filler so the expression leaves one value (like
+                        // panic). The optional msg arg is compile-time only (folded into the message) — not emitted.
+                        if name == "assert" && args.len() >= 1 {
+                            self.gen_expr(args[0], line)
+                            self.cur_line = line
+                            self.emit(OP_CONTRACT_CHECK)
+                            self.emit_idx(self.add_string("assertion failed (line {line})"))
+                            let aidx = self.add_const_int(0)
+                            self.emit(OP_CONST)
+                            self.emit_idx(aidx)
+                            return
+                        }
+                        // clock(): the monotonic-time intrinsic — a dedicated CLOCK opcode, not a call.
+                        if name == "clock" && args.len() == 0 {
+                            self.cur_line = line
+                            self.emit(OP_CLOCK)
                             return
                         }
                         // An `extern "c"` registry call lowers to CALL_C <registry index> <op>, NOT a normal
