@@ -4240,6 +4240,30 @@ struct Chunk {
     }
 
 
+    // resolve_qual_ctor_vi resolves a QUALIFIED variant `Enum.Variant` (`Color.Red`, `Option.None`, `L.COL`) to
+    // its variant index: the variant whose name is `vname`, arity matches `argc`, AND whose owning enum is `ename`.
+    // -1 if `ename` is not an enum or has no such variant. Lets a qualified zero-field variant — which parses as
+    // a bare field access `EGet(EIdent(Enum), Variant)`, not a call — construct as NEW_ENUM instead of hard-failing
+    // "field access on an untypeable object" (OFI-224 VM-parity).
+    fn resolve_qual_ctor_vi(self, ename: string, vname: string, argc: int) -> int {
+        let eid = cg_index_of(self.et_names, ename)
+        if eid < 0 {
+            return 0 - 1
+        }
+        var i = 0
+        loop {
+            if i >= self.ev_name.len() {
+                break
+            }
+            if self.ev_owner[i] == eid && self.ev_name[i] == vname && self.ev_arity[i] == argc {
+                return i
+            }
+            i = i + 1
+        }
+        return 0 - 1
+    }
+
+
     // payload_name_vi returns flat-variant `vi`'s `idx`-th payload field NAME in DECLARED order (or "" if out of
     // range) — so a named-arg construction can map each name back to its declared position. (OFI-222.)
     fn payload_name_vi(self, vi: int, idx: int) -> string {
@@ -8482,6 +8506,24 @@ struct Chunk {
 
 
     fn gen_field_access(mut self, object: ps.Expr, name: string) -> bool {
+        // A QUALIFIED zero-field enum variant `Enum.Variant` (`Color.Red`, `Option.None`, `L.COL`) parses as a
+        // bare field access, not a call — construct it as NEW_ENUM (the qualifier scopes the variant to its enum).
+        match object {
+            case EIdent(oname) {
+                if self.resolve_slot(oname) < 0 {
+                    let qvi = self.resolve_qual_ctor_vi(oname, name, 0)
+                    if qvi >= 0 {
+                        self.emit(OP_NEW_ENUM)
+                        self.emit_idx(self.ev_owner[qvi])
+                        self.emit_idx(self.ev_tag[qvi])
+                        self.emit_idx(0)
+                        return true
+                    }
+                }
+            }
+            case _ {
+            }
+        }
         // A bounded/erased generic call returns a BOXED value of its concrete type argument (even an all-scalar
         // struct is boxed when erased), so `f(...).field` evaluates the call and GET_FIELD_OWNEDs it (OFI-174).
         let gsid = self.generic_call_ret_sid(object)
