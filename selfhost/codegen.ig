@@ -5558,6 +5558,9 @@ struct Chunk {
     // checker's array_op/string_op flags would. Encoding: -2 array, -3 string, >= 0 struct id, -1 scalar.
     fn expr_type_kind(self, e: ps.Expr) -> int {
         match e {
+            case EStr(parts) {
+                return -3                            // a string LITERAL / interpolation receiver (`"a,b".split(..)`)
+            }
             case EIdent(name) {
                 let slot = self.resolve_slot(name)
                 if slot < 0 {
