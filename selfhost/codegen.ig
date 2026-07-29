@@ -9034,6 +9034,12 @@ struct Chunk {
                     return self.slot_struct[slot]
                 }
             }
+            case EStructLit(ty, fields) {
+                let sid = self.type_struct_id(ty.value)   // `place.f = Pt{..}` — an all-scalar struct literal RHS
+                if sid >= 0 && self.struct_all_scalar(sid) {
+                    return sid
+                }
+            }
             case _ {
             }
         }
@@ -11164,7 +11170,9 @@ struct Chunk {
                                                 self.emit(self.field_arr_kind(sid, fname))
                                             }
                                         } else {
-                                            self.gen_consume(value.value, value.line)   // field takes the value
+                                            // the field takes the value — a multi-slot struct-literal/local/call
+                                            // RHS is BOX_STRUCT'd into one Value (SET_FIELD stores a single slot).
+                                            self.push_store_value(0 - 1, value.value, value.line)
                                         }
                                         self.emit(OP_SET_FIELD)
                                         self.emit_idx(self.struct_field_index(sid, fname))
