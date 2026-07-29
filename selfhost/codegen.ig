@@ -9605,6 +9605,10 @@ struct Chunk {
                         if name == "to_int" {
                             return 0                 // to_int(f) -> FLOAT_TO_INT, an int result
                         }
+                        let cvk = numeric_typename_kind(name)
+                        if cvk >= 0 {
+                            return cvk               // a width CAST `u8(x)`/`i32(x)` carries the target width
+                        }
                         if wrapping_opcode(name) >= 0 && args.len() > 0 {
                             return self.scalar_kind_of(args[0])
                         }
