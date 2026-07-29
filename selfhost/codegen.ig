@@ -8396,6 +8396,15 @@ struct Chunk {
                 self.gen_struct_construct(e, line, true)
                 return
             }
+            case EIdent(name) {
+                // a multi-slot struct LOCAL element (`[v, ..]`): spread its N leaf slots then BOX_STRUCT into one
+                // boxed struct, since NEW_STRUCT_ARRAY packs from boxed structs (gen_consume would push raw fields).
+                let slot = self.resolve_slot(name)
+                if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] == false {
+                    self.gen_value_struct_boxed_arg(e, line)
+                    return
+                }
+            }
             case _ {
             }
         }
@@ -8425,6 +8434,15 @@ struct Chunk {
                 let sid = self.type_struct_id(ty.value)
                 if sid >= 0 && self.struct_all_scalar(sid) {
                     self.gen_struct_construct(e, line, true)
+                    return
+                }
+            }
+            case EIdent(name) {
+                // a multi-slot struct LOCAL payload (`Some(w)`): spread its N leaf slots then BOX_STRUCT into one
+                // Value — NEW_ENUM takes one Value per payload field (gen_consume would push its raw fields).
+                let slot = self.resolve_slot(name)
+                if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] == false {
+                    self.gen_value_struct_boxed_arg(e, line)
                     return
                 }
             }
@@ -8984,6 +9002,17 @@ struct Chunk {
         let svi = self.struct_value_info(e)
         if svi >= 0 {
             return svi
+        }
+        match e {
+            case EIdent(name) {
+                // a struct LOCAL element (`[v, V{..}]`): its slot's struct type, so the array types as `[V]`
+                let slot = self.resolve_slot(name)
+                if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 {
+                    return self.slot_struct[slot]
+                }
+            }
+            case _ {
+            }
         }
         return 0 - 1
     }
