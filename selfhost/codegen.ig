@@ -4701,6 +4701,10 @@ struct Chunk {
                 let rk = self.expr_ret_kind(e)
                 return rk >= 0 && self.struct_all_scalar(rk)
             }
+            case EStructLit(ty, fields) {
+                let sid = self.type_struct_id(ty.value)   // `(Pt{..}).x` — an all-scalar struct literal is multi-slot
+                return sid >= 0 && self.struct_all_scalar(sid)
+            }
             case _ {
                 return false
             }
@@ -5736,6 +5740,9 @@ struct Chunk {
         match e {
             case EStr(parts) {
                 return -3                            // a string LITERAL / interpolation receiver (`"a,b".split(..)`)
+            }
+            case EStructLit(ty, fields) {
+                return self.type_struct_id(ty.value)  // `(Pt{..}).x` — a struct-literal field/method receiver
             }
             case EIdent(name) {
                 let slot = self.resolve_slot(name)
@@ -10893,6 +10900,13 @@ struct Chunk {
                     } else if rk == -3 {
                         self.gen_expr(value.value, value.line)       // CALL -> one owned string slot (fresh)
                         self.declare_binding(name, 1, -1, true, true, false, false)
+                    } else if is_var == false && self.generic_call_ret_sid(value.value) >= 0 {
+                        // `let hi = max(a, b)` — a BOUNDED generic call returning a bare type-param resolved to a
+                        // concrete struct: the erased result is a BOXED struct, so declare it boxed (droppable) and
+                        // `hi.field` resolves via GET_FIELD (OFI-224 VM-parity).
+                        let gsid = self.generic_call_ret_sid(value.value)
+                        self.gen_expr(value.value, value.line)
+                        self.declare_binding(name, 1, gsid, false, true, true, false)
                     } else if self.erased_tparam_read_name(value.value) != "" && self.is_copy_tparam(self.erased_tparam_read_name(value.value)) == false {
                         // `var acc = init` where init is a bare ERASED, NON-Copy TYPE-PARAM read: an OWNED,
                         // DROPPABLE local (stage-0's moves_local: a whole-value read of an owned type-param MOVES,
