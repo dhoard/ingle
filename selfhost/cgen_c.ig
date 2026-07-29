@@ -2140,7 +2140,7 @@ struct InstColl {
                     i = i + 1
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.walk_expr(callee.value)
                 var i = 0
                 loop {
@@ -3442,6 +3442,32 @@ struct EnumTab {
     pf_elem: [int]             // ...for an array payload field: its ELEMENT scalar kind (so `xs[i]` is a scalar), else -1
     pf_elem_struct: [int]      // ...for a STRUCT-array payload field `[StrPart]`: its element struct sid (so `xs[i].f` resolves), else -1
     pf_ty: [ps.Ty]             // ...the payload field's declared type (resolved to a struct sid at the match site via sid_of_ty, so `elem.value` on a `Box<Ty>` payload resolves — generics need the instance table build_enum_tab lacks)
+    pf_name: [string]          // ...the payload field's declared NAME, in declared order — for named-arg reordering (OFI-222)
+
+
+    // payload_name returns variant `vname`'s `idx`-th payload field NAME in DECLARED order (or "" if out of
+    // range) — so a named-arg construction `Rect(h: 3, w: 4)` can map each name back to its declared position.
+    fn payload_name(self, vname: string, idx: int) -> string {
+        let vf = self.variant_flat(vname)
+        if vf < 0 {
+            return ""
+        }
+        var i = 0
+        var seen = 0
+        loop {
+            if i >= self.pf_variant.len() {
+                break
+            }
+            if self.pf_variant[i] == vf {
+                if seen == idx {
+                    return self.pf_name[i]
+                }
+                seen = seen + 1
+            }
+            i = i + 1
+        }
+        return ""
+    }
 
 
     // variant_flat returns the flat-table index of variant `name` (-1 if `name` is not a known variant).
@@ -3781,6 +3807,7 @@ fn build_enum_tab(decls: [ps.Decl], snames: [string]) -> EnumTab {
     var pfe: [int] = []
     var pfs: [int] = []
     var pft: [ps.Ty] = []
+    var pfn: [string] = []          // OFI-222: the payload field's declared NAME (for named-arg reordering)
     var i = 0
     loop {
         if i >= decls.len() {
@@ -3807,6 +3834,7 @@ fn build_enum_tab(decls: [ps.Decl], snames: [string]) -> EnumTab {
                         }
                         let fty = variants[vi].fields[fi].ty
                         pfv.append(vflat)
+                        pfn.append(variants[vi].fields[fi].name)
                         pft.append(variants[vi].fields[fi].ty)
                         let fa = is_array_ty(fty)
                         // a REFCOUNTED single Value = a BOXED (aek 0), non-array field: string / enum / struct
@@ -3830,7 +3858,7 @@ fn build_enum_tab(decls: [ps.Decl], snames: [string]) -> EnumTab {
         }
         i = i + 1
     }
-    return EnumTab { names: names, v_owner: vo, v_name: vn, v_tag: vt, v_arity: va, pf_variant: pfv, pf_refc: pfr, pf_array: pfa, pf_elem: pfe, pf_elem_struct: pfs, pf_ty: pft }
+    return EnumTab { names: names, v_owner: vo, v_name: vn, v_tag: vt, v_arity: va, pf_variant: pfv, pf_refc: pfr, pf_array: pfa, pf_elem: pfe, pf_elem_struct: pfs, pf_ty: pft, pf_name: pfn }
 }
 
 
@@ -4468,7 +4496,7 @@ struct CgcGen {
     // is_enum_expr, then reads FnResolve.ret_gopt. (OFI-218 — closes the json->dock deserialise double-free.)
     fn subject_is_gopt_call(self, e: ps.Expr) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -5057,7 +5085,7 @@ struct CgcGen {
     // erased, exactly as before. OFI-218 generic-payload keystone.
     fn match_payload_sid(self, scrut: ps.Expr) -> int {
         match scrut {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         // a FREE-function call returning Result<Struct,_>/Option<Struct> (`match load_config(t) {
@@ -5172,7 +5200,7 @@ struct CgcGen {
     // So a later `match opt { case Some(p) { p.x } }` recovers p's struct (via lookup_opt_payload). (OFI-173.)
     fn value_opt_payload_sid(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         if (name == "Some" || name == "Ok") && args.len() == 1 {
@@ -5300,7 +5328,7 @@ struct CgcGen {
             case EIdent(name) {
                 return self.lookup_iface(name)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -5599,7 +5627,7 @@ struct CgcGen {
     // The determining-arg is the value-param typed as the returned type-param (fn_ret_det_arg). (OFI-202.)
     fn call_returns_erased_struct(self, e: ps.Expr) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -5627,7 +5655,7 @@ struct CgcGen {
             case EIndex(object, index) {
                 return true                                    // em_index materialises the element as a boxed Value
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if self.call_returns_erased_struct(e) {
                     return true                                 // a generic-T-returning call yields a BOXED value → unbox before `.field`
                 }
@@ -5686,7 +5714,7 @@ struct CgcGen {
                 let esid = self.struct_sid_any(e)
                 return esid >= 0 && self.st.is_inline_packable(esid) && self.st.is_value(esid) == false
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let sid = self.struct_sid_any(e)
                 // a call returning a boxed struct is a fresh owned temp; so is a generic-T-returning call whose
                 // result is an ERASED boxed value struct (nominally is_value, but boxed at runtime). (OFI-202.)
@@ -5723,7 +5751,8 @@ struct CgcGen {
             case EIdent(name) {
                 if self.en.is_case_variant(name) && self.lookup_cname(name) == "" {
                     var no_args: [ps.Expr] = []
-                    return self.emit_enum_ctor(name, no_args)   // a bare (zero-payload) enum variant `Dot` / prelude `None`
+                    var no_names: [string] = []
+                    return self.emit_enum_ctor(name, no_args, no_names)   // a bare (zero-payload) enum variant `Dot` / prelude `None`
                 }
                 if self.lookup_cname(name) == "" {
                     let ci = self.consts.lookup_idx(name)   // a module-level folded constant `TAG_IDENT` → its literal
@@ -5767,8 +5796,8 @@ struct CgcGen {
                 }
                 return "em_neg({self.emit_expr(operand.value)}, 0)"
             }
-            case ECall(callee, args) {
-                return self.emit_call(callee.value, args)
+            case ECall(callee, args, arg_names) {
+                return self.emit_call(callee.value, args, arg_names)
             }
             case EStr(parts) {
                 return self.emit_str(parts)
@@ -5923,7 +5952,8 @@ struct CgcGen {
                         // `Enum.Variant(x)` is an ECall, handled elsewhere.)
                         if self.is_qualified_variant(e) {
                             let no_args: [ps.Expr] = []
-                            return self.emit_enum_ctor(name, no_args)
+                            let no_names: [string] = []
+                            return self.emit_enum_ctor(name, no_args, no_names)
                         }
                         if self.lookup_cname(recv) == "" && self.lookup_struct(recv) < 0 {
                             let ci = self.consts.lookup_idx(name)
@@ -6029,7 +6059,7 @@ struct CgcGen {
                 }
                 return 0 - 1
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -6147,7 +6177,7 @@ struct CgcGen {
                 // struct payload, so the binding is a boxed struct that MUST be dropped at scope exit (Db::drop).
                 // Resolve the Ok/Some payload struct sid from the operand call's recorded return payload. (OFI-122.)
                 match operand.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         match callee.value {
                             case EIdent(name) {
                                 let fi = self.fn_index(name)
@@ -6358,10 +6388,56 @@ struct CgcGen {
     }
 
 
+    // name_perm returns the emit-order PERMUTATION for an enum-variant construction: perm[d] = the SOURCE arg
+    // index that fills the variant's `d`-th DECLARED payload field. A named construction `Rect(h: 3, w: 4)` maps
+    // each name to its declared position (so `[w=4, h=3]` is emitted — codegen identical to a positional build,
+    // the reorder stage-0's CHECKER performs; done here since the C-emit path runs no checker). A positional call
+    // (all names "") is the identity permutation; a prelude Some/Ok (not in the enum table → payload_name "") is a
+    // single field, so the fallback keeps it positional. A permutation of INDICES (Copy) avoids moving Exprs out
+    // of the arg array (Ingle forbids partial moves). (OFI-222, un-dodged.)
+    fn name_perm(self, vname: string, n: int, arg_names: [string]) -> [int] {
+        var has_named = false
+        var k = 0
+        loop {
+            if k >= arg_names.len() {
+                break
+            }
+            if arg_names[k] != "" {
+                has_named = true
+            }
+            k = k + 1
+        }
+        var perm: [int] = []
+        var d = 0
+        loop {
+            if d >= n {
+                break
+            }
+            var src = d                       // identity / positional fallback
+            if has_named {
+                let fname = self.en.payload_name(vname, d)
+                var j = 0
+                loop {
+                    if j >= arg_names.len() {
+                        break
+                    }
+                    if fname != "" && arg_names[j] == fname {
+                        src = j
+                    }
+                    j = j + 1
+                }
+            }
+            perm.append(src)
+            d = d + 1
+        }
+        return perm
+    }
+
+
     // emit_enum_ctor renders an enum-variant construction (a bare `Dot` or a payload `Circle(4)`) →
     // `em_enum(&g_em, <enum_id>, <tag>, <arity>, payload…)`. The payload values are emitted in source order
     // (a left-to-right loop — OFI-166). A fresh em_enum is an OWNED refcounted value.
-    fn emit_enum_ctor(mut self, name: string, args: [ps.Expr]) -> string {
+    fn emit_enum_ctor(mut self, name: string, args: [ps.Expr], arg_names: [string]) -> string {
         let flat = self.en.variant_flat(name)
         var eid = 0
         var tag = 0
@@ -6379,22 +6455,26 @@ struct CgcGen {
             tag = self.en.prelude_variant_tag(name)
             arity = args.len()
         }
+        // Named-arg construction (`Rect(h: 3, w: 4)`) emits its payloads in DECLARED order — perm[i] is the
+        // source arg for the i-th declared field. A positional call is the identity permutation. (OFI-222.)
+        let perm = self.name_perm(name, args.len(), arg_names)
         var s = "em_enum(&g_em, {eid}, {tag}, {arity}"
         var i = 0
         loop {
             if i >= args.len() {
                 break
             }
-            let vsid = self.struct_sid_of(args[i])
+            let si = perm[i]
+            let vsid = self.struct_sid_of(args[si])
             if vsid >= 0 {
                 // An enum payload slot is an erased boxed Value (em_enum stores each field AEK_BOXED), so a
                 // VALUE-struct payload must be PACKED into a heap ObjStruct — a raw em_s aggregate would be read
                 // back as one 16-byte Value. `case V(p)` unboxes it symmetrically. Mirrors stage-0. (OFI-218)
                 let fc = self.st.field_count(vsid)
                 let tmp = self.fresh_var()
-                s = s + ", (\{ em_s{vsid} v{tmp} = {self.emit_expr(args[i])}; em_box_struct(&g_em, {vsid}, (Value*)&v{tmp}, {fc}); \})"
+                s = s + ", (\{ em_s{vsid} v{tmp} = {self.emit_expr(args[si])}; em_box_struct(&g_em, {vsid}, (Value*)&v{tmp}, {fc}); \})"
             } else {
-                s = s + ", " + self.emit_consume_arg(args[i])   // em_enum CONSUMES its payloads (an owned one is moved in)
+                s = s + ", " + self.emit_consume_arg(args[si])   // em_enum CONSUMES its payloads (an owned one is moved in)
             }
             i = i + 1
         }
@@ -6516,7 +6596,7 @@ struct CgcGen {
             case EIdent(name) {
                 return self.en.is_case_variant(name) && self.lookup_cname(name) == ""
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a QUALIFIED payload variant construction `Option.Some(7)` / `Color.Blue(5)` — the callee is
                 // the `Enum.Variant` EGet, lowered to em_enum like the bare `Some(7)` (an owned enum). (OFI-013)
                 if self.is_qualified_variant(callee.value) {
@@ -6650,7 +6730,7 @@ struct CgcGen {
             return false
         }
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return true
             }
             case EStr(parts) {
@@ -6684,7 +6764,8 @@ struct CgcGen {
             // the interpolation's em_add like any string hole — no em_to_string wrapper. (OFI-139, un-dodged.)
             if self.hole_has_show(hole) {
                 var no_args: [ps.Expr] = []
-                return self.emit_call(ps.EGet(ps.Box<ps.Expr>{ value: hole, line: 0 }, "show"), no_args)
+                var no_names: [string] = []
+                return self.emit_call(ps.EGet(ps.Box<ps.Expr>{ value: hole, line: 0 }, "show"), no_args, no_names)
             }
             let rk = self.render_kind_of_expr(hole)   // int 0 · float 9 · bool 10 · sized 1..8
             return "em_to_string(&g_em, {self.emit_expr(hole)}, {rk})"
@@ -6742,7 +6823,7 @@ struct CgcGen {
                 // a float/bool/sized ARRAY element hole (`{chunk.const_float[i]}`) renders at its element kind.
                 return aek_to_render_kind(self.index_elem_aek(object.value))
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a hole over a CALL `{r.ok()}` / `{is_ready()}` renders at the callee's return-type kind, so a
                 // bool method prints "true"/"false" not "1"/"0". Resolve free / method / module-qualified calls.
                 match callee.value {
@@ -7100,7 +7181,7 @@ struct CgcGen {
                 let sid = ty_struct_sid(ty.value, self.st.names)
                 return sid >= 0 && self.st.is_value(sid) == false
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a call returning a fresh ARRAY or BOXED STRUCT is a non-refcounted owning temp passed to a
                 // BORROW param → the caller drops it after the call (check.c drop_mask). A string/enum-returning
                 // call is MOVED into a refcounted param (own_into_slot), not dropped, so it is not masked here.
@@ -7124,7 +7205,7 @@ struct CgcGen {
             case EBinary(op, l, r) {
                 return self.is_string_expr(e)          // a string `+` concat is a fresh owned temp
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return self.is_string_expr(e)          // a string-returning call is a fresh owned temp
             }
             case _ {
@@ -7347,7 +7428,7 @@ struct CgcGen {
     }
 
 
-    fn emit_call(mut self, callee: ps.Expr, args: [ps.Expr]) -> string {
+    fn emit_call(mut self, callee: ps.Expr, args: [ps.Expr], arg_names: [string]) -> string {
         match callee {
             case EIdent(name) {
                 let ck = numeric_typename_kind(name)
@@ -7368,7 +7449,7 @@ struct CgcGen {
                     return self.emit_closure_call(self.lookup_cname(name), args)
                 }
                 if self.en.is_case_variant(name) {
-                    return self.emit_enum_ctor(name, args)   // an enum-variant construction `Circle(4)` / prelude `Some(5)`
+                    return self.emit_enum_ctor(name, args, arg_names)   // an enum-variant construction `Circle(4)` / `Rect(w:4, h:3)`; named args reordered to declared order in emit_enum_ctor (OFI-222)
                 }
                 if self.is_newtype(name) && args.len() == 1 {
                     // A newtype CONSTRUCTION `UserId(5)` / `Pct(50)` erases to its base value (zero runtime
@@ -7486,7 +7567,7 @@ struct CgcGen {
                 match object.value {
                     case EIdent(recv) {
                         if self.lookup_cname(recv) == "" && self.lookup_struct(recv) < 0 && self.en.is_case_variant(mname) {
-                            return self.emit_enum_ctor(mname, args)
+                            return self.emit_enum_ctor(mname, args, arg_names)   // `Shape.Rect(w:4, h:3)` — named args reordered in emit_enum_ctor (OFI-222)
                         }
                     }
                     case _ {
@@ -7833,7 +7914,7 @@ struct CgcGen {
                     return self.emit_free_call(ufi, uargs)
                 }
             }
-            case ECall(icallee, iargs) {
+            case ECall(icallee, iargs, _) {
                 // A call THROUGH the RESULT of a call (`pick(true)(9)` — pick returns a `fn(int)->int` closure):
                 // evaluate the callee expression to a closure value and dispatch via rt_call_closure. (OFI-206.)
                 return self.emit_closure_call(self.emit_expr(callee), args)
@@ -7862,7 +7943,7 @@ struct CgcGen {
                     case EIndex(a, ix) {
                         od = "_[i]"
                     }
-                    case ECall(c, cargs) {
+                    case ECall(c, cargs, _) {
                         od = "call()"
                     }
                     case _ {
@@ -8211,7 +8292,7 @@ struct CgcGen {
             case EArray(elems, lines) {
                 return true
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return true
             }
             case _ {
@@ -8231,7 +8312,7 @@ struct CgcGen {
     // lambda-body inference (OFI-206 follow-on). The two share map_lam_ret which does the push/type/restore.
     fn map_lam_ret(mut self, value: ps.Expr, want_str: bool) -> int {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 var fi = 0 - 1
                 match callee.value {
                     case EIdent(name) {
@@ -8406,7 +8487,7 @@ struct CgcGen {
                 }
                 return 0 - 1
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let ck = numeric_typename_kind(name)
@@ -8514,7 +8595,7 @@ struct CgcGen {
                     return self.st.field_elem_aek(osid, gname) == 0 && self.st.field_elem_struct(osid, gname) < 0 && is_array_ty(elem_ty_of(self.st.field_ty(osid, gname))) == false
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // iterating the RESULT of a `[T]`-returning call directly (`for p in csv.split(",")`): the loop
                 // var is a refc-leaf borrow when the call's element is a boxed refc leaf (string — via split/chars)
                 // that is NOT a struct and NOT a nested array. Mirrors the EIdent case through the value_elem_*
@@ -8540,7 +8621,7 @@ struct CgcGen {
                 }
                 return 0 - 1
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return self.value_elem_struct(e)
             }
             case _ {
@@ -8552,7 +8633,7 @@ struct CgcGen {
 
     fn value_elem_struct(self, value: ps.Expr) -> int {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -8640,7 +8721,7 @@ struct CgcGen {
                     return self.is_array_expr(elems[0])
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a generic free fn returning `[T]` where T is bound to an ARRAY at this call
                 // (`pair<T>([1,2,3], [9,8]) -> [T]` → [[int]]): its element is itself an array, so `xss[i].len()`
                 // is em_array_len. The determining arg (bare T, not [T]) is the array. (OFI-202, un-dodged.)
@@ -8677,7 +8758,7 @@ struct CgcGen {
                     }
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a `[T]`-returning generic call (`sort(words)`): its element AEK = the determining `[T]` arg's
                 // element AEK (words's), resolved through the gret return table (OFI-206 follow-on).
                 var fi = 0 - 1
@@ -8752,7 +8833,7 @@ struct CgcGen {
                     }
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 var fi = 0 - 1
                 match callee.value {
                     case EIdent(name) {
@@ -8806,7 +8887,7 @@ struct CgcGen {
             case EIdent(name) {
                 return self.lookup_elem_kind(name)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -8943,7 +9024,7 @@ struct CgcGen {
                 }
                 return false
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -8982,7 +9063,7 @@ struct CgcGen {
                 // binds a string and `raw.parse_int()` / `raw.len()` resolve. Resolve the operand's Ok/Some-payload
                 // string-ness from its callee (a free/method/module-qualified call). (OFI-173, un-dodged.)
                 match operand.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         match callee.value {
                             case EIdent(name) {
                                 let fi = self.fn_index(name)
@@ -9060,7 +9141,7 @@ struct CgcGen {
                 }
                 return false
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let fi = self.fn_index(name)
@@ -9198,7 +9279,7 @@ struct CgcGen {
         }
         let id = self.nursery_ids[self.nursery_ids.len() - 1]
         match call {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 var fi = 0 - 1
                 match callee.value {
                     case EIdent(name) {
@@ -9818,7 +9899,7 @@ struct CgcGen {
                             case EArray(elems, lines) {
                                 println("{self.ind()}drop_value(&g_em, v{av});")
                             }
-                            case ECall(callee, cargs) {
+                            case ECall(callee, cargs, _) {
                                 println("{self.ind()}drop_value(&g_em, v{av});")
                             }
                             case _ {
@@ -10330,7 +10411,7 @@ struct CgcGen {
                 // which mirrors stage-0's STMT_EXPR: `(void)(E)` for a unit result, or (for a discarded
                 // fresh OWNING temp — string/array/enum/boxed-struct) `{ Value _dis = (E); drop_value(…); }`.
                 match expr.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         match callee.value {
                             case EIdent(name) {
                                 let nat = native_cfn(name)
@@ -10383,8 +10464,8 @@ struct CgcGen {
     fn emit_call_stmt(mut self, e: ps.Expr) {
         let owns = self.is_string_expr(e) || self.is_array_expr(e) || self.is_enum_expr(e) || self.boxed_sid_of(e) >= 0
         match e {
-            case ECall(callee, args) {
-                let c = self.emit_call(callee.value, args)
+            case ECall(callee, args, arg_names) {
+                let c = self.emit_call(callee.value, args, arg_names)
                 if owns {
                     println("{self.ind()}\{ Value _dis = ({c}); drop_value(&g_em, _dis); \}")
                 } else {
@@ -11446,7 +11527,7 @@ struct CgcFv {
                 self.walk_expr(l.value)
                 self.walk_expr(r.value)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.walk_expr(callee.value)
                 self.walk_args(args)
             }
@@ -11665,7 +11746,7 @@ struct LamColl {
                 self.cl_expr(l.value)
                 self.cl_expr(r.value)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.cl_expr(callee.value)
                 var i = 0
                 loop {

@@ -1375,7 +1375,7 @@ struct Checker {
                     return
                 }
                 match value {
-                    case ECall(callee, cargs) {
+                    case ECall(callee, cargs, _) {
                         match callee.value {
                             case EIdent(vn) {
                                 var pidx = 0 - 1
@@ -1706,7 +1706,7 @@ struct Checker {
                 // has no destructor, so it still leaks.
                 if name == "_" && vt == TY_PTR {
                     match value.value {
-                        case ECall(callee, args) {
+                        case ECall(callee, args, _) {
                             self.error("this 'Ptr' handle is opened but immediately discarded — it leaks")
                         }
                         case _ {
@@ -1732,7 +1732,7 @@ struct Checker {
                                 self.error("cannot infer the type of 'None' here; add a type annotation")
                             }
                         }
-                        case ECall(callee, cargs) {
+                        case ECall(callee, cargs, _) {
                             if vt == TY_INFER {
                                 match callee.value {
                                     case EIdent(cn) {
@@ -1784,7 +1784,7 @@ struct Checker {
                 // OFI-049: a Ptr-returning CALL whose result is discarded (a bare statement) leaks the handle
                 // — nothing can ever close it.
                 match expr.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         if vt == TY_PTR {
                             self.error("this 'Ptr' handle is opened but immediately discarded — it leaks")
                         }
@@ -2269,7 +2269,7 @@ struct Checker {
                 }
                 // a foreign (extern "c") function has no bytecode slot, so it cannot be spawned as a task.
                 match call.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         match callee.value {
                             case EIdent(name) {
                                 let fi = self.fn_index_of(name)
@@ -2421,7 +2421,7 @@ struct Checker {
                 // would wrongly fail a later sized-context check (`-> u32`, `let x: f32 = ...`). Stay lenient.
                 return TY_INFER
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.check_callee(callee.value)
                 var argtypes: [int] = []
                 var i = 0
@@ -2943,7 +2943,7 @@ fn stmt_is_panic(s: ps.Stmt) -> bool {
     match s {
         case SExpr(e) {
             match e.value {
-                case ECall(callee, cargs) {
+                case ECall(callee, cargs, _) {
                     match callee.value {
                         case EIdent(nm) {
                             return nm == "panic"
@@ -3190,7 +3190,7 @@ fn contains(xs: [string], v: string) -> bool {
 // predicate realistically uses.
 fn expr_calls_name(e: ps.Expr, name: string) -> bool {
     match e {
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             match callee.value {
                 case EIdent(n) {
                     if n == name {
@@ -3257,7 +3257,7 @@ fn expr_uses_self_field(e: ps.Expr, field: string) -> bool {
             }
             return expr_uses_self_field(object.value, field)
         }
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             if expr_uses_self_field(callee.value, field) {
                 return true
             }

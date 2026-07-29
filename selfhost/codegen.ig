@@ -471,7 +471,7 @@ fn ty_is_fn(ty: ps.Ty) -> bool {
 // an owned refcounted handle (so its `let` binding is droppable).
 fn is_channel_call(e: ps.Expr) -> bool {
     match e {
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             match callee.value {
                 case EIdent(name) {
                     return name == "channel" && args.len() == 1
@@ -1767,7 +1767,7 @@ struct InstColl {
                     i = i + 1
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.walk_expr(callee.value)
                 var i = 0
                 loop {
@@ -2960,7 +2960,7 @@ struct FnInstColl {
     // pre-pass mirror of the gen-pass gret slot-element propagation (OFI-218 P1).
     fn call_ret_elem(self, value: ps.Expr) -> string {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 var fname = ""
                 match callee.value {
                     case EIdent(n) {
@@ -3039,7 +3039,7 @@ struct FnInstColl {
     // type-args. "" otherwise (OFI-218 P1).
     fn self_ret_method_recv(self, value: ps.Expr) -> string {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EGet(recv, mname) {
                         match recv.value {
@@ -3183,7 +3183,7 @@ struct FnInstColl {
 
     fn walk_expr(mut self, e: ps.Expr) {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         if cg_index_of(self.gb_fn, name) >= 0 && args.len() > 0 {
@@ -3326,7 +3326,7 @@ struct FnInstColl {
                 // the value's own nested calls), exactly where stage-0's inference monomorphizes it.
                 if ty.len() > 0 {
                     match value.value {
-                        case ECall(callee, cargs) {
+                        case ECall(callee, cargs, _) {
                             match callee.value {
                                 case EIdent(name) {
                                     if cargs.len() == 0 && cg_index_of(self.generic_fns, name) >= 0 {
@@ -3647,7 +3647,7 @@ fn is_array_lit(e: ps.Expr) -> bool {
 // borrowed place (a local) uses plain GET_FIELD.
 fn is_owning_temp(e: ps.Expr) -> bool {
     match e {
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             return true
         }
         case EStructLit(ty, fields) {
@@ -3671,7 +3671,7 @@ fn is_owning_temp(e: ps.Expr) -> bool {
 // field value) must BOX_STRUCT the raw return slots first.
 fn is_call_expr(e: ps.Expr) -> bool {
     match e {
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             return true
         }
         case _ {
@@ -4481,7 +4481,7 @@ struct Chunk {
                 let slot = self.resolve_slot(name)
                 return slot >= 0 && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] == false
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let rk = self.expr_ret_kind(e)
                 return rk >= 0 && self.struct_all_scalar(rk)
             }
@@ -4800,7 +4800,7 @@ struct Chunk {
             case EIdent(name) {
                 return self.resolve_slot(name) < 0 && cg_index_of(self.ev_name, name) >= 0
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         return cg_index_of(self.ev_name, name) >= 0
@@ -4877,7 +4877,7 @@ struct Chunk {
 
     fn expr_ret_kind(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         let nk = native_ret_kind(name)
@@ -4926,7 +4926,7 @@ struct Chunk {
     // when not an array-returning call (or the element kind is unknown).
     fn expr_ret_elem(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         if name == "args" {
@@ -4990,7 +4990,7 @@ struct Chunk {
     // Err. The prelude Result/Option's payload field is the ABSTRACT T/E, so this supplies the concrete type.
     fn scrutinee_call_payload(self, e: ps.Expr, variant: string) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // A generic-struct FIELD-method call (`match self.wins.get(id) { case Some(w) }`, wins:
                 // Map<int,Win>): the base method's fn_ret_ok is the abstract type-param, so substitute it with
                 // the field's concrete value type — mrp_tpidx indexes the field's type-args -> Win's struct sid.
@@ -5051,7 +5051,7 @@ struct Chunk {
     // unavailable (the binding stays a plain array).
     fn scrutinee_call_payload_elem(self, e: ps.Expr, variant: string) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if variant == "Some" || variant == "Ok" {
                     match callee.value {
                         case EGet(recv, mname) {
@@ -5218,7 +5218,7 @@ struct Chunk {
         match e {
             case ETry(operand) {
                 match operand.value {
-                    case ECall(callee, args) {
+                    case ECall(callee, args, _) {
                         let idx = self.resolve_call_fn_index(callee.value)
                         if idx >= 0 {
                             return self.fn_ret_ok[idx]
@@ -5304,7 +5304,7 @@ struct Chunk {
     // `mod.f`) that returns an enum, so a `let k = self.scan_token(...)` binding is an owned, droppable enum.
     fn call_returns_enum(self, e: ps.Expr) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let idx = self.resolve_call_fn_index(callee.value)
                 return idx >= 0 && self.fn_ret_enum[idx]
             }
@@ -5443,7 +5443,7 @@ struct Chunk {
                 }
                 return -1
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let ic = self.iface_call_ret(e)   // an interface method call `s.m()`: string -> -3, else scalar
                 if ic == 0 - 3 {
                     return 0 - 3
@@ -5634,7 +5634,7 @@ struct Chunk {
     // returns a string, else its scalar render kind (float=9, …); -99 if `e` is not an interface method call.
     fn iface_call_ret(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EGet(recv, mname) {
                         let ifn = self.receiver_iface(recv.value)
@@ -5934,7 +5934,7 @@ struct Chunk {
     // -> Box), so `let b2 = b.replaced(8)` inherits b's mrecv targs and `b2.get()` retargets (OFI-218 P1).
     fn self_ret_method_recv(self, value: ps.Expr) -> string {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EGet(recv, mname) {
                         match recv.value {
@@ -5964,7 +5964,7 @@ struct Chunk {
 
     fn call_ret_amelem(self, value: ps.Expr) -> string {
         match value {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 var fname = ""
                 match callee.value {
                     case EIdent(n) {
@@ -6221,7 +6221,7 @@ struct Chunk {
     // generic call (`new_bag()`), so the SLet threads the annotation type in as expected_key.
     fn let_value_is_bounded_call(self, e: ps.Expr) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         return args.len() == 0 && cg_index_of(self.gb_fn, name) >= 0
@@ -6982,7 +6982,7 @@ struct Chunk {
             case EStr(parts) {
                 return true
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if self.is_enum_ctor(e) {
                     return false
                 }
@@ -7134,7 +7134,7 @@ struct Chunk {
             case EUnary(op, operand) {
                 return operand.line
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return callee.line
             }
             case ETry(operand) {
@@ -7353,7 +7353,7 @@ struct Chunk {
             case EBinary(op, l, r) {
                 return ps.binop_id(op) == 1 && (self.expr_is_string(l.value) || self.expr_is_string(r.value))
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if self.is_enum_ctor(e) {
                     return true
                 }
@@ -7620,7 +7620,7 @@ struct Chunk {
                 let sid = self.type_struct_id(ty.value)
                 return sid >= 0 && self.struct_all_scalar(sid) == false   // a BOXED struct-literal owning temp
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if self.is_enum_ctor(e) {
                     return false
                 }
@@ -8029,7 +8029,7 @@ struct Chunk {
     // type-param `T` or `[T]` (so the result's concrete type is inferred from an argument), or -1 (OFI-174).
     fn gret_call_index(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         return cg_index_of(self.gret_fn, name)
@@ -8063,7 +8063,7 @@ struct Chunk {
     // (`sort(words)` -> words's element, -3 for [string]), or -1.
     fn gret_arg_elem(self, e: ps.Expr, gi: int) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let ai = self.gret_argidx[gi]
                 if ai >= 0 && ai < args.len() {
                     if self.gret_bare[gi] {
@@ -8157,7 +8157,7 @@ struct Chunk {
     // (`gtwice(f, "hi")` -> the result is an owned string).
     fn gret_arg_is_string(self, e: ps.Expr, gi: int) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 let ai = self.gret_argidx[gi]
                 if ai >= 0 && ai < args.len() {
                     return self.expr_is_string(args[ai])
@@ -8172,7 +8172,7 @@ struct Chunk {
 
     fn generic_call_ret_sid(self, e: ps.Expr) -> int {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EIdent(name) {
                         if cg_index_of(self.gb_fn, name) >= 0 {
@@ -8416,7 +8416,7 @@ struct Chunk {
     // OBJECT it reads from is itself an owning temp (the deferred inline-nested case is rare).
     fn is_owning_temp_obj(self, e: ps.Expr) -> bool {
         match e {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return true
             }
             case EStructLit(ty, fields) {
@@ -8524,7 +8524,7 @@ struct Chunk {
                 // is a string place-read — INCREFs when consumed into a string param / concat.
                 return self.expr_type_kind(e) == 0 - 3
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 if self.iface_call_ret(e) == 0 - 3 {
                     return true                          // `s.m()` where m returns string (interface value)
                 }
@@ -8556,7 +8556,7 @@ struct Chunk {
             case EStr(parts) {
                 return true
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return self.expr_type_kind(e) == 0 - 3   // a string-returning call (owning temp)
             }
             case EBinary(op, l, r) {
@@ -8612,7 +8612,7 @@ struct Chunk {
             case EBinary(op, l, r) {
                 return self.scalar_kind_of(l.value)  // arithmetic preserves its operand kind
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a wrapping intrinsic preserves its first operand's width; any other call carries its
                 // declared return width (bool return -> 0 for a num_kind operand).
                 match callee.value {
@@ -8728,7 +8728,7 @@ struct Chunk {
             case EUnary(op, operand) {
                 return self.render_kind_of(operand.value)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // a wrapping intrinsic hole `{wrapping_add(a, b)}` renders at its operand width; any other
                 // call renders at its declared return width (`{fnv1a(s)}` where fnv1a -> u32 renders as 6).
                 let ic = self.iface_call_ret(e)   // `{s.area()}` where area returns float -> 9
@@ -8800,7 +8800,7 @@ struct Chunk {
             case EIndex(object, index) {
                 return self.render_kind_of(e)   // reuse the field-array element-kind inference
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 return self.render_kind_of(e)   // a call binding's width (extern f64, wrapping, or fn_ret_kind)
             }
             case _ {
@@ -9448,7 +9448,7 @@ struct Chunk {
                     }
                 }
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 match callee.value {
                     case EGet(object, mname) {
                         self.gen_method_call(object.value, mname, args, line)
@@ -9778,7 +9778,7 @@ struct Chunk {
     // a call's but with NO drop-mask — the spawner never drops them), then SPAWN <fn index> <total arg slots>.
     fn gen_spawn(mut self, call: ps.Expr, line: int) {
         match call {
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.cur_line = line
                 var fi = self.resolve_call_fn_index(callee.value)
                 // A SPAWN of a bounded generic (`spawn tally(ch, 5, 5)`) shares the direct-call convention:
@@ -11366,7 +11366,7 @@ struct FvCtx {
                 self.walk_expr(l.value)
                 self.walk_expr(r.value)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 self.walk_expr(callee.value)
                 self.walk_args(args)
             }
@@ -11656,7 +11656,7 @@ struct StrInfer {
             case EUnary(op, operand) {
                 self.scan_expr(operand.value)
             }
-            case ECall(callee, args) {
+            case ECall(callee, args, _) {
                 // A string-method receiver (`p.len()` / `p.bytes()` / `p.chars()`) marks an untyped param p as a
                 // string, so a HOF predicate `|a, b| a.len() < b.len()` emits STR_LEN — its erased element is a
                 // string (OFI-174). `.len()` is array-or-string, but a lambda comparing element lengths is over

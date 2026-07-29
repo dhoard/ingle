@@ -48,7 +48,7 @@ enum Expr {
     EIdent(name: string)
     EUnary(op: lx.Tk, operand: Box<Expr>)
     EBinary(op: lx.Tk, left: Box<Expr>, right: Box<Expr>)
-    ECall(callee: Box<Expr>, args: [Expr])
+    ECall(callee: Box<Expr>, args: [Expr], arg_names: [string])   // arg_names[i] = "" if positional, else the field name (OFI-222)
     EGet(object: Box<Expr>, name: string)
     EIndex(object: Box<Expr>, index: Box<Expr>)
     EArray(elems: [Expr], lines: [int])             // lines[i] = element i's start line (codegen line attribution)
@@ -272,7 +272,7 @@ fn p_expr(e: Expr, depth: int) {
             p_expr(l.value, depth + 1)
             p_expr(r.value, depth + 1)
         }
-        case ECall(callee, args) {
+        case ECall(callee, args, _) {
             println("{pad}Call")
             println("{ind(depth + 1)}callee:")
             p_expr(callee.value, depth + 2)
@@ -1118,6 +1118,7 @@ struct Parser {
     no_struct: bool        // suppress `Name { … }` as a struct literal in if/for/match headers
     pending_gt: int        // a `>>` consumed as one generic close leaves a virtual `>` here (stage-0 splits the token)
     bad_call: bool         // OFI-140: a call had malformed args (a dup named arg, or positional+named mixed)
+    last_arg_names: [string]   // OFI-222: the arg names of the most-recent parse_args, read by the ECall construction
 
 
     fn peek(self) -> lx.Token {
@@ -2000,7 +2001,16 @@ struct Parser {
                 }
                 case TLParen {
                     let args = self.parse_args()
-                    e = ECall(Box<Expr>{ value: e, line: start }, args)
+                    var names: [string] = []        // copy names out of the parser field (a field can't be moved out; OFI-222)
+                    var ni = 0
+                    loop {
+                        if ni >= self.last_arg_names.len() {
+                            break
+                        }
+                        names.append(self.last_arg_names[ni])
+                        ni = ni + 1
+                    }
+                    e = ECall(Box<Expr>{ value: e, line: start }, args, names)
                 }
                 case TLBracket {
                     let _ = self.advance()
@@ -2080,6 +2090,7 @@ struct Parser {
         if saw_named && saw_positional {
             self.bad_call = true
         }
+        self.last_arg_names = arg_names      // OFI-222: hand the names to the ECall construction (for named-arg reordering)
         return args
     }
 
@@ -2264,7 +2275,7 @@ fn strip_quotes(raw: string) -> string {
 
 // parse is the entry point: a source string -> the list of top-level declarations.
 fn parse(src: string) -> [Decl] {
-    var p = Parser{ toks: lx.lex(src), pos: 0, src: src, no_struct: false, pending_gt: 0, bad_call: false }
+    var p = Parser{ toks: lx.lex(src), pos: 0, src: src, no_struct: false, pending_gt: 0, bad_call: false, last_arg_names: [] }
     return p.parse_program()
 }
 
@@ -2275,7 +2286,7 @@ fn parse(src: string) -> [Decl] {
 // (`ps.ParseResult.decls` from the checker) is not yet handled by the self-hosted C-emit backend (OFI-223);
 // a bool return sidesteps that. check() calls this alongside parse() (a second, cheap parse).
 fn parse_bad_call(src: string) -> bool {
-    var p = Parser{ toks: lx.lex(src), pos: 0, src: src, no_struct: false, pending_gt: 0, bad_call: false }
+    var p = Parser{ toks: lx.lex(src), pos: 0, src: src, no_struct: false, pending_gt: 0, bad_call: false, last_arg_names: [] }
     let _ = p.parse_program()
     return p.bad_call
 }
@@ -2298,7 +2309,7 @@ fn parse_hole(src: string, base_line: int) -> Expr {
         padded = from_char_code(10) + padded
         k = k + 1
     }
-    var p = Parser{ toks: lx.lex(padded), pos: 0, src: padded, no_struct: false, pending_gt: 0, bad_call: false }
+    var p = Parser{ toks: lx.lex(padded), pos: 0, src: padded, no_struct: false, pending_gt: 0, bad_call: false, last_arg_names: [] }
     p.skip_newlines()
     return p.parse_expr()
 }
