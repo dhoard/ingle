@@ -10525,6 +10525,27 @@ struct Chunk {
                         self.emit(OP_UNBOX_STRUCT)
                         self.emit_idx(ssid)
                         self.declare_binding(name, self.struct_field_count(ssid), ssid, false, false, false, false)
+                    } else if is_var == false && self.multislot_local_slot(value.value) >= 0 {
+                        // `let q = p` — a whole-struct COPY of a multi-slot value-struct local/param. Spread p's N
+                        // leaf slots, then BOX_STRUCT + UNBOX_STRUCT for a fresh INDEPENDENT copy (p stays usable),
+                        // and bind q multi-slot — mirrors stage-0's value-struct copy discipline.
+                        let base = self.multislot_local_slot(value.value)
+                        let csid = self.slot_struct[base]
+                        let span = self.struct_field_count(csid)
+                        var k = 0
+                        loop {
+                            if k >= span {
+                                break
+                            }
+                            self.emit(OP_GET_LOCAL)
+                            self.emit_idx(base + k)
+                            k = k + 1
+                        }
+                        self.emit(OP_BOX_STRUCT)
+                        self.emit_idx(csid)
+                        self.emit(OP_UNBOX_STRUCT)
+                        self.emit_idx(csid)
+                        self.declare_binding(name, span, csid, false, false, false, false)
                     } else if self.is_str_local_read(value.value) {
                         // a refcounted ENUM read from a place (`let op = self.advance().kind`, an enum field
                         // or an owned-enum local): aliasing an existing owner INCREFs (gen_consume), and the
