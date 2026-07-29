@@ -5298,6 +5298,65 @@ struct Chunk {
     // subject (`let o: Option<Box<int>> = …; match o { case Some(b) }`): the annotation's type-arg at
     // the payload's enum-generics index (erecv_name/erecv_targs), coded like expr_type_kind (-3 string /
     // -2 array / a struct sid / -1 scalar), or -99 when unavailable (OFI-218 P1).
+    // ty_head_is_enum reports whether a type's head name is a known enum (a user enum OR the prelude
+    // Option/Result), so an enum-typed PARAM can be registered in the erecv table like an annotated enum local.
+    fn ty_head_is_enum(self, ty: ps.Ty) -> bool {
+        match ty {
+            case TyGeneric(qual, name, args) {
+                return cg_index_of(self.et_names, name) >= 0
+            }
+            case TyName(qual, name) {
+                return cg_index_of(self.et_names, name) >= 0
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
+    // subject_prelude_payload_code resolves the CONCRETE payload code of a prelude Some/Ok/Err arm over a match
+    // subject typed `Option<X>` / `Result<X, Y>` (a param or annotated local, via the erecv type-args) — Some/Ok
+    // take type-arg 0, Err takes type-arg 1. The prelude payload fields are deliberately absent from the enum
+    // FIELD table (they are the abstract T/E), so enum_subject_tp_code (which needs ev_ftpidx) can't type them;
+    // this resolves directly from the subject's recorded type-args. Returns -3 string / -2 array / struct sid /
+    // -1 scalar, or -99 when the subject isn't an erecv-typed Option/Result (or the variant carries no payload).
+    fn subject_prelude_payload_code(self, subject: ps.Expr, variant: string) -> int {
+        if variant == "None" {
+            return 0 - 99
+        }
+        match subject {
+            case EIdent(nm) {
+                let ei = cg_index_of(self.erecv_name, nm)
+                if ei >= 0 {
+                    let parts = split_targs(self.erecv_targs[ei])
+                    var pidx = 0
+                    if variant == "Err" {
+                        pidx = 1
+                    }
+                    if pidx < parts.len() {
+                        let pn = parts[pidx]
+                        if pn == "string" {
+                            return 0 - 3
+                        }
+                        if self.key_array_elem_code(pn) != 0 - 99 {
+                            return 0 - 2
+                        }
+                        let sid = cg_index_of(self.st_names, head_name(pn))
+                        if sid >= 0 {
+                            return sid
+                        }
+                        return 0 - 1
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return 0 - 99
+    }
+
+
     fn enum_subject_tp_code(self, subject: ps.Expr, fidx: int) -> int {
         if fidx < 0 || fidx >= self.ev_ftpidx.len() {
             return 0 - 99
@@ -6953,7 +7012,7 @@ struct Chunk {
                             if ca >= args.len() {
                                 break
                             }
-                            self.gen_consume(args[cperm[ca]], line)
+                            self.gen_boxed_payload(args[cperm[ca]], line)
                             ca = ca + 1
                         }
                         self.cur_line = line
@@ -8166,6 +8225,36 @@ struct Chunk {
             self.emit(OP_BOX_STRUCT)
             self.emit_idx(esid)
             return
+        }
+        self.gen_consume(e, line)
+    }
+
+
+    // gen_boxed_payload pushes an enum-variant PAYLOAD argument as a single boxed Value. NEW_ENUM expects one
+    // Value per payload field, so a value-struct payload must be boxed: an all-scalar struct LITERAL via
+    // NEW_STRUCT, a struct-returning multi-slot CALL via BOX_STRUCT; anything else consumes normally (an
+    // int/string/boxed value is already one slot). Without this, an all-scalar `Some(Pt{..})` pushed its raw
+    // fields and NEW_ENUM read the wrong stack shape -> corruption/segfault (OFI-224 VM-parity).
+    fn gen_boxed_payload(mut self, e: ps.Expr, line: int) {
+        match e {
+            case EStructLit(ty, fields) {
+                let sid = self.type_struct_id(ty.value)
+                if sid >= 0 && self.struct_all_scalar(sid) {
+                    self.gen_struct_construct(e, line, true)
+                    return
+                }
+            }
+            case _ {
+            }
+        }
+        if is_call_expr(e) {
+            let csid = self.array_elem_struct_sid(e)
+            if csid >= 0 && self.struct_all_scalar(csid) {
+                self.gen_expr(e, line)
+                self.emit(OP_BOX_STRUCT)
+                self.emit_idx(csid)
+                return
+            }
         }
         self.gen_consume(e, line)
     }
@@ -10037,7 +10126,7 @@ struct Chunk {
                                 if a >= args.len() {
                                     break
                                 }
-                                self.gen_consume(args[vperm[a]], line)
+                                self.gen_boxed_payload(args[vperm[a]], line)
                                 a = a + 1
                             }
                             self.cur_line = line
@@ -11127,6 +11216,21 @@ struct Chunk {
                                         self.mrecv_name.append(cases[ci].pattern.bindings[b])
                                         self.mrecv_args.append(btargs)
                                     }
+                                } else {
+                                    self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, false, false, false, false)
+                                }
+                            } else if self.subject_prelude_payload_code(value.value, cases[ci].pattern.variant) != 0 - 99 {
+                                // a CONCRETE-payload prelude Some/Ok/Err over an Option<Struct>/Result<Struct,…>
+                                // param or annotated local: type the binding by the subject's recorded type-arg so
+                                // `x.field`/`x.method()`/`{x}` resolve (the prelude payload is absent from the enum
+                                // field table, so enum_subject_tp_code can't — OFI-224 VM-parity).
+                                let ppc = self.subject_prelude_payload_code(value.value, cases[ci].pattern.variant)
+                                if ppc == 0 - 3 {
+                                    self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, true, false, false, false)
+                                } else if ppc == 0 - 2 {
+                                    self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, false, false, false, true)
+                                } else if ppc >= 0 {
+                                    self.declare_binding(cases[ci].pattern.bindings[b], 1, ppc, false, false, true, false)
                                 } else {
                                     self.declare_binding(cases[ci].pattern.bindings[b], 1, -1, false, false, false, false)
                                 }
@@ -12820,6 +12924,16 @@ fn compile_fn(f: ps.FnDecl, fn_names: [string], fn_module: [int], cur_module: in
             // the erased payload as refcounted (INCREF on return), matching stage-0 (OFI-205).
             if f.params[p].ty.len() > 0 && ty_is_gopt(f.params[p].ty[0], erased_gnames) {
                 ch.gopt_params.append(f.params[p].name)
+            }
+            // A CONCRETE enum-typed PARAM (`node: Option<Cons>`, `res: Result<R, string>`) — register its type-args
+            // in erecv (like an annotated enum local) so a `case Some(c)`/`case Ok(r)` on it types the payload by
+            // its concrete struct. Skip a GENERIC Option<T> param (handled erased via gopt_params). OFI-224.
+            if f.params[p].ty.len() > 0 && ch.ty_head_is_enum(f.params[p].ty[0]) && ty_is_gopt(f.params[p].ty[0], erased_gnames) == false {
+                let eta = ty_args_key(f.params[p].ty[0])
+                if eta != "" {
+                    ch.erecv_name.append(f.params[p].name)
+                    ch.erecv_targs.append(eta)
+                }
             }
             // A generic-struct-typed PARAM (`b: Box<int>`) records its type-args so a type-param field read
             // `b.value` resolves T to int (scalar, no spurious INCREF) — read ONLY by field_receiver_targs,
