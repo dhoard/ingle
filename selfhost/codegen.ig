@@ -11133,8 +11133,18 @@ struct Chunk {
             case SAssign(target, value) {
                 match target.value {
                     case EIdent(name) {
-                        self.gen_consume(value.value, value.line)   // string→incref / move-local→move
                         let dslot = self.resolve_slot(name)
+                        // Reassigning a multi-slot struct-literal/local/call RHS into a BOXED struct var (`p =
+                        // Counter{200}`) BOX_STRUCTs it into one Value — SET_LOCAL stores a single slot, so the
+                        // raw leaf fields would otherwise imbalance the stack (mirrors the boxed var-decl path).
+                        if dslot >= 0 && dslot < self.slot_struct.len() && self.slot_struct[dslot] >= 0 && self.slot_boxed[dslot] && self.store_value_multislot_sid(value.value) >= 0 {
+                            let rsid = self.store_value_multislot_sid(value.value)
+                            self.gen_consume(value.value, value.line)
+                            self.emit(OP_BOX_STRUCT)
+                            self.emit_idx(rsid)
+                        } else {
+                            self.gen_consume(value.value, value.line)   // string→incref / move-local→move
+                        }
                         if dslot >= 0 && self.local_drop[dslot] {
                             self.emit(OP_DROP)        // release the old owned value before overwriting it
                             self.emit_idx(dslot)
