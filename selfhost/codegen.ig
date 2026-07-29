@@ -11409,6 +11409,7 @@ struct Chunk {
                         // or param (`return p`) is one binding whose gen_expr pushes ONE GET_LOCAL — so spread it
                         // to N GET_LOCALs (base..base+N-1) to match RETURN_STRUCT's span. (OFI-224 VM-parity.)
                         let mslot = self.multislot_local_slot(value[0].value)
+                        let bslot = self.boxed_struct_local_slot(value[0].value)
                         if mslot >= 0 {
                             self.cur_line = value[0].line
                             var k = 0
@@ -11420,6 +11421,14 @@ struct Chunk {
                                 self.emit_idx(mslot + k)
                                 k = k + 1
                             }
+                        } else if bslot >= 0 && self.struct_all_scalar(self.slot_struct[bslot]) {
+                            // `return p` where p is a BOXED value-struct local/param (a `move` param): the value is
+                            // ONE boxed slot but RETURN_STRUCT wants N leaf slots. gen_consume moves it out (owned:
+                            // nil the slot; borrowed: INCREF), then UNBOX_STRUCT explodes it to the N leaf slots —
+                            // else the single box lands where N slots are read and the caller's `q.f` reads garbage.
+                            self.gen_consume(value[0].value, value[0].line)
+                            self.emit(OP_UNBOX_STRUCT)
+                            self.emit_idx(self.slot_struct[bslot])
                         } else {
                             self.gen_expr(value[0].value, value[0].line) // struct construction / call -> span slots
                         }
