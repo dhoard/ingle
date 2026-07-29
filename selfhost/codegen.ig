@@ -9133,6 +9133,13 @@ struct Chunk {
                         self.emit_idx(0)
                         return true
                     }
+                    // `L.COL` — an import-alias-qualified top-level CONSTANT (the alias is inert, the checker
+                    // erases the qualifier): inline the folded global exactly like a bare `COL` reference.
+                    let gci = cg_index_of(self.gc_names, name)
+                    if gci >= 0 {
+                        self.gen_global_const(gci)
+                        return true
+                    }
                 }
             }
             case _ {
