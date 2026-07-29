@@ -7419,13 +7419,22 @@ struct Chunk {
                     let plan = self.plan_erased_mask(args, erase)
                     self.cur_line = line
                     if self.is_owning_temp_obj(object) {
-                        self.gen_expr(object, line)
-                        if is_call_expr(object) && self.struct_all_scalar(tk) && self.method_call_boxed_result_sid(object) < 0 {
-                            // a multi-slot struct returned EXPLODED by a call (a free fn / non-value-struct-recv
-                            // method) -> one box. A value-struct method already BOX_STRUCTs its result (site 1),
-                            // so re-boxing it here would double-box the receiver.
-                            self.emit(OP_BOX_STRUCT)
-                            self.emit_idx(tk)
+                        match object {
+                            case EStructLit(sty, sfields) {
+                                // a struct-LITERAL receiver (`Point{..}.show()`) must be BOXED (NEW_STRUCT) so the
+                                // method receives a single boxed struct — gen_expr would push its raw leaf slots.
+                                self.gen_struct_construct(object, line, true)
+                            }
+                            case _ {
+                                self.gen_expr(object, line)
+                                if is_call_expr(object) && self.struct_all_scalar(tk) && self.method_call_boxed_result_sid(object) < 0 {
+                                    // a multi-slot struct returned EXPLODED by a call (a free fn / non-value-struct-
+                                    // recv method) -> one box. A value-struct method already BOX_STRUCTs its result
+                                    // (site 1), so re-boxing it here would double-box the receiver.
+                                    self.emit(OP_BOX_STRUCT)
+                                    self.emit_idx(tk)
+                                }
+                            }
                         }
                         self.emit(OP_PICK)
                         self.emit_idx(0)
@@ -9397,6 +9406,23 @@ struct Chunk {
     // a string-typed value that is an OWNING TEMP — a call returning a string, a string concat `a + b`, or a
     // nested interpolation. Such a hole already leaves an owned reference the fold's CONCAT consumes, so its
     // TO_STRING is SKIPPED (else the reference leaks). A borrowed string (local/field/element) is NOT a temp.
+    // hole_has_show reports whether an interpolation hole's static type provides the Show contract `fn show(self)
+    // -> string` — an interface that declares `show`, or a concrete struct with a `.show` method. Drives the
+    // OFI-139 `{value}` -> `{value.show()}` desugar (stage-0's checker does the rewrite; the self-hosted codegen
+    // consumes the un-rewritten AST, so it synthesises the call).
+    fn hole_has_show(self, e: ps.Expr) -> bool {
+        let ifn = self.receiver_iface(e)
+        if ifn != "" {
+            return self.ifm_flat_index(ifn, "show") >= 0
+        }
+        let sid = self.expr_type_kind(e)
+        if sid >= 0 && sid < self.st_names.len() {
+            return cg_index_of(self.fn_names, "{self.st_names[sid]}.show") >= 0
+        }
+        return false
+    }
+
+
     fn hole_is_str_temp(self, e: ps.Expr) -> bool {
         match e {
             case EStr(parts) {
@@ -10237,14 +10263,24 @@ struct Chunk {
                     }
                     if parts[i].hole.len() == 1 {
                         let h = parts[i].hole[0]
-                        self.gen_expr(h, line)
-                        // An owning-temp STRING hole (a call/concat/interpolation result) already leaves an
-                        // owned reference the fold's CONCAT consumes; the retaining TO_STRING would leak it
-                        // (stage-0 `string_temp`, OFI-146). A borrowed string (local/field/element) or a
-                        // non-string hole still renders/retains via TO_STRING.
-                        if self.hole_is_str_temp(h) == false {
-                            self.emit(OP_TO_STRING)
-                            self.emit(self.render_kind_of(h))   // render kind: float=9, bool=10, else int=0
+                        if self.hole_has_show(h) {
+                            // OFI-139 structural Show: `{value}` -> `{value.show()}` — synthesise the call (its
+                            // owned-string result is consumed by the fold's CONCAT like any string temp, no TO_STRING).
+                            var sh_args: [ps.Expr] = []
+                            var sh_names: [string] = []
+                            let sh_getter = ps.EGet(ps.Box<ps.Expr>{ value: h, line: line }, "show")
+                            let sh_call = ps.ECall(ps.Box<ps.Expr>{ value: sh_getter, line: line }, sh_args, sh_names)
+                            self.gen_expr(sh_call, line)
+                        } else {
+                            self.gen_expr(h, line)
+                            // An owning-temp STRING hole (a call/concat/interpolation result) already leaves an
+                            // owned reference the fold's CONCAT consumes; the retaining TO_STRING would leak it
+                            // (stage-0 `string_temp`, OFI-146). A borrowed string (local/field/element) or a
+                            // non-string hole still renders/retains via TO_STRING.
+                            if self.hole_is_str_temp(h) == false {
+                                self.emit(OP_TO_STRING)
+                                self.emit(self.render_kind_of(h))   // render kind: float=9, bool=10, else int=0
+                            }
                         }
                     } else {
                         let idx = self.add_string(parts[i].text)
