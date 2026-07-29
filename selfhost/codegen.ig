@@ -521,6 +521,16 @@ fn ty_head_name(ty: ps.Ty) -> string {
 }
 
 
+// param_ty_is reports whether param `p`'s declared type head name is `tyname` — e.g. an iface-impl method's
+// Self-typed struct param (`other: Version` in Version's methods), which arrives BOXED (OFI-224).
+fn param_ty_is(p: ps.Param, tyname: string) -> bool {
+    if p.ty.len() == 0 {
+        return false
+    }
+    return ty_head_name(p.ty[0]) == tyname
+}
+
+
 // nt_base_kind classifies a newtype's BASE type into the render/flow kind a newtype value carries: -3 string,
 // -2 array, -1 scalar/int (the default). A newtype erases to its base, so its ctor value flows as this kind.
 fn nt_base_kind(ty: ps.Ty) -> int {
@@ -2799,8 +2809,10 @@ fn build_wit_info(decls: [ps.Decl]) -> WitInfo {
                 }
                 // Method param-erasure: for a GENERIC struct, record which EXPLICIT method params are bare
                 // erased type-params (`key: K`). A string arg to such a param is a BORROW (not incref'd) —
-                // the method compiles once over the erased K and a store inside takes its OWN reference.
-                if generics.len() > 0 {
+                // the method compiles once over the erased K and a store inside takes its OWN reference. ALSO run
+                // for an INTERFACE-IMPL struct: its methods take a Self-typed struct param BOXED (the witness
+                // convention), so the arg is boxed like an erased one ('1' -> gen_one_arg_e boxes a value struct).
+                if generics.len() > 0 || impls.len() > 0 {
                     var mmi = 0
                     loop {
                         if mmi >= methods.len() {
@@ -2813,7 +2825,11 @@ fn build_wit_info(decls: [ps.Decl]) -> WitInfo {
                                 break
                             }
                             if methods[mmi].params[pmi].is_self == false {
-                                flags = "{flags}{param_erasure_flag(methods[mmi].params[pmi], generics)}"
+                                var fl = param_erasure_flag(methods[mmi].params[pmi], generics)
+                                if fl == "0" && impls.len() > 0 && param_ty_is(methods[mmi].params[pmi], name) {
+                                    fl = "1"   // a Self-typed struct param of an iface-impl method arrives BOXED
+                                }
+                                flags = "{flags}{fl}"
                             }
                             pmi = pmi + 1
                         }
