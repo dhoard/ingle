@@ -5021,6 +5021,25 @@ struct Chunk {
                     case EIdent(name) {
                         return cg_index_of(self.ev_name, name) >= 0
                     }
+                    case EGet(recv, vname) {
+                        // a QUALIFIED variant ctor `Enum.Variant(..)` or `module.Variant(..)` (`json.Int(1)`): the
+                        // qualifier must be a TYPE/module name (not a value slot). Recognizes it as an enum ctor so
+                        // an array element counts as boxed (AEK_BOXED), not a scalar (OFI-224 VM-parity).
+                        match recv.value {
+                            case EIdent(qual) {
+                                if self.resolve_slot(qual) >= 0 {
+                                    return false
+                                }
+                                if self.resolve_qual_ctor_vi(qual, vname, args.len()) >= 0 {
+                                    return true
+                                }
+                                return cg_index_of(self.ev_name, vname) >= 0
+                            }
+                            case _ {
+                                return false
+                            }
+                        }
+                    }
                     case _ {
                         return false
                     }
@@ -5780,6 +5799,23 @@ struct Chunk {
             case EIdent(name) {
                 let slot = self.resolve_slot(name)
                 if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] == false {
+                    return slot
+                }
+            }
+            case _ {
+            }
+        }
+        return 0 - 1
+    }
+
+
+    // boxed_struct_local_slot returns the slot of a bare BOXED struct local/param read (`p` where p is a boxed
+    // struct), else -1. Used to alias `let a = p` — a boxed struct binding inheriting p's struct type.
+    fn boxed_struct_local_slot(self, e: ps.Expr) -> int {
+        match e {
+            case EIdent(name) {
+                let slot = self.resolve_slot(name)
+                if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] {
                     return slot
                 }
             }
@@ -8357,9 +8393,14 @@ struct Chunk {
             }
         }
         if is_call_expr(e) && self.array_elem_struct_sid(e) >= 0 {
+            let csid = self.array_elem_struct_sid(e)
             self.gen_expr(e, line)
-            self.emit(OP_BOX_STRUCT)
-            self.emit_idx(esid)
+            if self.struct_all_scalar(csid) {
+                // only an ALL-SCALAR (multi-slot, exploded) call result needs collapsing to one box; a
+                // boxed-struct return (string/enum field) is ALREADY one Value — BOX_STRUCT would double-box it.
+                self.emit(OP_BOX_STRUCT)
+                self.emit_idx(csid)
+            }
             return
         }
         self.gen_consume(e, line)
@@ -10911,6 +10952,14 @@ struct Chunk {
                         self.emit(OP_UNBOX_STRUCT)
                         self.emit_idx(csid)
                         self.declare_binding(name, span, csid, false, false, false, false)
+                    } else if is_var == false && self.boxed_struct_local_slot(value.value) >= 0 {
+                        // `let a = p` where p is a BOXED struct local: alias it (read the box) and bind a boxed
+                        // struct binding inheriting p's struct type — non-droppable (p still owns the box), so
+                        // `a.field` resolves via GET_FIELD. OFI-224 VM-parity.
+                        let bsl = self.boxed_struct_local_slot(value.value)
+                        let bsid = self.slot_struct[bsl]
+                        self.gen_expr(value.value, value.line)
+                        self.declare_binding(name, 1, bsid, false, false, true, false)
                     } else if self.is_str_local_read(value.value) {
                         // a refcounted ENUM read from a place (`let op = self.advance().kind`, an enum field
                         // or an owned-enum local): aliasing an existing owner INCREFs (gen_consume), and the
@@ -11003,7 +11052,30 @@ struct Chunk {
             }
             case SExpr(expr) {
                 self.gen_expr(expr.value, expr.line)
-                self.emit(OP_POP)
+                // A discarded expression-statement pops its result. A CALL returning an all-scalar (multi-slot)
+                // value struct spreads N leaf slots (RETURN_STRUCT N), so POP each — a single POP would leave N-1
+                // slots on the stack and desync everything after. (All-scalar => no owned sub-fields to drop.)
+                var pspan = 1
+                match expr.value {
+                    case ECall(callee, args, _) {
+                        if self.is_enum_ctor(expr.value) == false {
+                            let drk = self.expr_ret_kind(expr.value)
+                            if drk >= 0 && self.struct_all_scalar(drk) {
+                                pspan = self.struct_field_count(drk)
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
+                var pd = 0
+                loop {
+                    if pd >= pspan {
+                        break
+                    }
+                    self.emit(OP_POP)
+                    pd = pd + 1
+                }
             }
             case SAssign(target, value) {
                 match target.value {
