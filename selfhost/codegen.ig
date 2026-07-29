@@ -4527,6 +4527,23 @@ struct Chunk {
     }
 
 
+    // call_result_box_sid returns the struct id that CALL to fn #midx leaves as a MULTI-SLOT value-struct result
+    // (an all-scalar plain struct occupying N exploded stack slots), else -1. A method call with an owned-temp
+    // receiver leaves those N raw field slots and then DROP_UNDERs the receiver from under them — but DROP_UNDER
+    // assumes a SINGLE-slot result, so the N slots must first be collapsed with BOX_STRUCT to one box (stage-0
+    // codegen.c emit_call_result_box; in a drop-path box_result is always 1). OFI-218 P1.
+    fn call_result_box_sid(self, midx: int) -> int {
+        if midx < 0 || midx >= self.fn_ret_sid.len() {
+            return -1
+        }
+        let rsid = self.fn_ret_sid[midx]
+        if rsid >= 0 && self.struct_all_scalar(rsid) {
+            return rsid
+        }
+        return -1
+    }
+
+
     // struct_all_scalar reports whether every field of struct `id` is a scalar (so it is multi-slot).
     fn struct_all_scalar(self, id: int) -> bool {
         // An rc / resource struct is BOXED (refcounted / drop-bearing), never an unboxed multi-slot value —
@@ -6964,6 +6981,11 @@ struct Chunk {
                     self.emit(OP_CALL)
                     self.emit_idx(midx)
                     self.emit_idx(1 + n)
+                    let rsid = self.call_result_box_sid(midx)
+                    if rsid >= 0 {
+                        self.emit(OP_BOX_STRUCT)    // collapse a multi-slot result before dropping the receiver
+                        self.emit_idx(rsid)
+                    }
                     self.emit(OP_DROP_UNDER)
                 }
             }
@@ -8261,7 +8283,7 @@ struct Chunk {
                     if self.expr_is_string(elems[0]) {
                         return 0 - 3
                     }
-                    let sid = self.struct_value_info(elems[0])
+                    let sid = self.array_elem_struct_sid(elems[0])   // a struct LITERAL or a struct-returning CALL
                     if sid >= 0 {
                         return sid
                     }

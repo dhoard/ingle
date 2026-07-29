@@ -308,6 +308,54 @@ if [ -f "$CGSRC" ]; then
     fail=$((fail + cgfail))
 fi
 
+# ---- Stage 4b: the self-hosted VM backend, RUN-identity (tests/selfhost/codegen_run/*.ig) -----------
+# The mirror of Stage 6's cgen_c_run for the VM backend. Programs whose self-hosted bytecode LEGITIMATELY
+# diverges from stage-0 --emit=bytecode because codegen.ig keeps a representation stage-0 has since moved on
+# from (e.g. nested value-structs stay BOXED here, stage-0 inlines them multi-slot — the deferred value-types
+# flattening). Byte-identity is the wrong oracle; the oracle is RUNTIME equality — the self-hosted backend
+# must PRODUCE bytecode that RUNS the same as stage-0's --emit=run. The path: serialize_dump.ig (which drives
+# selfhost/codegen.ig) writes a .igb, then --run-bytecode runs it. stdin is /dev/null so a read_line program
+# cannot block the gate. This locks in each VM-backend corpus fix without demanding byte-identity (OFI-224).
+SERSRC="$ROOT/selfhost/serialize_dump.ig"
+if [ -f "$SERSRC" ] && [ -d "$ROOT/tests/selfhost/codegen_run" ]; then
+    serbin=""
+    if [ "$HAVE_CC" -eq 1 ]; then
+        serbin="${TMPDIR:-/tmp}/emberc_selfhost_serialize_$$"
+        if ! (cd "$ROOT" && "$BIN" -o "$serbin" selfhost/serialize_dump.ig >/dev/null 2>&1); then
+            serbin=""
+        fi
+    fi
+    crpass=0; crfail=0
+    for src in $(cd "$ROOT" && find tests/selfhost/codegen_run -name '*.ig' 2>/dev/null | sort); do
+        want=$(cd "$ROOT" && "$BIN" --emit=run "$src" </dev/null 2>/dev/null); wrc=$?
+        crigb="${TMPDIR:-/tmp}/emberc_codegen_run_$$.igb"
+        rm -f "$crigb"
+        if [ -n "$serbin" ]; then
+            (cd "$ROOT" && "$serbin" "$src" "$crigb" >/dev/null 2>&1)
+        else
+            (cd "$ROOT" && "$BIN" --emit=run selfhost/serialize_dump.ig "$src" "$crigb" >/dev/null 2>&1)
+        fi
+        if [ ! -f "$crigb" ]; then
+            crfail=$((crfail + 1))
+            echo "FAIL    self-hosted VM backend did not serialize $src to a .igb"
+            continue
+        fi
+        got=$(cd "$ROOT" && "$BIN" --run-bytecode "$crigb" </dev/null 2>/dev/null); grc=$?
+        rm -f "$crigb"
+        if [ "$want" = "$got" ] && [ "$wrc" = "$grc" ]; then
+            crpass=$((crpass + 1))
+        else
+            crfail=$((crfail + 1))
+            echo "FAIL    self-hosted VM backend RUNS differently from stage-0 on $src (oracle rc=$wrc, self rc=$grc)"
+        fi
+    done
+    [ -n "$serbin" ] && rm -f "$serbin"
+    if [ $((crpass + crfail)) -gt 0 ]; then
+        echo "selfhost codegen: $crpass/$((crpass + crfail)) codegen_run fixtures RUN identical to stage-0 --emit=run (representation diverges — not byte-identical)"
+    fi
+    pass=$((pass + crpass)); fail=$((fail + crfail))
+fi
+
 # ---- Stage 5: the UNIFIED self-hosted compiler (selfhost/emberc.ig) --------------------------------
 # The whole pipeline (lex → parse → CHECK → codegen) as ONE program, compiled to a native self-built
 # compiler BINARY. We gate two properties: (1) it reproduces every self-hosted module's bytecode
