@@ -459,6 +459,38 @@ if [ -f "$CCSRC" ]; then
             echo "selfhost cgen_c: $crpass/$((crpass + crfail)) cgen_c_run fixtures RUN identical to the VM (erased value structs — not byte-identical to stage-0)"
         fi
         pass=$((pass + crpass)); fail=$((fail + crfail))
+
+        # cgen_c_run_par: the CONCURRENCY sibling of cgen_c_run. A `spawn`/`nursery` program's self-hosted native
+        # emit is linked against the PARALLEL runtime (build/libember_rt_par.a + -DEMBER_PARALLEL, real threads) and
+        # must RUN identical to the bytecode VM. Fixtures here MUST be output-deterministic (a single result, no
+        # interleaved prints) since the VM is serial while native uses real threads. Skipped when the parallel
+        # runtime isn't built. Guards the bounded-generic `spawn` witness-threading (OFI-224).
+        if [ -f "$ROOT/build/libember_rt_par.a" ] && [ -d "$ROOT/tests/selfhost/cgen_c_run_par" ]; then
+            cprpass=0; cprfail=0
+            for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run_par -name '*.ig' 2>/dev/null | sort); do
+                want=$(cd "$ROOT" && "$BIN" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')
+                cprc="${TMPDIR:-/tmp}/emberc_cgenc_par_$$.c"
+                cprbin="${TMPDIR:-/tmp}/emberc_cgenc_par_$$"
+                (cd "$ROOT" && "$ccbin" "$src" 2>/dev/null) | sed '/^=> 0$/d' > "$cprc"
+                if cc -std=c17 -O2 -D_DEFAULT_SOURCE -DEMBER_PARALLEL -I"$ROOT/include" "$cprc" "$ROOT/build/libember_rt_par.a" -lm -lpthread -o "$cprbin" 2>/dev/null; then
+                    got=$("$cprbin" 2>/dev/null | sed '/^=> 0$/d')
+                    if [ "$want" = "$got" ]; then
+                        cprpass=$((cprpass + 1))
+                    else
+                        cprfail=$((cprfail + 1))
+                        echo "FAIL    self-hosted C-emit (parallel) RUNS differently from the VM on $src"
+                    fi
+                else
+                    cprfail=$((cprfail + 1))
+                    echo "FAIL    self-hosted C-emit (parallel) output did not compile: $src"
+                fi
+                rm -f "$cprc" "$cprbin"
+            done
+            if [ $((cprpass + cprfail)) -gt 0 ]; then
+                echo "selfhost cgen_c: $cprpass/$((cprpass + cprfail)) cgen_c_run_par fixtures RUN identical to the VM (parallel runtime)"
+            fi
+            pass=$((pass + cprpass)); fail=$((fail + cprfail))
+        fi
     fi
 
     # The real payoff: whole self-hosted MODULES whose C-emit is byte-identical to stage-0 (not fixtures —

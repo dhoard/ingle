@@ -6868,6 +6868,14 @@ struct CgcGen {
                         if qfi >= 0 {
                             return self.fn_ret_render[qfi]
                         }
+                        // a UFCS method-style call on a NON-struct receiver (`{a.is_some()}` where a is an
+                        // enum/scalar/string): the checker leaves it un-rewritten, so resolve the bare free fn
+                        // by name — mirrors emit_call's UFCS fallback — and render at its return kind. Without
+                        // this a bool UFCS result rendered as 1/0 instead of true/false (OFI-224, un-dodged).
+                        let ufi = self.fn_index(mname)
+                        if ufi >= 0 {
+                            return self.fn_ret_render[ufi]
+                        }
                     }
                     case _ {
                     }
@@ -7829,8 +7837,8 @@ struct CgcGen {
                                 i = i + 1
                             }
                             var mrtype = "Value"
-                            if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 {
-                                mrtype = "em_s{self.fn_ret_struct[fi]}"   // a VALUE-struct method return: em_s aggregate, not Value
+                            if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 && self.st.is_value(self.fn_ret_struct[fi]) {
+                                mrtype = "em_s{self.fn_ret_struct[fi]}"   // a VALUE-struct method return: em_s aggregate. A BOXED (rc/resource) struct return stays a Value — is_value gates it (OFI-224).
                             }
                             var mselfarg = self.emit_expr(object.value)   // self inline
                             if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
@@ -8132,8 +8140,8 @@ struct CgcGen {
                 i = i + 1
             }
             var rtype = "Value"
-            if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 {
-                rtype = "em_s{self.fn_ret_struct[fi]}"   // a VALUE-struct return: the result temp is the em_s aggregate, not a Value
+            if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 && self.st.is_value(self.fn_ret_struct[fi]) {
+                rtype = "em_s{self.fn_ret_struct[fi]}"   // a VALUE-struct return: the result temp is the em_s aggregate. A BOXED (rc/resource) struct return (`run_argv() -> Run`) stays a Value — is_value gates it (OFI-224).
             }
             s = s + "{rtype} c{rid} = em_fn_{fi}("
             var j = 0
@@ -9330,22 +9338,49 @@ struct CgcGen {
                     cgc_internal_error("native backend (M4): spawn of an unresolved callable")
                 }
                 let argc = args.len()
-                var alloc = argc
+                // A bounded-generic spawn target (`spawn tally<K: Hash+Eq>(..)`) takes the same hidden leading
+                // witness args a direct bounded call does (emit_bounded_free_call). The fiber dispatcher em_invoke
+                // reads them from the leading task slots, so prepend them here and shift the value args after —
+                // without this the value args landed in the witness slots and the task dereferenced a scalar as an
+                // enum witness (and read past the short malloc) → SIGSEGV. (OFI-224.)
+                var wcount = 0
+                var wstart = 0
+                if fi >= 0 && fi < self.res.wit.count.len() && self.res.wit.count[fi] > 0 {
+                    wcount = self.res.wit.count[fi]
+                    wstart = self.res.wit.start[fi]
+                }
+                let total = wcount + argc
+                var alloc = total
                 if alloc < 1 {
                     alloc = 1
                 }
                 println("{self.ind()}\{")
                 self.indent = self.indent + 1
                 println("{self.ind()}Value *_a = malloc({alloc} * sizeof(Value));")
+                var wi = 0
+                loop {
+                    if wi >= wcount {
+                        break
+                    }
+                    let bound = self.res.wit.bound[wstart + wi]
+                    let argidx = self.res.wit.arg[wstart + wi]
+                    var concrete = ""
+                    if argidx >= 0 && argidx < args.len() {
+                        concrete = self.concrete_type_of_arg(args[argidx])
+                    }
+                    println("{self.ind()}_a[{wi}] = {self.emit_witness(bound, concrete)};")
+                    wi = wi + 1
+                }
                 var i = 0
                 loop {
                     if i >= argc {
                         break
                     }
-                    println("{self.ind()}_a[{i}] = {self.emit_spawn_arg(args[i])};")
+                    let slot = wcount + i
+                    println("{self.ind()}_a[{slot}] = {self.emit_spawn_arg(args[i])};")
                     i = i + 1
                 }
-                println("{self.ind()}em_nursery_spawn(&_nr{id}, {fi}, _a, {argc});")
+                println("{self.ind()}em_nursery_spawn(&_nr{id}, {fi}, _a, {total});")
                 self.indent = self.indent - 1
                 println("{self.ind()}\}")
             }
