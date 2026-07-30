@@ -58,5 +58,18 @@ for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run -name '*.ig' 2>/dev/nu
     rm -f "$tmpc" "$tmpbin"
 done
 
+# 3. The `-o` DRIVER (Stage B1): one command must emit + cc-link + produce a runnable binary, finding the
+#    runtime lib + headers relative to its own binary (no -I/-l from the caller). Run it from a NEUTRAL cwd so
+#    the exe-relative lib/include/std resolution is what's exercised, not the repo cwd.
+obin="${TMPDIR:-/tmp}/ccself_odrv_$$"
+oprog="${TMPDIR:-/tmp}/ccself_odrv_$$.ig"
+printf 'fn main() -> int {\n    println("o-driver ok")\n    return 0\n}\n' > "$oprog"
+if (cd "${TMPDIR:-/tmp}" && "$CC_SELF" -o "$obin" "$oprog" >/dev/null 2>&1) && [ -x "$obin" ] && [ "$("$obin" 2>/dev/null | sed '/^=> 0$/d')" = "o-driver ok" ]; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self -o builds + runs a native binary in one command"
+else
+    fail=$((fail + 1)); echo "FAIL    compile_c-self -o did not build/run a native binary"
+fi
+rm -f "$obin" "$oprog"
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]

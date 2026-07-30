@@ -12,6 +12,7 @@ import "parser" as ps
 import "cgen_c" as cc
 import "lexer" as lex
 import "checker" as ck
+import "std/proc" as proc
 
 
 fn last_slash(s: string) -> int {
@@ -325,13 +326,51 @@ fn load_modules(entry: string) -> Loaded {
 }
 
 
+// dq wraps a path in double quotes for a /bin/sh command line (repo/install paths carry no `"`).
+fn dq(s: string) -> string {
+    return "\"" + s + "\""
+}
+
+
+// runtime_lib picks the runtime static library for a program's PROFILE, resolved next to the compiler's own
+// binary (bindir). db/web are inferred from the DECLARED externs — the same ffi_band_profile the FFI-index emit
+// uses, so the linked runtime always matches the baked em_ffi indices. Default otherwise. (net/parallel/graphics
+// carry extra -l/-D flags and land in Stage B5; a program needing them will fail LOUDLY at link, never silently.)
+fn runtime_lib(externs: [string], bindir: string) -> string {
+    let profile = cc.ffi_band_profile(externs)
+    if profile == 1 {
+        return bindir + "/libember_rt_db.a"      // db (SQLite, vendored — statically inside the lib)
+    }
+    if profile == 2 {
+        return bindir + "/libember_rt_web.a"      // web (headless SSR)
+    }
+    return bindir + "/libember_rt.a"              // default (dependency-free)
+}
+
+
 fn main() -> int {
     let argv = args()
-    if argv.len() < 1 {
-        println("usage: inglec-self <file.ig>   (checked Ingle→C)")
+    // Parse `[-o <out>] <file.ig>` — `-o` anywhere selects native-compile mode; the lone non-flag arg is the
+    // entry. No `-o` keeps the differential C-emit-to-stdout path (pipe straight to cc).
+    var entry = ""
+    var outpath = ""
+    var i = 0
+    loop {
+        if i >= argv.len() {
+            break
+        }
+        if argv[i] == "-o" && i + 1 < argv.len() {
+            outpath = argv[i + 1]
+            i = i + 2
+        } else {
+            entry = argv[i]
+            i = i + 1
+        }
+    }
+    if entry == "" {
+        println("usage: inglec [-o <out>] <file.ig>   (checked Ingle→C)")
         exit(1)
     }
-    let entry = argv[0]
     // 1. TYPE-CHECK the entry program. A diagnostic → REJECT with exit 65 (stage-0's check-error code),
     //    so this compiler accepts/rejects the same programs stage-0 does. The self-hosted checker is
     //    single-module + import-lenient (it carries no source positions yet, so the reject is code-only,
@@ -339,11 +378,28 @@ fn main() -> int {
     if ck.check(read_file(entry)) {
         exit(65)
     }
-    // 2. C-EMIT the whole (merged, prelude-injected) program via the same backend the differential gates.
-    //    `exit(0)` sets the success code AND suppresses the runtime's `=> 0` echo, so stdout is exactly the
-    //    C translation unit (as stage-0 `--emit=c`) — pipe straight to cc.
     let ld = load_modules(entry)
-    cc.emit_program(ld.decls, ld.decl_mods, ld.imp_alias, ld.imp_path, entry)
+    if outpath == "" {
+        // C-EMIT the whole (merged, prelude-injected) program. `exit(0)` sets the success code AND suppresses
+        // the runtime's `=> 0` echo, so stdout is exactly the C translation unit — pipe straight to cc.
+        cc.emit_program(ld.decls, ld.decl_mods, ld.imp_alias, ld.imp_path, entry)
+        exit(0)
+    }
+    // 2. -o: emit C + cc-link the runtime in ONE step (the frontend's compile_native, relocated into the
+    //    self-hosted driver — Stage B1). Re-run SELF in emit mode and pipe into cc reading C from stdin; the
+    //    runtime lib + headers are found relative to this binary (exe_path), so it works installed or in-repo.
+    let exe = exe_path()
+    let bindir = dirname(exe)
+    let inc = dirname(bindir) + "/include"
+    let lib = runtime_lib(cc.build_extern_names(ld.decls), bindir)
+    // `-x c -` reads the piped C from stdin; `-x none` resets the language so the runtime .a that follows is
+    // treated as a library, not compiled as C (its `!<arch>` header would otherwise be a syntax error).
+    let cmd = dq(exe) + " " + dq(entry) + " | cc -std=c17 -O2 -D_DEFAULT_SOURCE -I" + dq(inc) + " -x c - -x none " + dq(lib) + " -lm -o " + dq(outpath)
+    let r = proc.run(cmd)
+    if r.code() != 0 {
+        println("inglec: native compile of {entry} failed")
+        exit(1)
+    }
     exit(0)
     return 0
 }
