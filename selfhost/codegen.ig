@@ -5261,6 +5261,17 @@ struct Chunk {
                         if nk != 0 - 4 {
                             return nk                         // a builtin returning an owned object
                         }
+                        let exi = cg_index_of(self.ext_names, name)
+                        if exi >= 0 && cg_index_of(self.fn_names, name) < 0 {
+                            let ek = self.ext_kinds[exi]      // an `extern "c"` fn's classified return (-3 str / -2 arr / scalar)
+                            if ek == 0 - 3 {
+                                return -3
+                            }
+                            if ek == 0 - 2 {
+                                return -2
+                            }
+                            return -1                         // a scalar extern (no struct/string/array)
+                        }
                     }
                     case EGet(object, mname) {
                         if mname == "bytes" {
@@ -9583,6 +9594,10 @@ struct Chunk {
                         if native_ret_kind(nm) == 0 - 3 {
                             return true                  // a builtin returning a string (`read_file(..)`, …)
                         }
+                        let exi = cg_index_of(self.ext_names, nm)
+                        if exi >= 0 && cg_index_of(self.fn_names, nm) < 0 && self.ext_kinds[exi] == 0 - 3 {
+                            return true                  // an `extern "c"` fn returning a string (`proc_stdout(h)`)
+                        }
                     }
                     case _ {
                     }
@@ -9699,8 +9714,8 @@ struct Chunk {
                         }
                         if cextern_index(name) >= 0 && cg_index_of(self.fn_names, name) < 0 {
                             let ck = self.extern_ret_kind(name)
-                            if ck == 10 {
-                                return 0
+                            if ck == 10 || ck < 0 {
+                                return 0                 // bool, or a string/array extern (-3/-2): not a numeric width
                             }
                             return ck
                         }
@@ -9838,7 +9853,11 @@ struct Chunk {
                             return self.render_kind_of(args[0])
                         }
                         if cextern_index(name) >= 0 && cg_index_of(self.fn_names, name) < 0 {
-                            return self.extern_ret_kind(name)
+                            let ek = self.extern_ret_kind(name)
+                            if ek < 0 {
+                                return 0                 // a string/array extern (-3/-2) has no numeric render width
+                            }
+                            return ek
                         }
                     }
                     case _ {
@@ -12502,6 +12521,23 @@ fn ret_scalar_kind(ret: [ps.Ty]) -> int {
 }
 
 
+// extern_ret_code classifies an `extern "c"` fn's DECLARED return type into the same code space the typing
+// helpers use: -3 a string, -2 an array, else its scalar width (ty_scalar_kind). Stored in ext_kinds so a
+// `let o = proc_stdout(h)` binding types o (a string) — else `o.len()` fails "untypeable receiver" (OFI-224).
+fn extern_ret_code(ret: [ps.Ty]) -> int {
+    if ret.len() == 0 {
+        return 0
+    }
+    if ty_is_string(ret[0]) {
+        return 0 - 3
+    }
+    if ty_is_array(ret[0]) {
+        return 0 - 2
+    }
+    return ty_scalar_kind(ret[0])
+}
+
+
 fn build_fn_rets(decls: [ps.Decl], structs: StructTable, enum_names: [string], mod_of: [int], imp_from: [int], imp_alias: [string], imp_to: [int]) -> FnRets {
     var rs: [bool] = []
     var ra: [bool] = []
@@ -12583,7 +12619,7 @@ fn build_fn_rets(decls: [ps.Decl], structs: StructTable, enum_names: [string], m
                         break
                     }
                     exn.append(fns[ei].name)
-                    exk.append(ret_scalar_kind(fns[ei].ret))
+                    exk.append(extern_ret_code(fns[ei].ret))   // -3 string / -2 array / else scalar width
                     var q = ""
                     var pi = 0
                     loop {
