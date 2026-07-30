@@ -5561,6 +5561,35 @@ struct Chunk {
     }
 
 
+    // ctor_payload_struct_name returns the payload's STRUCT-type name for a `Some(Pt{..})` / `Ok(Pt{..})`
+    // construction (type-arg 0), or "" — so a `let opt = Some(Pt{..})` binding records opt's payload type and a
+    // later `case Some(p)` types p as Pt (enum-payload nested-struct typing, OFI-218 P1). Err (type-arg 1) is
+    // not handled here (its Ok type is unknown from the construction alone).
+    fn ctor_payload_struct_name(self, e: ps.Expr) -> string {
+        match e {
+            case ECall(callee, args, _) {
+                if args.len() == 1 {
+                    match callee.value {
+                        case EIdent(cn) {
+                            if cn == "Some" || cn == "Ok" {
+                                let sid = self.expr_type_kind(args[0])
+                                if sid >= 0 && sid < self.st_names.len() {
+                                    return self.st_names[sid]
+                                }
+                            }
+                        }
+                        case _ {
+                        }
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        return ""
+    }
+
+
     // subject_prelude_payload_code resolves the CONCRETE payload code of a prelude Some/Ok/Err arm over a match
     // subject typed `Option<X>` / `Result<X, Y>` (a param or annotated local, via the erecv type-args) — Some/Ok
     // take type-arg 0, Err takes type-arg 1. The prelude payload fields are deliberately absent from the enum
@@ -6670,6 +6699,64 @@ struct Chunk {
     }
 
 
+    // compute_hof_lambda_ptys returns the positional STRUCT-TYPE names for a HOF call's lambda params (`|sg|`
+    // where sg maps to a value-struct source arg `x: T` bound to a Seg) — the struct twin of
+    // compute_hof_lambda_str, so `spanned(|sg| sg.b.x, Seg{..})` types sg as Seg. "" for a non-struct source.
+    fn compute_hof_lambda_ptys(self, name: string, args: [ps.Expr]) -> [string] {
+        var out: [string] = []
+        let hi = cg_index_of(self.hof_name, name)
+        if hi < 0 {
+            return out
+        }
+        let fpi = self.hof_fpi[hi]
+        if fpi < 0 || fpi >= args.len() {
+            return out
+        }
+        match args[fpi] {
+            case ELambda(lparams, body) {
+                let srcs = self.hof_srcs[hi].split("_")
+                var j = 0
+                loop {
+                    if j >= lparams.len() {
+                        break
+                    }
+                    var pty = ""
+                    if j < srcs.len() {
+                        pty = self.hof_src_struct_name(srcs[j], args)
+                    }
+                    out.append(pty)
+                    j = j + 1
+                }
+            }
+            case _ {
+            }
+        }
+        return out
+    }
+
+
+    // hof_src_struct_name returns the STRUCT-type name of the whole-arg source ("{argidx}w") a lambda param maps
+    // to (a value struct), or "" for an element source / a non-struct arg.
+    fn hof_src_struct_name(self, src: string, args: [ps.Expr]) -> string {
+        if src == "-" || src == "" {
+            return ""
+        }
+        let bs = src.bytes()
+        let ai = parse_leading_int(src)
+        if ai < 0 || ai >= args.len() {
+            return ""
+        }
+        if int(bs[bs.len() - 1]) == 101 {                 // 'e' — element source: not a whole value struct
+            return ""
+        }
+        let sid = self.expr_type_kind(args[ai])           // 'w' — the whole arg's struct type
+        if sid >= 0 && sid < self.st_names.len() {
+            return self.st_names[sid]
+        }
+        return ""
+    }
+
+
     // hof_src_is_string reports whether the arg named by a source key ("{argidx}w" = whole / "{argidx}e" =
     // element) is a string — so the mapped lambda param types as a string (OFI-218 P3).
     fn hof_src_is_string(self, src: string, args: [ps.Expr]) -> bool {
@@ -7390,8 +7477,10 @@ struct Chunk {
                         self.expected_key = ""
                         if fig >= 0 {
                             self.pending_lambda_str = self.compute_hof_lambda_str(mname, args)   // OFI-218 P3
+                            self.pending_lambda_ptys = self.compute_hof_lambda_ptys(mname, args) // struct twin
                             self.gen_user_call(fig, args, line, true, pq, "")
                             self.pending_lambda_str = []
+                            self.pending_lambda_ptys = []
                         } else {
                             cg_internal_error("unresolved generic module-qualified call `{mname}` (OFI-218 P1)")
                         }
@@ -10868,7 +10957,11 @@ struct Chunk {
                                 }
                             }
                             self.expected_key = ""   // consume-once: the annotation applies only to this call
+                            self.pending_lambda_str = self.compute_hof_lambda_str(name, args)     // HOF lambda param strings
+                            self.pending_lambda_ptys = self.compute_hof_lambda_ptys(name, args)   // ...and struct types
                             self.gen_user_call(fi, args, line, is_gen, pq, pty)
+                            self.pending_lambda_str = []
+                            self.pending_lambda_ptys = []
                         }
                     }
                     case _ {
@@ -11348,6 +11441,14 @@ struct Chunk {
                         if eta != "" {
                             self.erecv_name.append(name)
                             self.erecv_targs.append(eta)
+                        }
+                    } else {
+                        // no annotation: record the payload STRUCT type from the construction (`let opt =
+                        // Some(Pt{..})`) so a later `case Some(p)` types p as Pt.
+                        let pnm = self.ctor_payload_struct_name(value.value)
+                        if pnm != "" {
+                            self.erecv_name.append(name)
+                            self.erecv_targs.append(pnm)
                         }
                     }
                     return
