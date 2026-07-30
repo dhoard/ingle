@@ -70,6 +70,15 @@ fn dirname(s: string) -> string {
 // prefix resolves against the repo root (cwd), like g_std_dir in stage-0.
 fn resolve_import(importer: string, imp: string) -> string {
     if imp.len() >= 4 && byte_slice(imp, 0, 4) == "std/" {
+        // An INSTALLED toolchain sets $INGLE_STD (legacy $EMBER_STD) to the stdlib dir so `std/x` resolves
+        // from any cwd; a repo checkout with std/ in cwd needs neither. Mirrors compile_c.ig / the C frontend.
+        var base = env("INGLE_STD")
+        if base == "" {
+            base = env("EMBER_STD")
+        }
+        if base != "" {
+            return base + "/" + byte_slice(imp, 4, imp.len()) + ".ig"
+        }
         return imp + ".ig"
     }
     let d = dirname(importer)

@@ -178,7 +178,7 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
 all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
 
@@ -644,10 +644,25 @@ $(COMPILE_C_SELF): $(INGLEC_SELF) $(wildcard selfhost/*.ig) $(RT_LIB)
 
 compile_c-self: $(COMPILE_C_SELF)
 
+# --- OFI-224 G4 Stage B2: the self-hosted BYTECODE compiler (for `inglec --emit=run`) ---
+# build/inglec-emberc — the unified self-hosted compiler (selfhost/emberc.ig): check → serialize a runnable
+# `.igb`. Built FRONTEND-FREE the same way as compile_c-self. The dispatcher (compile_c.ig) execs this to
+# compile a program to bytecode, then execs the standalone runner (build/inglec-run) on the .igb — so quick-run
+# is fully self-hosted and independent of the frozen C frontend.
+INGLEC_EMBERC := build/inglec-emberc
+$(INGLEC_EMBERC): $(INGLEC_SELF) $(wildcard selfhost/*.ig) $(RT_LIB)
+	@echo "building the self-hosted bytecode compiler (emberc.ig) frontend-free…"
+	$(INGLEC_SELF) selfhost/emberc.ig | sed -e '/^=> 0$$/d' > build/inglec-emberc.c
+	$(CC) -std=c17 -O2 -D_DEFAULT_SOURCE -Iinclude build/inglec-emberc.c $(RT_LIB) -lm -o $@
+	@$(call LINK_COMPAT,$@)
+	@echo "built $@ — the frontend-free Ingle→bytecode compiler."
+
+inglec-emberc: $(INGLEC_EMBERC)
+
 # Smoke the frontend-free checked compiler end-to-end: it must REJECT a type error (exit 65) and COMPILE+RUN
 # every cgen_c_run fixture identically to the VM. Proves the shipped self-hosted toolchain works from a binary
 # with no src/ frontend anywhere in its build. (v1.0 cutover Stage A guard.)
-test-compile-c-self: $(COMPILE_C_SELF) $(RT_LIB)
+test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(RT_LIB)
 	@tests/run-compile-c-self.sh
 
 # --- OFI-224 G4 Stage B2: the standalone, FRONTEND-FREE bytecode runner ---

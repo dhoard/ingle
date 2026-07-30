@@ -71,5 +71,23 @@ else
 fi
 rm -f "$obin" "$oprog"
 
+# 4. The DISPATCHER's --emit=run (Stage B2): the self-hosted quick-run — compile to bytecode (inglec-emberc)
+#    and exec the standalone runner (inglec-run), all frontend-free. Needs both binaries beside CC_SELF; run
+#    from a neutral cwd so the exe-relative resolution of inglec-emberc / inglec-run / std is what's exercised.
+rprog="${TMPDIR:-/tmp}/ccself_run_$$.ig"
+printf 'fn main() -> int {\n    println("emit-run ok")\n    return 5\n}\n' > "$rprog"
+if [ -x "$ROOT/build/inglec-emberc" ] && [ -x "$ROOT/build/inglec-run" ]; then
+    got=$( (cd "${TMPDIR:-/tmp}" && "$CC_SELF" --emit=run "$rprog" 2>/dev/null) )
+    want=$("$VM" --emit=run "$rprog" 2>/dev/null)
+    if [ "$got" = "$want" ]; then
+        pass=$((pass + 1)); echo "PASS    compile_c-self --emit=run == VM (self-hosted bytecode + standalone runner)"
+    else
+        fail=$((fail + 1)); echo "FAIL    compile_c-self --emit=run differs from the VM"
+    fi
+else
+    echo "SKIP    --emit=run — build/inglec-emberc or build/inglec-run missing (run: make inglec-emberc runner)"
+fi
+rm -f "$rprog"
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]

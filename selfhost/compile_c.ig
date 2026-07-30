@@ -354,23 +354,50 @@ fn main() -> int {
     // entry. No `-o` keeps the differential C-emit-to-stdout path (pipe straight to cc).
     var entry = ""
     var outpath = ""
+    var emit_mode = ""
     var i = 0
     loop {
         if i >= argv.len() {
             break
         }
-        if argv[i] == "-o" && i + 1 < argv.len() {
+        let a = argv[i]
+        if a == "-o" && i + 1 < argv.len() {
             outpath = argv[i + 1]
             i = i + 2
+        } else if a.len() >= 7 && byte_slice(a, 0, 7) == "--emit=" {
+            emit_mode = byte_slice(a, 7, a.len())
+            i = i + 1
         } else {
-            entry = argv[i]
+            entry = a
             i = i + 1
         }
     }
     if entry == "" {
-        println("usage: inglec [-o <out>] <file.ig>   (checked Ingle→C)")
+        println("usage: inglec [-o <out> | --emit=run | --emit=c] <file.ig>")
         exit(1)
     }
+
+    // --emit=run: the self-hosted QUICK-RUN — compile to bytecode (inglec-emberc) then BECOME the standalone
+    // bytecode runner (inglec-run) via exec. Frontend-free (no C compiler, no cc) and fast. A single
+    // `sh -c 'emberc … && exec runner …'` keeps stdio inherited (so inglec-emberc's check errors and the
+    // program's output reach the terminal directly) and propagates exit codes. inglec-emberc does the type
+    // check, so this path skips compile_c's own. Both binaries + the stdlib resolve relative to THIS binary
+    // (exe_path), so it works installed or in-repo. (OFI-224 Stage B2 dispatcher.)
+    if emit_mode == "run" {
+        let exe = exe_path()
+        let bindir = dirname(exe)
+        let stddir = dirname(bindir) + "/std"
+        var tmp = env("TMPDIR")
+        if tmp == "" {
+            tmp = "/tmp"
+        }
+        let igb = "{tmp}/inglec-run-{to_int(random() * 2000000000.0)}.igb"
+        let script = "INGLE_STD=" + dq(stddir) + " " + dq("{bindir}/inglec-emberc") + " " + dq(entry) + " " + dq(igb) + " && exec " + dq("{bindir}/inglec-run") + " " + dq(igb)
+        let _ = exec("/bin/sh", ["-c", script])
+        println("inglec: could not exec /bin/sh for --emit=run")
+        exit(1)
+    }
+
     // 1. TYPE-CHECK the entry program. A diagnostic → REJECT with exit 65 (stage-0's check-error code),
     //    so this compiler accepts/rejects the same programs stage-0 does. The self-hosted checker is
     //    single-module + import-lenient (it carries no source positions yet, so the reject is code-only,
