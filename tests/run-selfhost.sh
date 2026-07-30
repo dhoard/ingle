@@ -491,6 +491,38 @@ if [ -f "$CCSRC" ]; then
             fi
             pass=$((pass + cprpass)); fail=$((fail + cprfail))
         fi
+
+        # cgen_c_run_db: the DATABASE sibling. A `std/sqlite` program's self-hosted native emit is linked against
+        # the DB runtime (build/libember_rt_db.a, vendored SQLite) and must RUN identical to the DB-flavored VM
+        # (build/inglec-db — the default VM has no SQLite). Guards the self-hosted SQLite FFI band: the emitted
+        # em_ffi indices (default band 0-41 + sqlite_* at 42+) must match libember_rt_db.a's g_sigs. Skipped when
+        # the DB build isn't present. (OFI-224 — teach db the self-hosted FFI band before the flip.)
+        if [ -f "$ROOT/build/libember_rt_db.a" ] && [ -x "$ROOT/build/inglec-db" ] && [ -d "$ROOT/tests/selfhost/cgen_c_run_db" ]; then
+            cdbpass=0; cdbfail=0
+            for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run_db -name '*.ig' 2>/dev/null | sort); do
+                want=$(cd "$ROOT" && "$ROOT/build/inglec-db" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')
+                cdbc="${TMPDIR:-/tmp}/emberc_cgenc_db_$$.c"
+                cdbbin="${TMPDIR:-/tmp}/emberc_cgenc_db_$$"
+                (cd "$ROOT" && "$ccbin" "$src" 2>/dev/null) | sed '/^=> 0$/d' > "$cdbc"
+                if cc -std=c17 -O2 -D_DEFAULT_SOURCE -I"$ROOT/third_party/sqlite" -I"$ROOT/include" "$cdbc" "$ROOT/build/libember_rt_db.a" -lm -o "$cdbbin" 2>/dev/null; then
+                    got=$("$cdbbin" 2>/dev/null | sed '/^=> 0$/d')
+                    if [ "$want" = "$got" ]; then
+                        cdbpass=$((cdbpass + 1))
+                    else
+                        cdbfail=$((cdbfail + 1))
+                        echo "FAIL    self-hosted C-emit (db) RUNS differently from the DB VM on $src"
+                    fi
+                else
+                    cdbfail=$((cdbfail + 1))
+                    echo "FAIL    self-hosted C-emit (db) output did not compile: $src"
+                fi
+                rm -f "$cdbc" "$cdbbin"
+            done
+            if [ $((cdbpass + cdbfail)) -gt 0 ]; then
+                echo "selfhost cgen_c: $cdbpass/$((cdbpass + cdbfail)) cgen_c_run_db fixtures RUN identical to the DB VM (SQLite runtime)"
+            fi
+            pass=$((pass + cdbpass)); fail=$((fail + cdbfail))
+        fi
     fi
 
     # The real payoff: whole self-hosted MODULES whose C-emit is byte-identical to stage-0 (not fixtures —

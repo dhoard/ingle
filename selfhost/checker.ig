@@ -138,12 +138,22 @@ fn is_builtin(name: string) -> bool {
 // profile lacks fails loudly at LINK time (undefined symbol), never a silent miscompile. sqlite_*/web_* bands
 // follow when the self-hosted compiler targets those profiles.
 fn ffi_registry_names() -> [string] {
+    // Name recognition only (registry FFI vs OFI-167 direct extern) — NOT the em_ffi index, so this is the
+    // full SUPERSET of every profile band (http + sqlite + web). Recognising a band the link profile lacks is
+    // safe: it fails LOUDLY at link time (undefined symbol), never a silent miscompile. The emitted INDEX stays
+    // profile-correct in cgen_c.ig (ffi_band_profile). OFI-224.
     return ["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "log", "log2", "log10", "sinh", "cosh",
         "tanh", "cbrt", "trunc", "hypot", "fmod", "cvec2_len", "cvec2_dot", "cvec2_add", "cvec2_scale",
         "strlen", "strncmp", "fopen", "fread", "fwrite", "fclose", "proc_run", "proc_exit", "proc_stdout",
         "proc_stderr", "proc_free", "em_now_unix", "em_mkdir", "em_remove", "em_tcp_listen", "em_tcp_accept",
         "em_tcp_connect", "em_recv", "em_send", "em_close",
-        "http_post", "http_get", "http_open", "http_next", "http_status", "http_close"]
+        "http_post", "http_get", "http_open", "http_next", "http_status", "http_close",
+        "sqlite_open", "sqlite_close", "sqlite_errcode", "sqlite_errmsg", "sqlite_errstr", "sqlite_exec",
+        "sqlite_prepare", "sqlite_bind_int", "sqlite_bind_f64", "sqlite_bind_text", "sqlite_bind_null",
+        "sqlite_step", "sqlite_reset", "sqlite_column_count", "sqlite_column_type", "sqlite_column_int",
+        "sqlite_column_f64", "sqlite_column_text", "sqlite_column_name", "sqlite_bind_blob", "sqlite_column_bytes",
+        "sqlite_column_blob", "sqlite_finalize", "sqlite_changes", "sqlite_last_insert_rowid",
+        "web_set_html", "web_next_click", "web_next_input", "web_fetch", "web_sleep"]
 }
 
 

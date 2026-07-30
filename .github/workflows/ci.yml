@@ -35,9 +35,15 @@ jobs:
       - name: Regression suite
         run: make test
 
+      # --- The DB build (vendored SQLite, no system dep) is built BEFORE the self-hosting differential so the
+      #     latter's cgen_c_run_db stage (self-hosted SQLite FFI band vs the DB VM) has build/inglec-db + the DB
+      #     runtime to run against; otherwise that stage skips. (OFI-224 db-band guard.) ---
+      - name: Database build (vendored SQLite)
+        run: make db
       # --- Self-hosting bootstrap differential: compiler-shaped programs (recursive ASTs, symbol
       #     tables) run on both backends with byte-identical stdout. The drift guard for the staged
-      #     port of the compiler into Ingle (docs/design/self-hosting.md). ---
+      #     port of the compiler into Ingle (docs/design/self-hosting.md). Includes the cgen_c_run_db
+      #     stage now that the DB build is present. ---
       - name: Self-hosting differential
         run: make selfhost
 

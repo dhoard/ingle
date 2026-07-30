@@ -7396,7 +7396,7 @@ struct CgcGen {
     // (flattened em_s leaves) and struct returns (cvec2 → em_unbox_struct) are the harder tail, still TODO.
     // The result temp is allocated BEFORE the args (like stage-0) so the fresh-var sequence matches. P6 FFI.
     fn emit_ffi_call(mut self, name: string, args: [ps.Expr]) -> string {
-        let idx = cgc_cextern_index(name)
+        let idx = cgc_cextern_index(name, ffi_band_profile(self.extern_names))
         let ei = self.extern_index(name)
         var rsid = 0 - 1
         if ei >= 0 && ei < self.extern_ret_struct.len() {
@@ -7573,7 +7573,7 @@ struct CgcGen {
                 }
                 // extern "c" REGISTRY FFI call (sin / proc_run / http_post / …) — not a native builtin and not
                 // a user fn: dispatch through em_ffi + the in-tree registry (cextern.c), like the VM's CALL_C.
-                if self.fn_index(name) < 0 && cgc_cextern_index(name) >= 0 {
+                if self.fn_index(name) < 0 && cgc_cextern_index(name, ffi_band_profile(self.extern_names)) >= 0 {
                     return self.emit_ffi_call(name, args)
                 }
                 // Resolve the free-fn slot: a name shared across merged modules resolves to THIS module's
@@ -10603,24 +10603,90 @@ fn is_string_ty(ty: ps.Ty) -> bool {
 }
 
 
-// cextern_names_ordered is the hosted FFI registry in g_sigs order (src/cextern.c) — the POSITION of each name
-// IS its em_ffi index. The self-hosted compiler is one binary for every profile (a program native-links
-// against whichever runtime it needs), so this superset includes the profile bands: the DEFAULT band (0-41,
-// present in every build) and the NET band http_* (42-47, matching the net-gfx build Inglenook uses; the web
-// build's GFX_HEADLESS band would shift these — a target-profile concern for later). OFI-218 P6 FFI.
-fn cextern_names_ordered() -> [string] {
+// ffi_default_band is the DEFAULT-build FFI registry in g_sigs order (src/cextern.c) — 42 names present in
+// EVERY runtime (indices 0-41): libm, cvec2, str/file, proc, time/fs, raw TCP. A PROFILE band is appended
+// after it (starting at index 42), and which one depends on the LINKED runtime: the runtime's g_sigs is
+// #if-gated, so only one profile band exists at 42+ in any given lib. OFI-224 (was OFI-218 P6 FFI).
+fn ffi_default_band() -> [string] {
     return ["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "log", "log2", "log10", "sinh",
         "cosh", "tanh", "cbrt", "trunc", "hypot", "fmod", "cvec2_len", "cvec2_dot", "cvec2_add", "cvec2_scale",
         "strlen", "strncmp", "fopen", "fread", "fwrite", "fclose", "proc_run", "proc_exit", "proc_stdout",
         "proc_stderr", "proc_free", "em_now_unix", "em_mkdir", "em_remove", "em_tcp_listen", "em_tcp_accept",
-        "em_tcp_connect", "em_recv", "em_send", "em_close",
-        "http_post", "http_get", "http_open", "http_next", "http_status", "http_close"]
+        "em_tcp_connect", "em_recv", "em_send", "em_close"]
 }
 
 
-// cgc_cextern_index returns the em_ffi registry index of a hosted extern name, or -1.
-fn cgc_cextern_index(name: string) -> int {
-    let names = cextern_names_ordered()
+// The three mutually-exclusive PROFILE bands (each links a distinct runtime lib, so at most one is present in
+// any binary), in the exact g_sigs order of src/cextern.c. A program that declares an extern from a band picks
+// that profile (ffi_band_profile), so the emitted em_ffi index matches the runtime it links against.
+fn ffi_http_band() -> [string] {                    // #if EMBER_NET (libember_rt / net_gfx) — the default target
+    return ["http_post", "http_get", "http_open", "http_next", "http_status", "http_close"]
+}
+
+
+fn ffi_sqlite_band() -> [string] {                  // #if EMBER_SQLITE (libember_rt_db)
+    return ["sqlite_open", "sqlite_close", "sqlite_errcode", "sqlite_errmsg", "sqlite_errstr", "sqlite_exec",
+        "sqlite_prepare", "sqlite_bind_int", "sqlite_bind_f64", "sqlite_bind_text", "sqlite_bind_null",
+        "sqlite_step", "sqlite_reset", "sqlite_column_count", "sqlite_column_type", "sqlite_column_int",
+        "sqlite_column_f64", "sqlite_column_text", "sqlite_column_name", "sqlite_bind_blob", "sqlite_column_bytes",
+        "sqlite_column_blob", "sqlite_finalize", "sqlite_changes", "sqlite_last_insert_rowid"]
+}
+
+
+fn ffi_web_band() -> [string] {                     // #if EMBER_GFX_HEADLESS (libember_rt_web)
+    return ["web_set_html", "web_next_click", "web_next_input", "web_fetch", "web_sleep"]
+}
+
+
+// ffi_band_profile picks which profile band the emitted em_ffi indices target, from the program's DECLARED
+// externs: 1 (db) if it declares any sqlite_* extern, 2 (web) if any web_*, else 0 (http/default). The bands
+// are mutually exclusive — each links a different runtime lib — so a program uses at most one. A wrong link
+// profile fails LOUDLY at link time (undefined symbol), never a silent miscompile.
+fn ffi_band_profile(extern_names: [string]) -> int {
+    var i = 0
+    loop {
+        if i >= extern_names.len() {
+            break
+        }
+        let n = extern_names[i]
+        if n.len() >= 7 && byte_slice(n, 0, 7) == "sqlite_" {
+            return 1
+        }
+        if n.len() >= 4 && byte_slice(n, 0, 4) == "web_" {
+            return 2
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+
+// cextern_names_ordered is the FFI registry in g_sigs order for a given profile: the default band (0-41) then
+// the profile band (42+). The POSITION of each name IS its em_ffi index.
+fn cextern_names_ordered(profile: int) -> [string] {
+    var names = ffi_default_band()
+    var band = ffi_http_band()
+    if profile == 1 {
+        band = ffi_sqlite_band()
+    }
+    if profile == 2 {
+        band = ffi_web_band()
+    }
+    var j = 0
+    loop {
+        if j >= band.len() {
+            break
+        }
+        names.append(band[j])
+        j = j + 1
+    }
+    return names
+}
+
+
+// cgc_cextern_index returns the em_ffi registry index of a hosted extern name for the target `profile`, or -1.
+fn cgc_cextern_index(name: string, profile: int) -> int {
+    let names = cextern_names_ordered(profile)
     var i = 0
     loop {
         if i >= names.len() {
