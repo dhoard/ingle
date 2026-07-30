@@ -42,6 +42,17 @@ fn dirname(s: string) -> string {
 
 fn resolve_import(importer: string, imp: string) -> string {
     if imp.len() >= 4 && byte_slice(imp, 0, 4) == "std/" {
+        // An INSTALLED toolchain sets $INGLE_STD (legacy $EMBER_STD) to the stdlib directory, so `std/x`
+        // resolves regardless of the working directory — the installed `inglec` is run from anywhere. A repo
+        // checkout with std/ in the cwd needs neither and keeps the plain relative path. Mirrors the C
+        // frontend's init_std_dir (src/main.c). `std/x` -> "$INGLE_STD/x.ig", else "std/x.ig".
+        var base = env("INGLE_STD")
+        if base == "" {
+            base = env("EMBER_STD")
+        }
+        if base != "" {
+            return base + "/" + byte_slice(imp, 4, imp.len()) + ".ig"
+        }
         return imp + ".ig"
     }
     let d = dirname(importer)
