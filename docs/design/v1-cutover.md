@@ -448,3 +448,18 @@ exactly where Go 1.5 and Rust 1.0 stood.
   still needs binary-relative stdlib resolution (the frontend's `<bin>/../std`), which needs an exe-path native
   (vs a thin install wrapper that exports INGLE_STD); then teach db/web bands; then the default-flip + LSP-
   dispatcher rewiring.
+- **2026-07-30 — STAGE A COMPLETE: install solved via the `exe_path()` native (Karl's choice).** The self-hosted
+  compiler gets no argv0 from `args()`, so it could not find its stdlib relative to its own binary. New native
+  **`exe_path() -> string`** (`252f990`) returns the running executable's absolute path (readlink
+  `/proc/self/exe` on Linux, `_NSGetExecutablePath` on macOS) via a shared `em_exe_path_dup` body both the VM
+  (`vm.c call_native`) and the native backend (`em_native`) call — mirroring `em_list_dir_join`. Wired
+  symmetrically through BOTH compilers (C: builtin.h id 26 / builtin.c / check.c / cgen_c.c; self-hosted:
+  checker.ig / cgen_c.ig `is_em_native_id`+`native_id_for_name`+`native_ret_kind` / codegen.ig) so byte-identity
+  holds. `compile_c.ig`'s `resolve_import` now resolves `std/x` in order: `$INGLE_STD`/`$EMBER_STD` override →
+  `<bin>/../std` via `exe_path()` → plain relative — so an installed toolchain (and `build/compile_c-self`)
+  finds its stdlib from any cwd. **Proven:** a simulated install (`prefix/bin/inglec` + `prefix/std`) run from
+  /tmp with no env compiles a std-importing program, native output == VM. Gates: `make test` 458/0 + doctor,
+  `make selfhost` 1808/0 (fixed point holds), `make bootstrap` green (seed reseeded), compile_c-self smoke 37/0;
+  gated `cgen_c_run/exe_path_native.ig`. **Stage A done — the self-hosted compiler is a first-class, installable,
+  CI-guarded, frontend-free toolchain.** Next (Karl's ratified order): teach db/web the self-hosted FFI bands,
+  then Stage B (default-flip + the `inglec`→frozen-host LSP dispatcher).
