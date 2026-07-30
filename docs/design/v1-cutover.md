@@ -429,3 +429,22 @@ exactly where Go 1.5 and Rust 1.0 stood.
   with stage-0's native compiler across the corpus. The remaining G4 work is the FLIP itself** (rewire
   make/install/CI/test to the self-hosted compiler + rebuild the flavored targets) — a build-topology change,
   not a codegen one.
+- **2026-07-30 — THE FLIP PLANNED (topology mapped) + STAGE A LANDED.** Mapped the build topology (Makefile,
+  the ~15 flavored targets, CI, install/LSP, self-hosted capabilities). Key realities: `$(SOURCES) :=
+  $(wildcard src/*.c)` fuses frontend + VM + native-emit + LSP + tooling into ONE binary (no frontend-free src/
+  build exists); the self-hosted compiler is check+emit only (C via compile_c.ig, bytecode via emberc.ig — both
+  frontend-free) and has NO LSP/`--doctor`/introspection/file:line diagnostics; the installed `inglec` IS the
+  LSP server, so the frontend must survive as a frozen tooling/LSP host (the ratified G5(b)). **Karl's ratified
+  flip decisions:** (1) sequence = STAGED (additive Stage A first, then the default flip); (2) LSP model = the
+  default `inglec` DISPATCHES `--lsp`/`--doctor`/introspection to the frozen frontend host (editors keep using
+  `inglec --lsp`); (3) db + web must be taught the self-hosted FFI bands (SQLite, headless) BEFORE the flip — no
+  flavor left frontend-only. **Stage A DONE (committed, additive, reversible — nothing default/install/LSP
+  touched):** `make compile_c-self` builds the CHECKED, FRONTEND-FREE compiler (seed-built inglec-self compiles
+  compile_c.ig → cc; rejects type errors exit 65 unlike the unchecked inglec-self); `make test-compile-c-self`
+  smokes it end-to-end (rejects a type error + compiles/runs every cgen_c_run fixture == VM, 36/0); CI builds +
+  smokes it on both platforms (it never built the shipped self-hosted toolchain before); and compile_c.ig's
+  resolve_import now honors `$INGLE_STD` (mirrors the frontend's init_std_dir) so the compiler finds the stdlib
+  from any cwd. **Remaining before Stage B (the flip):** the INSTALL mechanism — a seamless install with no env
+  still needs binary-relative stdlib resolution (the frontend's `<bin>/../std`), which needs an exe-path native
+  (vs a thin install wrapper that exports INGLE_STD); then teach db/web bands; then the default-flip + LSP-
+  dispatcher rewiring.
