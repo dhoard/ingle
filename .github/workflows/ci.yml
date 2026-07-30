@@ -48,6 +48,14 @@ jobs:
       - name: Bootstrap independence (frontend-free fixed point)
         run: make bootstrap
 
+      # --- OFI-224 G4 Stage A: the compiler the cutover ships as the default `inglec`. Build the CHECKED,
+      #     FRONTEND-FREE compiler (build/compile_c-self, from selfhost/compile_c.ig via the seed-built
+      #     inglec-self — no src/ frontend in its build) and smoke it end-to-end: it must reject type errors
+      #     (exit 65) and compile+run every cgen_c_run fixture identically to the VM. Guards the shipped
+      #     self-hosted toolchain, which CI otherwise never built. ---
+      - name: Self-hosted compiler (frontend-free, checked)
+        run: make test-compile-c-self
+
       # --- Concurrency: the multicore runtime (-pthread on Linux) + its correctness suite ---
       - name: Parallel build
         run: make parallel
@@ -106,5 +114,7 @@ jobs:
         run: make test-parallel
       - name: Full verify gate
         run: make verify
+      - name: Self-hosted compiler (frontend-free, checked)
+        run: make test-compile-c-self
       - name: Flagship build (raylib + libcurl)
         run: make net-graphics

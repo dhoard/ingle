@@ -175,7 +175,7 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self test-compile-c-self crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
 all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
 
@@ -623,6 +623,29 @@ $(INGLEC_SELF): $(SEED) $(RT_LIB)
 	@echo "built $@ — the frontend-free Ingle→C compiler."
 
 inglec-self: $(INGLEC_SELF)
+
+# --- OFI-224 G4 Stage A: the CHECKED self-hosted compiler as a first-class, frontend-free artifact ---
+# build/compile_c-self — the FUSED check→C-emit compiler (selfhost/compile_c.ig), the compiler G4 ships as
+# the default `inglec`. Unlike inglec-self (unchecked cgen_c_dump.ig, which "trusts its input"), this REJECTS
+# type errors with exit 65 exactly like stage-0, so it is a real user-facing compiler. Built FRONTEND-FREE:
+# the seed-built inglec-self compiles compile_c.ig → C (stripping its own `=> N` echo), then cc links the
+# runtime. Depends only on inglec-self + the selfhost sources + $(RT_LIB) — no src/ frontend in the loop, so
+# it survives frontend retirement. This is the additive, reversible Stage-A foundation of the v1.0 cutover:
+# the self-hosted compiler is now buildable/installable/CI-guardable WITHOUT touching the default build.
+COMPILE_C_SELF := build/compile_c-self
+$(COMPILE_C_SELF): $(INGLEC_SELF) $(wildcard selfhost/*.ig) $(RT_LIB)
+	@echo "building the CHECKED self-hosted compiler (compile_c.ig) frontend-free…"
+	$(INGLEC_SELF) selfhost/compile_c.ig | sed -e '/^=> 0$$/d' > build/compile_c-self.c
+	$(CC) -std=c17 -O2 -D_DEFAULT_SOURCE -Iinclude build/compile_c-self.c $(RT_LIB) -lm -o $@
+	@echo "built $@ — the checked, frontend-free Ingle→C compiler (rejects type errors like stage-0)."
+
+compile_c-self: $(COMPILE_C_SELF)
+
+# Smoke the frontend-free checked compiler end-to-end: it must REJECT a type error (exit 65) and COMPILE+RUN
+# every cgen_c_run fixture identically to the VM. Proves the shipped self-hosted toolchain works from a binary
+# with no src/ frontend anywhere in its build. (v1.0 cutover Stage A guard.)
+test-compile-c-self: $(COMPILE_C_SELF) $(RT_LIB)
+	@tests/run-compile-c-self.sh
 
 # Re-snapshot the seed from the CURRENT selfhost sources (a deliberate maintenance step — the Go-1.5
 # model only requires the seed able to COMPILE the current source, which `make bootstrap` proves, so a
