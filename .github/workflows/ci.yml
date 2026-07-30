@@ -65,6 +65,10 @@ jobs:
       #     self-hosted toolchain, which CI otherwise never built. ---
       - name: Self-hosted compiler (frontend-free, checked)
         run: make test-compile-c-self
+      # --- Standalone bytecode runner (Stage B2): the frontend-free VM+runtime binary that self-hosted
+      #     `--emit=run` hands its compiled bytecode to. Must execute .igb identically to the full VM. ---
+      - name: Standalone bytecode runner (frontend-free)
+        run: make test-runner
 
       # --- Concurrency: the multicore runtime (-pthread on Linux) + its correctness suite ---
       - name: Parallel build
@@ -126,5 +130,7 @@ jobs:
         run: make verify
       - name: Self-hosted compiler (frontend-free, checked)
         run: make test-compile-c-self
+      - name: Standalone bytecode runner (frontend-free)
+        run: make test-runner
       - name: Flagship build (raylib + libcurl)
         run: make net-graphics

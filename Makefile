@@ -164,7 +164,10 @@ ASAN_FLAGS     := -std=c17 -Wall -Wextra -Werror -Iinclude -O1 -g -fsanitize=add
 ASAN_PAR_BIN   := build/inglec-asan-par
 ASAN_PAR_FLAGS := -std=c17 -Wall -Wextra -Werror -Iinclude -O1 -g -fsanitize=address -fno-omit-frame-pointer -DEMBER_PARALLEL=1 $(PORTABLE_DEFS) -pthread
 
-SOURCES := $(wildcard src/*.c)
+# src/runner_main.c is the standalone bytecode runner's OWN main (OFI-224 Stage B2) — excluded here so the
+# frontend/kitchen-sink binaries (which link src/main.c) don't get a second `main`. It is built only by the
+# `runner` target below, from a curated VM+runtime file set with NO frontend.
+SOURCES := $(filter-out src/runner_main.c,$(wildcard src/*.c))
 OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES))
 DEPS    := $(OBJECTS:.o=.d)
 
@@ -175,7 +178,7 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self test-compile-c-self crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
 all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
 
@@ -646,6 +649,27 @@ compile_c-self: $(COMPILE_C_SELF)
 # with no src/ frontend anywhere in its build. (v1.0 cutover Stage A guard.)
 test-compile-c-self: $(COMPILE_C_SELF) $(RT_LIB)
 	@tests/run-compile-c-self.sh
+
+# --- OFI-224 G4 Stage B2: the standalone, FRONTEND-FREE bytecode runner ---
+# build/inglec-run — loads a serialized `.igb` and executes it on the VM, as its OWN small binary. The KEPT
+# execution layer (the VM + the C runtime) with NO lexer/parser/checker/codegen linked in. This is what the
+# self-hosted `inglec --emit=run` hands its compiled bytecode to, so quick-run is independent of the frozen C
+# frontend (which retires in v1.1). Built from a curated file set — every VM/runtime translation unit
+# run_bytecode needs, but none of the six frontend files. Compiled together (not via $(SOURCES)) with matching
+# flags so the value/bytecode ABI is consistent end to end.
+RUNNER_BIN  := build/inglec-run
+RUNNER_SRCS := src/runner_main.c src/vm.c src/bytecode_io.c src/program.c src/chunk.c src/arena.c \
+               src/fault.c src/builtin.c src/opcode.c src/jsonw.c src/runtime.c src/cextern.c
+$(RUNNER_BIN): $(RUNNER_SRCS) | build
+	$(CC) -std=c17 -Wall -Wextra -Werror -Iinclude -O2 -D_DEFAULT_SOURCE -DNDEBUG $(PORTABLE_DEFS) $(RUNNER_SRCS) $(LDLIBS_MATH) -o $@
+	@$(call LINK_COMPAT,$@)
+	@echo "built $@ — the standalone, frontend-free bytecode runner (VM + runtime only)."
+
+runner: $(RUNNER_BIN)
+
+# Guard the standalone runner: it must execute serialized .igb bytecode identically to the full compiler's VM.
+test-runner: $(RUNNER_BIN) $(BIN)
+	@tests/run-runner.sh
 
 # Re-snapshot the seed from the CURRENT selfhost sources (a deliberate maintenance step — the Go-1.5
 # model only requires the seed able to COMPILE the current source, which `make bootstrap` proves, so a
