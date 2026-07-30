@@ -36,6 +36,10 @@
 #include <time.h>
 #include <dirent.h>    // list_dir: opendir/readdir (hosted-only, like the file I/O it sits with)
 #include <sys/stat.h>  // list_dir: stat() classifies every entry (uniform across filesystems)
+#include <unistd.h>    // exe_path: readlink(/proc/self/exe) on Linux
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>  // exe_path: _NSGetExecutablePath on macOS
+#endif
 #endif
 
 
@@ -2324,6 +2328,40 @@ static int _entry_cmp(const void *a, const void *b) {
 }
 
 
+// em_exe_path_dup — the ONE body behind the exe_path() builtin (VM + native backend; see ember_rt.h).
+// Returns the running executable's absolute path in a heap buffer (caller frees) + sets *out_len, or NULL
+// when unavailable (an unsupported platform, or the read failed). Lets an installed self-hosted toolchain
+// find its stdlib relative to its own binary (<bin>/../std), the frontend-free analog of init_std_dir.
+char *em_exe_path_dup(size_t *out_len) {
+    *out_len = 0;
+    char buf[4096];
+    size_t len = 0;
+#if defined(__APPLE__)
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) != 0) {
+        return NULL;   // buf too small (size is set to the needed length); treat as unavailable
+    }
+    len = strlen(buf);
+#elif defined(__linux__)
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0) {
+        return NULL;
+    }
+    buf[n] = '\0';
+    len = (size_t)n;
+#else
+    return NULL;
+#endif
+    char *out = malloc(len);
+    if (out == NULL) {
+        return NULL;
+    }
+    memcpy(out, buf, len);
+    *out_len = len;
+    return out;
+}
+
+
 // em_list_dir_join — the ONE body behind the list_dir builtin (VM + native backend; see
 // ember_rt.h). Entries are classified by stat() rather than d_type so a symlink to a directory
 // counts as a directory and every filesystem answers identically (d_type is DT_UNKNOWN on some).
@@ -2629,7 +2667,18 @@ Value em_native(EmberRt *ctx, int nid, int argc, const Value *args) {
             memcpy(s->chars, val, len);
             return OBJ_VAL(s);
         }
-#endif  // !EMBER_FREESTANDING (getenv)
+        case NATIVE_EXE_PATH: {
+            (void)argc; (void)args;
+            size_t len = 0;
+            char *buf = em_exe_path_dup(&len);   // the shared body (VM + native backend)
+            ObjString *s = make_string(ctx, len);
+            if (buf != NULL) {
+                memcpy(s->chars, buf, len);
+                free(buf);
+            }
+            return OBJ_VAL(s);
+        }
+#endif  // !EMBER_FREESTANDING (getenv / exe_path)
         case NATIVE_EXIT:
             exit(argc >= 1 ? (int)AS_INT(args[0]) : 0);
         default:

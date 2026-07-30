@@ -20223,329 +20223,335 @@ static Value em_fn_402(Value a0) {
             return v37;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v38 = a0; if (IS_OBJ(v38)) OBJ_RETAIN(AS_OBJ(v38)); v38; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "exit", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v39 = INT_VAL(19LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v38 = a0; if (IS_OBJ(v38)) OBJ_RETAIN(AS_OBJ(v38)); v38; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "exe_path", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v39 = INT_VAL(26LL);
             drop_value(&g_em, a0);
             return v39;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v40 = a0; if (IS_OBJ(v40)) OBJ_RETAIN(AS_OBJ(v40)); v40; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "byte_slice", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v41 = INT_VAL(22LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v40 = a0; if (IS_OBJ(v40)) OBJ_RETAIN(AS_OBJ(v40)); v40; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "exit", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v41 = INT_VAL(19LL);
             drop_value(&g_em, a0);
             return v41;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v42 = a0; if (IS_OBJ(v42)) OBJ_RETAIN(AS_OBJ(v42)); v42; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_bytes", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v43 = INT_VAL(23LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v42 = a0; if (IS_OBJ(v42)) OBJ_RETAIN(AS_OBJ(v42)); v42; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "byte_slice", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v43 = INT_VAL(22LL);
             drop_value(&g_em, a0);
             return v43;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v44 = a0; if (IS_OBJ(v44)) OBJ_RETAIN(AS_OBJ(v44)); v44; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "float_bits", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v45 = INT_VAL(24LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v44 = a0; if (IS_OBJ(v44)) OBJ_RETAIN(AS_OBJ(v44)); v44; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_bytes", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v45 = INT_VAL(23LL);
             drop_value(&g_em, a0);
             return v45;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v46 = a0; if (IS_OBJ(v46)) OBJ_RETAIN(AS_OBJ(v46)); v46; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "list_dir", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v47 = INT_VAL(25LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v46 = a0; if (IS_OBJ(v46)) OBJ_RETAIN(AS_OBJ(v46)); v46; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "float_bits", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v47 = INT_VAL(24LL);
             drop_value(&g_em, a0);
             return v47;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v48 = a0; if (IS_OBJ(v48)) OBJ_RETAIN(AS_OBJ(v48)); v48; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_open", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v49 = INT_VAL(100LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v48 = a0; if (IS_OBJ(v48)) OBJ_RETAIN(AS_OBJ(v48)); v48; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "list_dir", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v49 = INT_VAL(25LL);
             drop_value(&g_em, a0);
             return v49;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v50 = a0; if (IS_OBJ(v50)) OBJ_RETAIN(AS_OBJ(v50)); v50; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_close", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v51 = INT_VAL(101LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v50 = a0; if (IS_OBJ(v50)) OBJ_RETAIN(AS_OBJ(v50)); v50; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_open", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v51 = INT_VAL(100LL);
             drop_value(&g_em, a0);
             return v51;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v52 = a0; if (IS_OBJ(v52)) OBJ_RETAIN(AS_OBJ(v52)); v52; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_should_close", 19); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v53 = INT_VAL(102LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v52 = a0; if (IS_OBJ(v52)) OBJ_RETAIN(AS_OBJ(v52)); v52; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_close", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v53 = INT_VAL(101LL);
             drop_value(&g_em, a0);
             return v53;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v54 = a0; if (IS_OBJ(v54)) OBJ_RETAIN(AS_OBJ(v54)); v54; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_begin", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v55 = INT_VAL(103LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v54 = a0; if (IS_OBJ(v54)) OBJ_RETAIN(AS_OBJ(v54)); v54; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "window_should_close", 19); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v55 = INT_VAL(102LL);
             drop_value(&g_em, a0);
             return v55;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v56 = a0; if (IS_OBJ(v56)) OBJ_RETAIN(AS_OBJ(v56)); v56; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_end", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v57 = INT_VAL(104LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v56 = a0; if (IS_OBJ(v56)) OBJ_RETAIN(AS_OBJ(v56)); v56; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_begin", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v57 = INT_VAL(103LL);
             drop_value(&g_em, a0);
             return v57;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v58 = a0; if (IS_OBJ(v58)) OBJ_RETAIN(AS_OBJ(v58)); v58; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "draw_rect", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v59 = INT_VAL(105LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v58 = a0; if (IS_OBJ(v58)) OBJ_RETAIN(AS_OBJ(v58)); v58; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_end", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v59 = INT_VAL(104LL);
             drop_value(&g_em, a0);
             return v59;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v60 = a0; if (IS_OBJ(v60)) OBJ_RETAIN(AS_OBJ(v60)); v60; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "draw_text", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v61 = INT_VAL(106LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v60 = a0; if (IS_OBJ(v60)) OBJ_RETAIN(AS_OBJ(v60)); v60; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "draw_rect", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v61 = INT_VAL(105LL);
             drop_value(&g_em, a0);
             return v61;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v62 = a0; if (IS_OBJ(v62)) OBJ_RETAIN(AS_OBJ(v62)); v62; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_down", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v63 = INT_VAL(107LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v62 = a0; if (IS_OBJ(v62)) OBJ_RETAIN(AS_OBJ(v62)); v62; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "draw_text", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v63 = INT_VAL(106LL);
             drop_value(&g_em, a0);
             return v63;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v64 = a0; if (IS_OBJ(v64)) OBJ_RETAIN(AS_OBJ(v64)); v64; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_x", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v65 = INT_VAL(108LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v64 = a0; if (IS_OBJ(v64)) OBJ_RETAIN(AS_OBJ(v64)); v64; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_down", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v65 = INT_VAL(107LL);
             drop_value(&g_em, a0);
             return v65;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v66 = a0; if (IS_OBJ(v66)) OBJ_RETAIN(AS_OBJ(v66)); v66; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_y", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v67 = INT_VAL(109LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v66 = a0; if (IS_OBJ(v66)) OBJ_RETAIN(AS_OBJ(v66)); v66; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_x", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v67 = INT_VAL(108LL);
             drop_value(&g_em, a0);
             return v67;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v68 = a0; if (IS_OBJ(v68)) OBJ_RETAIN(AS_OBJ(v68)); v68; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_down", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v69 = INT_VAL(110LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v68 = a0; if (IS_OBJ(v68)) OBJ_RETAIN(AS_OBJ(v68)); v68; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_y", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v69 = INT_VAL(109LL);
             drop_value(&g_em, a0);
             return v69;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v70 = a0; if (IS_OBJ(v70)) OBJ_RETAIN(AS_OBJ(v70)); v70; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "measure_text", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v71 = INT_VAL(111LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v70 = a0; if (IS_OBJ(v70)) OBJ_RETAIN(AS_OBJ(v70)); v70; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_down", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v71 = INT_VAL(110LL);
             drop_value(&g_em, a0);
             return v71;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v72 = a0; if (IS_OBJ(v72)) OBJ_RETAIN(AS_OBJ(v72)); v72; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "char_pressed", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v73 = INT_VAL(112LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v72 = a0; if (IS_OBJ(v72)) OBJ_RETAIN(AS_OBJ(v72)); v72; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "measure_text", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v73 = INT_VAL(111LL);
             drop_value(&g_em, a0);
             return v73;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v74 = a0; if (IS_OBJ(v74)) OBJ_RETAIN(AS_OBJ(v74)); v74; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_pressed", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v75 = INT_VAL(113LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v74 = a0; if (IS_OBJ(v74)) OBJ_RETAIN(AS_OBJ(v74)); v74; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "char_pressed", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v75 = INT_VAL(112LL);
             drop_value(&g_em, a0);
             return v75;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v76 = a0; if (IS_OBJ(v76)) OBJ_RETAIN(AS_OBJ(v76)); v76; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_layer", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v77 = INT_VAL(114LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v76 = a0; if (IS_OBJ(v76)) OBJ_RETAIN(AS_OBJ(v76)); v76; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_pressed", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v77 = INT_VAL(113LL);
             drop_value(&g_em, a0);
             return v77;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v78 = a0; if (IS_OBJ(v78)) OBJ_RETAIN(AS_OBJ(v78)); v78; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clip_push", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v79 = INT_VAL(115LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v78 = a0; if (IS_OBJ(v78)) OBJ_RETAIN(AS_OBJ(v78)); v78; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_layer", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v79 = INT_VAL(114LL);
             drop_value(&g_em, a0);
             return v79;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v80 = a0; if (IS_OBJ(v80)) OBJ_RETAIN(AS_OBJ(v80)); v80; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clip_pop", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v81 = INT_VAL(116LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v80 = a0; if (IS_OBJ(v80)) OBJ_RETAIN(AS_OBJ(v80)); v80; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clip_push", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v81 = INT_VAL(115LL);
             drop_value(&g_em, a0);
             return v81;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v82 = a0; if (IS_OBJ(v82)) OBJ_RETAIN(AS_OBJ(v82)); v82; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_open", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v83 = INT_VAL(117LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v82 = a0; if (IS_OBJ(v82)) OBJ_RETAIN(AS_OBJ(v82)); v82; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clip_pop", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v83 = INT_VAL(116LL);
             drop_value(&g_em, a0);
             return v83;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v84 = a0; if (IS_OBJ(v84)) OBJ_RETAIN(AS_OBJ(v84)); v84; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_close", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v85 = INT_VAL(118LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v84 = a0; if (IS_OBJ(v84)) OBJ_RETAIN(AS_OBJ(v84)); v84; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_open", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v85 = INT_VAL(117LL);
             drop_value(&g_em, a0);
             return v85;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v86 = a0; if (IS_OBJ(v86)) OBJ_RETAIN(AS_OBJ(v86)); v86; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_mark", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v87 = INT_VAL(119LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v86 = a0; if (IS_OBJ(v86)) OBJ_RETAIN(AS_OBJ(v86)); v86; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_close", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v87 = INT_VAL(118LL);
             drop_value(&g_em, a0);
             return v87;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v88 = a0; if (IS_OBJ(v88)) OBJ_RETAIN(AS_OBJ(v88)); v88; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_round", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v89 = INT_VAL(120LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v88 = a0; if (IS_OBJ(v88)) OBJ_RETAIN(AS_OBJ(v88)); v88; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "tape_mark", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v89 = INT_VAL(119LL);
             drop_value(&g_em, a0);
             return v89;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v90 = a0; if (IS_OBJ(v90)) OBJ_RETAIN(AS_OBJ(v90)); v90; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "stroke_round", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v91 = INT_VAL(121LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v90 = a0; if (IS_OBJ(v90)) OBJ_RETAIN(AS_OBJ(v90)); v90; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_round", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v91 = INT_VAL(120LL);
             drop_value(&g_em, a0);
             return v91;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v92 = a0; if (IS_OBJ(v92)) OBJ_RETAIN(AS_OBJ(v92)); v92; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_grad", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v93 = INT_VAL(122LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v92 = a0; if (IS_OBJ(v92)) OBJ_RETAIN(AS_OBJ(v92)); v92; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "stroke_round", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v93 = INT_VAL(121LL);
             drop_value(&g_em, a0);
             return v93;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v94 = a0; if (IS_OBJ(v94)) OBJ_RETAIN(AS_OBJ(v94)); v94; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "shadow", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v95 = INT_VAL(123LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v94 = a0; if (IS_OBJ(v94)) OBJ_RETAIN(AS_OBJ(v94)); v94; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_grad", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v95 = INT_VAL(122LL);
             drop_value(&g_em, a0);
             return v95;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v96 = a0; if (IS_OBJ(v96)) OBJ_RETAIN(AS_OBJ(v96)); v96; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_circle", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v97 = INT_VAL(124LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v96 = a0; if (IS_OBJ(v96)) OBJ_RETAIN(AS_OBJ(v96)); v96; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "shadow", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v97 = INT_VAL(123LL);
             drop_value(&g_em, a0);
             return v97;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v98 = a0; if (IS_OBJ(v98)) OBJ_RETAIN(AS_OBJ(v98)); v98; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_wheel", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v99 = INT_VAL(125LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v98 = a0; if (IS_OBJ(v98)) OBJ_RETAIN(AS_OBJ(v98)); v98; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "fill_circle", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v99 = INT_VAL(124LL);
             drop_value(&g_em, a0);
             return v99;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v100 = a0; if (IS_OBJ(v100)) OBJ_RETAIN(AS_OBJ(v100)); v100; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_repeat", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v101 = INT_VAL(126LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v100 = a0; if (IS_OBJ(v100)) OBJ_RETAIN(AS_OBJ(v100)); v100; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_wheel", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v101 = INT_VAL(125LL);
             drop_value(&g_em, a0);
             return v101;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v102 = a0; if (IS_OBJ(v102)) OBJ_RETAIN(AS_OBJ(v102)); v102; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "load_font", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v103 = INT_VAL(127LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v102 = a0; if (IS_OBJ(v102)) OBJ_RETAIN(AS_OBJ(v102)); v102; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "key_repeat", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v103 = INT_VAL(126LL);
             drop_value(&g_em, a0);
             return v103;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v104 = a0; if (IS_OBJ(v104)) OBJ_RETAIN(AS_OBJ(v104)); v104; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_font", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v105 = INT_VAL(128LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v104 = a0; if (IS_OBJ(v104)) OBJ_RETAIN(AS_OBJ(v104)); v104; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "load_font", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v105 = INT_VAL(127LL);
             drop_value(&g_em, a0);
             return v105;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v106 = a0; if (IS_OBJ(v106)) OBJ_RETAIN(AS_OBJ(v106)); v106; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_set", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v107 = INT_VAL(129LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v106 = a0; if (IS_OBJ(v106)) OBJ_RETAIN(AS_OBJ(v106)); v106; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_font", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v107 = INT_VAL(128LL);
             drop_value(&g_em, a0);
             return v107;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v108 = a0; if (IS_OBJ(v108)) OBJ_RETAIN(AS_OBJ(v108)); v108; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_get", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v109 = INT_VAL(130LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v108 = a0; if (IS_OBJ(v108)) OBJ_RETAIN(AS_OBJ(v108)); v108; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_set", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v109 = INT_VAL(129LL);
             drop_value(&g_em, a0);
             return v109;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v110 = a0; if (IS_OBJ(v110)) OBJ_RETAIN(AS_OBJ(v110)); v110; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "screen_width", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v111 = INT_VAL(131LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v110 = a0; if (IS_OBJ(v110)) OBJ_RETAIN(AS_OBJ(v110)); v110; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_get", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v111 = INT_VAL(130LL);
             drop_value(&g_em, a0);
             return v111;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v112 = a0; if (IS_OBJ(v112)) OBJ_RETAIN(AS_OBJ(v112)); v112; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "screen_height", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v113 = INT_VAL(132LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v112 = a0; if (IS_OBJ(v112)) OBJ_RETAIN(AS_OBJ(v112)); v112; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "screen_width", 12); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v113 = INT_VAL(131LL);
             drop_value(&g_em, a0);
             return v113;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v114 = a0; if (IS_OBJ(v114)) OBJ_RETAIN(AS_OBJ(v114)); v114; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "text_line_height", 16); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v115 = INT_VAL(133LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v114 = a0; if (IS_OBJ(v114)) OBJ_RETAIN(AS_OBJ(v114)); v114; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "screen_height", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v115 = INT_VAL(132LL);
             drop_value(&g_em, a0);
             return v115;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v116 = a0; if (IS_OBJ(v116)) OBJ_RETAIN(AS_OBJ(v116)); v116; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_cursor", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v117 = INT_VAL(134LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v116 = a0; if (IS_OBJ(v116)) OBJ_RETAIN(AS_OBJ(v116)); v116; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "text_line_height", 16); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v117 = INT_VAL(133LL);
             drop_value(&g_em, a0);
             return v117;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v118 = a0; if (IS_OBJ(v118)) OBJ_RETAIN(AS_OBJ(v118)); v118; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_capture", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v119 = INT_VAL(135LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v118 = a0; if (IS_OBJ(v118)) OBJ_RETAIN(AS_OBJ(v118)); v118; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_cursor", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v119 = INT_VAL(134LL);
             drop_value(&g_em, a0);
             return v119;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v120 = a0; if (IS_OBJ(v120)) OBJ_RETAIN(AS_OBJ(v120)); v120; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_event_waiting", 17); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v121 = INT_VAL(136LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v120 = a0; if (IS_OBJ(v120)) OBJ_RETAIN(AS_OBJ(v120)); v120; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_capture", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v121 = INT_VAL(135LL);
             drop_value(&g_em, a0);
             return v121;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v122 = a0; if (IS_OBJ(v122)) OBJ_RETAIN(AS_OBJ(v122)); v122; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "had_input", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v123 = INT_VAL(137LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v122 = a0; if (IS_OBJ(v122)) OBJ_RETAIN(AS_OBJ(v122)); v122; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_event_waiting", 17); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v123 = INT_VAL(136LL);
             drop_value(&g_em, a0);
             return v123;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v124 = a0; if (IS_OBJ(v124)) OBJ_RETAIN(AS_OBJ(v124)); v124; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "measure_misses", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v125 = INT_VAL(138LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v124 = a0; if (IS_OBJ(v124)) OBJ_RETAIN(AS_OBJ(v124)); v124; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "had_input", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v125 = INT_VAL(137LL);
             drop_value(&g_em, a0);
             return v125;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v126 = a0; if (IS_OBJ(v126)) OBJ_RETAIN(AS_OBJ(v126)); v126; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_steps", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v127 = INT_VAL(139LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v126 = a0; if (IS_OBJ(v126)) OBJ_RETAIN(AS_OBJ(v126)); v126; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "measure_misses", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v127 = INT_VAL(138LL);
             drop_value(&g_em, a0);
             return v127;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v128 = a0; if (IS_OBJ(v128)) OBJ_RETAIN(AS_OBJ(v128)); v128; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_alpha", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v129 = INT_VAL(140LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v128 = a0; if (IS_OBJ(v128)) OBJ_RETAIN(AS_OBJ(v128)); v128; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "frame_steps", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v129 = INT_VAL(139LL);
             drop_value(&g_em, a0);
             return v129;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v130 = a0; if (IS_OBJ(v130)) OBJ_RETAIN(AS_OBJ(v130)); v130; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_right_down", 16); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v131 = INT_VAL(141LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v130 = a0; if (IS_OBJ(v130)) OBJ_RETAIN(AS_OBJ(v130)); v130; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "set_alpha", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v131 = INT_VAL(140LL);
             drop_value(&g_em, a0);
             return v131;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v132 = a0; if (IS_OBJ(v132)) OBJ_RETAIN(AS_OBJ(v132)); v132; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "dropped_files", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v133 = INT_VAL(142LL);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v132 = a0; if (IS_OBJ(v132)) OBJ_RETAIN(AS_OBJ(v132)); v132; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "mouse_right_down", 16); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v133 = INT_VAL(141LL);
             drop_value(&g_em, a0);
             return v133;
         }
     }
-    { Value v134 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v134 = a0; if (IS_OBJ(v134)) OBJ_RETAIN(AS_OBJ(v134)); v134; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "dropped_files", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v135 = INT_VAL(142LL);
+            drop_value(&g_em, a0);
+            return v135;
+        }
+    }
+    { Value v136 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
         drop_value(&g_em, a0);
-        return v134;
+        return v136;
     }
     drop_value(&g_em, a0);
     return INT_VAL(0);
 }
 
 static Value em_fn_403(Value a0) {
-    return INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(em_ge(a0, INT_VAL(2LL), 0)) && em_truthy(em_le(a0, INT_VAL(19LL), 0))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v0 = a0; if (IS_OBJ(v0)) OBJ_RETAIN(AS_OBJ(v0)); v0; }), INT_VAL(22LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v1 = a0; if (IS_OBJ(v1)) OBJ_RETAIN(AS_OBJ(v1)); v1; }), INT_VAL(23LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v2 = a0; if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; }), INT_VAL(24LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v3 = a0; if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); v3; }), INT_VAL(25LL)))) ? 1 : 0)) || em_truthy(INT_VAL((em_truthy(em_ge(a0, INT_VAL(100LL), 0)) && em_truthy(em_le(a0, INT_VAL(142LL), 0))) ? 1 : 0))) ? 1 : 0);
+    return INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(em_ge(a0, INT_VAL(2LL), 0)) && em_truthy(em_le(a0, INT_VAL(19LL), 0))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v0 = a0; if (IS_OBJ(v0)) OBJ_RETAIN(AS_OBJ(v0)); v0; }), INT_VAL(22LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v1 = a0; if (IS_OBJ(v1)) OBJ_RETAIN(AS_OBJ(v1)); v1; }), INT_VAL(23LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v2 = a0; if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; }), INT_VAL(24LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v3 = a0; if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); v3; }), INT_VAL(25LL)))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v4 = a0; if (IS_OBJ(v4)) OBJ_RETAIN(AS_OBJ(v4)); v4; }), INT_VAL(26LL)))) ? 1 : 0)) || em_truthy(INT_VAL((em_truthy(em_ge(a0, INT_VAL(100LL), 0)) && em_truthy(em_le(a0, INT_VAL(142LL), 0))) ? 1 : 0))) ? 1 : 0);
     return INT_VAL(0);
 }
 
 static Value em_fn_404(Value a0) {
-    if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(em_eq_op(&g_em, ({ Value v0 = a0; if (IS_OBJ(v0)) OBJ_RETAIN(AS_OBJ(v0)); v0; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "read_line", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }))) || em_truthy(em_eq_op(&g_em, ({ Value v1 = a0; if (IS_OBJ(v1)) OBJ_RETAIN(AS_OBJ(v1)); v1; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "read_file", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v2 = a0; if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "env", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v3 = a0; if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); v3; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_char_code", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v4 = a0; if (IS_OBJ(v4)) OBJ_RETAIN(AS_OBJ(v4)); v4; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "byte_slice", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v5 = a0; if (IS_OBJ(v5)) OBJ_RETAIN(AS_OBJ(v5)); v5; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "concat", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v6 = a0; if (IS_OBJ(v6)) OBJ_RETAIN(AS_OBJ(v6)); v6; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_bytes", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v7 = a0; if (IS_OBJ(v7)) OBJ_RETAIN(AS_OBJ(v7)); v7; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "list_dir", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v8 = a0; if (IS_OBJ(v8)) OBJ_RETAIN(AS_OBJ(v8)); v8; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_get", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v9 = a0; if (IS_OBJ(v9)) OBJ_RETAIN(AS_OBJ(v9)); v9; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "dropped_files", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0))) {
-        { Value v10 = em_sub(INT_VAL(0LL), INT_VAL(3LL), 0);
+    if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(em_eq_op(&g_em, ({ Value v0 = a0; if (IS_OBJ(v0)) OBJ_RETAIN(AS_OBJ(v0)); v0; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "read_line", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }))) || em_truthy(em_eq_op(&g_em, ({ Value v1 = a0; if (IS_OBJ(v1)) OBJ_RETAIN(AS_OBJ(v1)); v1; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "read_file", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v2 = a0; if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "env", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v3 = a0; if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); v3; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "exe_path", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v4 = a0; if (IS_OBJ(v4)) OBJ_RETAIN(AS_OBJ(v4)); v4; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_char_code", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v5 = a0; if (IS_OBJ(v5)) OBJ_RETAIN(AS_OBJ(v5)); v5; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "byte_slice", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v6 = a0; if (IS_OBJ(v6)) OBJ_RETAIN(AS_OBJ(v6)); v6; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "concat", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v7 = a0; if (IS_OBJ(v7)) OBJ_RETAIN(AS_OBJ(v7)); v7; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "from_bytes", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v8 = a0; if (IS_OBJ(v8)) OBJ_RETAIN(AS_OBJ(v8)); v8; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "list_dir", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v9 = a0; if (IS_OBJ(v9)) OBJ_RETAIN(AS_OBJ(v9)); v9; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "clipboard_get", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0)) || em_truthy(em_eq_op(&g_em, ({ Value v10 = a0; if (IS_OBJ(v10)) OBJ_RETAIN(AS_OBJ(v10)); v10; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "dropped_files", 13); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) ? 1 : 0))) {
+        { Value v11 = em_sub(INT_VAL(0LL), INT_VAL(3LL), 0);
             drop_value(&g_em, a0);
-            return v10;
+            return v11;
         }
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v11 = a0; if (IS_OBJ(v11)) OBJ_RETAIN(AS_OBJ(v11)); v11; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "args", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v12 = em_sub(INT_VAL(0LL), INT_VAL(2LL), 0);
-            drop_value(&g_em, a0);
-            return v12;
-        }
-    }
-    if (em_truthy(em_ge(em_fn_402(own_into_slot(&g_em, a0)), INT_VAL(0LL), 0))) {
-        { Value v13 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
+    if (em_truthy(em_eq_op(&g_em, ({ Value v12 = a0; if (IS_OBJ(v12)) OBJ_RETAIN(AS_OBJ(v12)); v12; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "args", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v13 = em_sub(INT_VAL(0LL), INT_VAL(2LL), 0);
             drop_value(&g_em, a0);
             return v13;
         }
     }
-    { Value v14 = em_sub(INT_VAL(0LL), INT_VAL(4LL), 0);
+    if (em_truthy(em_ge(em_fn_402(own_into_slot(&g_em, a0)), INT_VAL(0LL), 0))) {
+        { Value v14 = em_sub(INT_VAL(0LL), INT_VAL(1LL), 0);
+            drop_value(&g_em, a0);
+            return v14;
+        }
+    }
+    { Value v15 = em_sub(INT_VAL(0LL), INT_VAL(4LL), 0);
         drop_value(&g_em, a0);
-        return v14;
+        return v15;
     }
     drop_value(&g_em, a0);
     return INT_VAL(0);

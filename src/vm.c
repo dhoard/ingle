@@ -1394,6 +1394,17 @@ static Value call_native(VM *vm, int native_id, Value *args, int argc) {
             memcpy(s->chars, val, len);
             return OBJ_VAL(s);
         }
+        case NATIVE_EXE_PATH: {
+            (void)args; (void)argc;
+            size_t len = 0;
+            char *buf = em_exe_path_dup(&len);   // the shared body (runtime.c) — "" when unavailable
+            ObjString *s = make_string(RT(vm), len);
+            if (buf != NULL) {
+                memcpy(s->chars, buf, len);
+                free(buf);
+            }
+            return OBJ_VAL(s);
+        }
         case NATIVE_EXIT: {
             // Request a clean halt rather than calling C exit() here, so a capturing
             // replay/check run still finishes and the `run` driver controls the real exit.

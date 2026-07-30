@@ -4640,6 +4640,12 @@ static SemType check_expr_inner(Checker *c, Expr *e) {
                     }
                     return TY_STRING;
                 }
+                if (nid == NATIVE_EXE_PATH) {
+                    if (argc != 0) {
+                        type_error(c, e->line, e->col, "exe_path takes no arguments");
+                    }
+                    return TY_STRING;
+                }
                 if (nid == NATIVE_EXIT) {
                     if (argc != 1) {
                         type_error(c, e->line, e->col,

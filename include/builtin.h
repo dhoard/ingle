@@ -47,12 +47,17 @@ enum {
                               // i64 (bit-for-bit, no conversion). Lets an Ingle serializer write a float
                               // constant's 8 bytes to the .igb container (docs/design/bytecode-container.md).
 
-    NATIVE_LIST_DIR      = 25 // list_dir(path) -> string — the directory's entries, one per line,
+    NATIVE_LIST_DIR      = 25,// list_dir(path) -> string — the directory's entries, one per line,
                               // subdirectories marked with a trailing '/', SORTED byte-wise over the
                               // printed lines; "" when the directory can't be opened (or is empty).
                               // Sorted because readdir order is filesystem-dependent: the same tree
                               // must list identically on every run and platform — directory order is
                               // a nondeterministic input, and inputs must record/replay (like read_file).
+
+    NATIVE_EXE_PATH      = 26 // exe_path() -> string — the absolute path of the running executable
+                              // (readlink /proc/self/exe on Linux, _NSGetExecutablePath on macOS), "" if
+                              // unavailable. Lets an installed self-hosted toolchain locate its stdlib
+                              // relative to its own binary (<bin>/../std), like the C frontend's init_std_dir.
 };
 
 // A witness method slot normally holds an Ingle function-table index. For a built-in

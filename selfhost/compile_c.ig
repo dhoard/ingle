@@ -42,16 +42,23 @@ fn dirname(s: string) -> string {
 
 fn resolve_import(importer: string, imp: string) -> string {
     if imp.len() >= 4 && byte_slice(imp, 0, 4) == "std/" {
-        // An INSTALLED toolchain sets $INGLE_STD (legacy $EMBER_STD) to the stdlib directory, so `std/x`
-        // resolves regardless of the working directory — the installed `inglec` is run from anywhere. A repo
-        // checkout with std/ in the cwd needs neither and keeps the plain relative path. Mirrors the C
-        // frontend's init_std_dir (src/main.c). `std/x` -> "$INGLE_STD/x.ig", else "std/x.ig".
+        // Resolve the reserved `std/` prefix, mirroring the C frontend's init_std_dir (src/main.c), in order:
+        //   1. $INGLE_STD (legacy $EMBER_STD) — an explicit override wins (non-standard layouts).
+        //   2. the compiler's OWN binary: <bin>/../std via exe_path() — so an INSTALLED toolchain finds its
+        //      stdlib from any working directory, and build/compile_c-self finds the repo std/ too.
+        //   3. the plain relative path — a repo checkout run with std/ in the cwd, or an unsupported platform
+        //      where exe_path() is "".
+        let rest = byte_slice(imp, 4, imp.len())   // the module name after "std/"
         var base = env("INGLE_STD")
         if base == "" {
             base = env("EMBER_STD")
         }
         if base != "" {
-            return base + "/" + byte_slice(imp, 4, imp.len()) + ".ig"
+            return base + "/" + rest + ".ig"
+        }
+        let exe = exe_path()
+        if exe != "" {
+            return dirname(dirname(exe)) + "/std/" + rest + ".ig"   // <exe> -> <bin> -> <prefix>/std
         }
         return imp + ".ig"
     }

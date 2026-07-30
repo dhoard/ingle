@@ -1487,6 +1487,9 @@ fn native_id_for_name(name: string) -> int {
     if name == "env" {
         return 18
     }
+    if name == "exe_path" {
+        return 26
+    }
     if name == "exit" {
         return 19
     }
@@ -1641,7 +1644,7 @@ fn native_id_for_name(name: string) -> int {
 // native_ret_kind classifies a builtin's OWNED return type the way expr_ret_kind does for user calls: -3 a
 // string, -2 an array, -1 a scalar/float/unit (not droppable), or -4 = `name` is not a builtin at all.
 fn native_ret_kind(name: string) -> int {
-    if name == "read_line" || name == "read_file" || name == "env" || name == "from_char_code" || name == "byte_slice" || name == "concat" || name == "from_bytes" || name == "clipboard_get" || name == "dropped_files" || name == "list_dir" {
+    if name == "read_line" || name == "read_file" || name == "env" || name == "exe_path" || name == "from_char_code" || name == "byte_slice" || name == "concat" || name == "from_bytes" || name == "clipboard_get" || name == "dropped_files" || name == "list_dir" {
         return -3
     }
     if name == "args" {
