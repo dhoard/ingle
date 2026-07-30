@@ -11207,6 +11207,43 @@ struct Chunk {
                     self.slot_elem[self.slot_elem.len() - 1] = self.index_elem_code(value.value)
                     return
                 }
+                let fldsid = self.expr_type_kind(value.value)
+                var fld_is_boxed_value = false
+                if fldsid >= 0 && fldsid < self.st_kinds.len() {
+                    if self.st_kinds[fldsid] == 0 && self.struct_all_scalar(fldsid) == false {
+                        fld_is_boxed_value = true
+                    }
+                }
+                // Does the RHS need an INDEPENDENT deep copy of a boxed value struct? A FIELD read (`c.b`) is a
+                // shared reference into the source's buffer, so it ALWAYS copies (both let and var). A bare LOCAL
+                // read (`ln`) only needs a copy when the binding is MUTABLE (`var dup = ln; dup.a.x = 100`) — an
+                // immutable `let a = p` can safely ALIAS (handled later by boxed_struct_local_slot). (OFI-031)
+                var rhs_needs_deep_copy = false
+                match value.value {
+                    case EGet(gobj, gname) {
+                        rhs_needs_deep_copy = true
+                    }
+                    case EIdent(inm) {
+                        if is_var {
+                            let isl = self.resolve_slot(inm)
+                            if isl >= 0 && isl < self.slot_boxed.len() && self.slot_boxed[isl] {
+                                rhs_needs_deep_copy = true
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
+                if rhs_needs_deep_copy && fld_is_boxed_value {
+                    // A boxed (non-all-scalar) plain VALUE-struct copy-out. Bind an INDEPENDENT deep copy:
+                    // OP_INCREF's own_into_slot recursively clones the value-struct buffer (and retains any
+                    // refcounted leaf, COW) — else a later mutation of the source leaks into the copy. Carries
+                    // the struct id so `copy.a.v` types. Droppable (owns the cloned box). (OFI-031)
+                    self.gen_expr(value.value, value.line)
+                    self.emit(OP_INCREF)
+                    self.declare_binding(name, 1, fldsid, false, true, true, false)
+                    return
+                }
                 if self.is_fn_value(value.value) || (ty.len() > 0 && ty_is_fn(ty[0])) {
                     // `let g = double` / `let h: fn(int)->int = |x| …` lands an owned CLOSURE (refcounted) ->
                     // a single droppable slot.
