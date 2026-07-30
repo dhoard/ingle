@@ -4889,6 +4889,28 @@ struct CgcGen {
     }
 
 
+    // expr_num_kind returns the scalar WIDTH-kind (num_kind: int/i64=0, sized 1..7, f32/f64=8/9) of a numeric
+    // expression, for a unary `-`/`~`'s runtime mask (stage-0 stamps e->num_kind). A sized-unsigned `~x` masks
+    // to its width (`~u8(0)` = 255, not the i64 -1); an int operand is 0 → identical emit to before. (OFI-224)
+    fn expr_num_kind(self, e: ps.Expr) -> int {
+        match e {
+            case EIdent(name) {
+                let k = self.lookup_kind(name)
+                if k < 0 {
+                    return 0
+                }
+                return k
+            }
+            case EInt(v, kind) {
+                return kind
+            }
+            case _ {
+                return 0
+            }
+        }
+    }
+
+
     fn fn_index(self, name: string) -> int {
         var i = 0
         loop {
@@ -5791,10 +5813,11 @@ struct CgcGen {
                 if uid == 2 {
                     return "em_not({self.emit_expr(operand.value)})"
                 }
+                let unk = self.expr_num_kind(operand.value)
                 if uid == 3 {
-                    return "em_bitnot({self.emit_expr(operand.value)}, 0)"
+                    return "em_bitnot({self.emit_expr(operand.value)}, {unk})"
                 }
-                return "em_neg({self.emit_expr(operand.value)}, 0)"
+                return "em_neg({self.emit_expr(operand.value)}, {unk})"
             }
             case ECall(callee, args, arg_names) {
                 return self.emit_call(callee.value, args, arg_names)
