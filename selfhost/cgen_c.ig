@@ -8052,7 +8052,10 @@ struct CgcGen {
             i = i + 1
         }
         var rtype = "Value"
-        if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 {
+        // em_s (by-value aggregate) ONLY for a VALUE-struct return; a BOXED-struct return (e.g. `new_bag<K>()`
+        // -> Bag<K>, which has a heap `[K]` field) is a Value in C — the callee's signature already erases it via
+        // is_value, so the result temp must agree or the C won't compile (`em_s1 c = <Value>`). (OFI-224 v1.0)
+        if fi >= 0 && fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 && self.st.is_value(self.fn_ret_struct[fi]) {
             rtype = "em_s{self.fn_ret_struct[fi]}"
         }
         s = s + "{rtype} c{rid} = em_fn_{fi}("
