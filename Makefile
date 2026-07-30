@@ -178,7 +178,7 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp doctor help release stage0 asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
 all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
 
@@ -280,6 +280,19 @@ test-lsp: all
 release: | build
 	$(CC) $(RELEASE_FLAGS) $(SOURCES) $(LDLIBS_MATH) -o $(RELEASE_BIN)
 	@$(call LINK_COMPAT,$(RELEASE_BIN))
+
+# --- OFI-224 G4 Stage B3: the FROZEN FRONTEND HOST ---
+# build/inglec-stage0 — the C reference frontend, built (from $(SOURCES), runner_main.c already filtered out)
+# as a NAMED, non-default artifact. Post-flip it is no longer the default `inglec`, but it survives as the
+# tooling/LSP host: the self-hosted dispatcher execs it for --lsp / --doctor / the introspection --emit modes
+# (--emit=ast/tokens/check/bytecode/trace/docs/prove/replay) and --run-bytecode/--tape/--freestanding, which the
+# self-hosted compiler does not implement. The LSP port + the full frontend retirement are v1.1 (G6). This is
+# the SAME binary as `release`, just under the stage0 name the dispatcher looks for.
+STAGE0_BIN := build/inglec-stage0
+stage0: | build
+	$(CC) $(RELEASE_FLAGS) $(SOURCES) $(LDLIBS_MATH) -o $(STAGE0_BIN)
+	@$(call LINK_COMPAT,$(STAGE0_BIN))
+	@echo "built $(STAGE0_BIN) — the frozen C frontend / LSP+tooling host (non-default; the dispatcher execs it)."
 
 # AddressSanitizer compilers (see ASAN_FLAGS). Run the suite under one with:
 #   make asan && ASAN_OPTIONS=detect_leaks=0 build/inglec-asan --emit=run <file.ig>

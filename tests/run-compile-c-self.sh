@@ -89,5 +89,23 @@ else
 fi
 rm -f "$rprog"
 
+# 5. FROZEN-HOST routing (Stage B2/B3): a mode the self-hosted compiler doesn't implement (e.g. --emit=ast)
+#    must be handed to build/inglec-stage0 — so its output equals the frozen frontend's. Skipped if stage0 isn't
+#    built. (Run from a neutral cwd: the host is resolved relative to CC_SELF's binary, not the cwd.)
+hprog="${TMPDIR:-/tmp}/ccself_host_$$.ig"
+printf 'fn main() -> int {\n    return 0\n}\n' > "$hprog"
+if [ -x "$ROOT/build/inglec-stage0" ]; then
+    via=$( (cd "${TMPDIR:-/tmp}" && "$CC_SELF" --emit=ast "$hprog" 2>/dev/null) )
+    direct=$("$ROOT/build/inglec-stage0" --emit=ast "$hprog" 2>/dev/null)
+    if [ -n "$via" ] && [ "$via" = "$direct" ]; then
+        pass=$((pass + 1)); echo "PASS    compile_c-self --emit=ast routes to the frozen host (== inglec-stage0)"
+    else
+        fail=$((fail + 1)); echo "FAIL    compile_c-self --emit=ast did not route to inglec-stage0"
+    fi
+else
+    echo "SKIP    frozen-host routing — build/inglec-stage0 missing (run: make stage0)"
+fi
+rm -f "$hprog"
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]

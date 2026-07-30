@@ -348,8 +348,43 @@ fn runtime_lib(externs: [string], bindir: string) -> string {
 }
 
 
+// needs_frozen_host reports whether argv asks for something the SELF-HOSTED compiler does not implement — any
+// `--` flag other than the two it owns (--emit=run, --emit=c). That covers --lsp, --doctor, the introspection
+// --emit modes (ast/tokens/check/bytecode/trace/docs/prove/replay), --run-bytecode, --tape, --freestanding,
+// --faults, --version, --help. Those are handed to the frozen stage-0 frontend host. (-o is single-dash, so it
+// stays self-handled; a bare `<file.ig>` with no flags emits C, which the -o path's self-invoke relies on.)
+fn needs_frozen_host(argv: [string]) -> bool {
+    var i = 0
+    loop {
+        if i >= argv.len() {
+            break
+        }
+        let a = argv[i]
+        if a.len() >= 2 && byte_slice(a, 0, 2) == "--" {
+            if a != "--emit=run" && a != "--emit=c" {
+                return true
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+
 fn main() -> int {
     let argv = args()
+
+    // FROZEN-HOST routing: anything the self-hosted compiler doesn't implement (--lsp, --doctor, the
+    // introspection --emit modes, --run-bytecode, …) is served by the frozen stage-0 frontend — exec it with
+    // the ORIGINAL argv, so the process BECOMES the host (the LSP's long-lived stdio and every exit code flow
+    // straight through). Porting these off the frozen frontend (the LSP first) is deferred to v1.1 / G6.
+    if needs_frozen_host(argv) {
+        let host = "{dirname(exe_path())}/inglec-stage0"
+        let _ = exec(host, argv)
+        println("inglec: the tooling host is not installed ({host}) — build it with `make stage0`")
+        exit(127)
+    }
+
     // Parse `[-o <out>] <file.ig>` — `-o` anywhere selects native-compile mode; the lone non-flag arg is the
     // entry. No `-o` keeps the differential C-emit-to-stdout path (pipe straight to cc).
     var entry = ""
