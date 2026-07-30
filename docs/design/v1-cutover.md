@@ -406,3 +406,26 @@ exactly where Go 1.5 and Rust 1.0 stood.
   json.ig native == VM byte-for-byte. `make selfhost` **1796/0** (33/33 cgen_c_run, 49/49 M5 byte-identical,
   reproduction fixed point holds — the change bit only the corpus, not any selfhost source). Gated
   `cgen_c_run/gopt_param_concrete_enum_payload.ig`. **The json gap is closed; G4 (the flip) is unblocked.**
+- **2026-07-30 — G4 FUSED DRIVER BUILT + CORPUS RUNTIME-VALIDATED; the last 3 self-only native gaps CLOSED.**
+  Built `build/compile_c-self` (the fused check→C-emit driver destined to be the default `inglec`; rejects type
+  errors exit 65, emits clean C via `exit(0)`). Then ran a **runtime** validation — not just "does it emit C":
+  every one of **419 corpus programs** compiled through the self-hosted native path (compile_c-self → cc → run)
+  and diffed against the bytecode VM oracle, then each failure re-checked against **stage-0's own native path**
+  to partition self-only gaps from limitations stage-0 shares. Result: **275 clean pass**, 85 reject-parity, 15
+  error/panic programs fault correctly (OFI-109 bare-panic), and — after partitioning — the self-hosted native
+  path matches stage-0's native path across the WHOLE corpus. The apparent failures decompose as: **shared/
+  not-a-native-target** (5 web examples + all graphics: stage-0 native also fails — the web/raylib backends are
+  VM-only; `numeric_literals` u64-render and `clone`/OFI-082: stage-0 native also wrong/rejects), **artifacts**
+  (`modlib/*` are library modules, not programs; `try_recv` needs the channel runtime), and **3 genuine
+  self-only gaps**, all fixed (`3445a9c`): (1) **ufcs bool-render** — a UFCS method-style call on a non-struct
+  receiver rendered its bool via `%lld` ("1"/"0"); render_kind_of_expr gained the `fn_index(mname)` fallback.
+  (2) **proc CC-fail** — a call returning a BOXED (rc/resource) struct with an owning-temp arg typed the result
+  temp `em_s{sid}` instead of Value; two sibling sites now gate em_s on `st.is_value` (mirroring 280332d).
+  (3) **spawn_generic SIGSEGV** — `spawn` of a bounded-generic fn omitted the hidden witness args; emit_spawn now
+  prepends them (mirroring emit_bounded_free_call). Gated `cgen_c_run/ufcs_bool_render.ig`,
+  `cgen_c_run/boxed_struct_return_owning_arg.ig`, and a NEW `cgen_c_run_par` stage (parallel runtime) with
+  `spawn_generic_witness.ig`. `make selfhost` **1805/0**, `make bootstrap` green (seed reseeded), reproduction
+  fixed point holds. **G4's C-emit coverage is now honest-complete: the self-hosted native compiler is at parity
+  with stage-0's native compiler across the corpus. The remaining G4 work is the FLIP itself** (rewire
+  make/install/CI/test to the self-hosted compiler + rebuild the flavored targets) — a build-topology change,
+  not a codegen one.
