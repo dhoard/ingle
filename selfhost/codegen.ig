@@ -4235,6 +4235,8 @@ struct Chunk {
                                 //   RETURN), not multi-slot RETURN_STRUCT — the erased boxed-return convention
     self_is_generic: bool       // this fn is a method of a GENERIC struct — its all-scalar struct PARAMS are
                                 //   BOXED (single slot, GET_FIELD), not multi-slot, under the erased convention
+    in_lambda: bool             // this fn is a lifted LAMBDA — a value-struct param arrives BOXED across the
+                                //   indirect CALL_CLOSURE (the closure ABI is uniform), like a generic method's
     cur_fn_name: string         // this function's own name (for synthesizing contract-violation messages)
     fn_ens_e: [ps.Expr]         // this function's `ensures` predicate exprs (checked at every return)
     fn_ens_l: [int]             // ...parallel: each clause's source line (for codegen attribution)
@@ -4351,6 +4353,8 @@ struct Chunk {
     aei_name: [string]          // an array binding of INTERFACE elements (`shapes: [Shape]`) -> its element
     aei_iface: [string]         // ...interface name, so `for s in shapes` types the loop var s as that interface
     pending_lambda_str: [string]  // HOF-context string params to attach to the NEXT lifted lambda (OFI-218 P3)
+    pending_lambda_ptys: [string] // ...positional STRUCT-TYPE names for the NEXT lambda's params (from a
+                                  //   `fn(Point)->int` annotation or a HOF param type), so `|q| q.x` types q
     cur_tp_names: [string]      // THIS fn's own type-param names (`K` for new_bag<K>) — for baking witnesses in
     cur_tp_types: [string]      // ...parallel: the concrete type each binds to in this compilation (`int`)
     cur_self_args: string       // when compiling a bounded-struct METHOD INSTANCE (`Map.get<string_int>`), the
@@ -10279,7 +10283,7 @@ struct Chunk {
             // a plain (borrow) all-scalar struct param is multi-slot; a `mut`/`move` or refcounted-field one
             // is boxed. Either way a struct param is a BORROW — not dropped (unlike a string param). EXCEPT in a
             // GENERIC struct's method, where an all-scalar struct param arrives BOXED (the erased convention).
-            if p.qual == 0 && self.struct_all_scalar(sid) && self.self_is_generic == false {
+            if p.qual == 0 && self.struct_all_scalar(sid) && self.self_is_generic == false && self.in_lambda == false {
                 self.declare_binding(p.name, self.struct_field_count(sid), sid, false, false, false, false)
             } else if p.qual == 2 {
                 // a `move` struct param OWNS the value (moved in, boxed at the call site) -> boxed AND DROPPED at
@@ -11007,8 +11011,12 @@ struct Chunk {
                 // Annotate the lambda's params known to be STRINGS from the HOF call context (`reduce(words,
                 // "", |acc, w| …)` -> acc, w are strings), so declare_param types them + infer_str_params
                 // skips them — the lambda body `acc + w` compiles as string CONCAT, not int ADD (OFI-218 P3).
-                let aparams = annotate_str_params(params, self.pending_lambda_str)
+                let aparams0 = annotate_str_params(params, self.pending_lambda_str)
+                // Also annotate a lambda param known to be a STRUCT from the `fn(Struct)->..` annotation / HOF
+                // param type (`|q| q.x` where q: Point), so declare_param types it and `q.field` resolves.
+                let aparams = annotate_ptype_params(aparams0, self.pending_lambda_ptys)
                 self.pending_lambda_str = []
+                self.pending_lambda_ptys = []
                 let synth = ps.FnDecl { name: "<lambda>", generics: [], params: aparams, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [] }
                 self.lifted.append(LambdaSpec { decl: synth, caps: cflags })
             }
@@ -11055,7 +11063,11 @@ struct Chunk {
             if i >= args.len() {
                 break
             }
-            self.gen_expr(args[i], line)
+            if self.value_struct_arg_sid(args[i]) >= 0 {
+                self.gen_value_struct_boxed_arg(args[i], line)   // a value-struct closure arg -> ONE boxed slot
+            } else {
+                self.gen_expr(args[i], line)
+            }
             i = i + 1
         }
         self.gen_expr(callee, line)                  // the closure value: GET_LOCAL for a local, or a call result
@@ -11246,8 +11258,32 @@ struct Chunk {
                 }
                 if self.is_fn_value(value.value) || (ty.len() > 0 && ty_is_fn(ty[0])) {
                     // `let g = double` / `let h: fn(int)->int = |x| …` lands an owned CLOSURE (refcounted) ->
-                    // a single droppable slot.
+                    // a single droppable slot. From a `fn(Point)->int` annotation, thread the STRUCT param types to
+                    // the lambda so `|q| q.x` types q as Point (else q.x is an untypeable-object error).
+                    if ty.len() > 0 {
+                        match ty[0] {
+                            case TyFn(fparams, fret) {
+                                var pt: [string] = []
+                                var pi = 0
+                                loop {
+                                    if pi >= fparams.len() {
+                                        break
+                                    }
+                                    if self.type_struct_id(fparams[pi]) >= 0 {
+                                        pt.append(ty_key_name(fparams[pi]))
+                                    } else {
+                                        pt.append("")
+                                    }
+                                    pi = pi + 1
+                                }
+                                self.pending_lambda_ptys = pt
+                            }
+                            case _ {
+                            }
+                        }
+                    }
                     self.gen_expr(value.value, value.line)
+                    self.pending_lambda_ptys = []
                     self.declare_binding(name, 1, -1, false, true, false, false)
                     return
                 }
@@ -13059,6 +13095,36 @@ struct LambdaSpec {
 
 // annotate_str_params returns `params` with each param named in `strs` given a `string` type annotation
 // (an untyped param only), so it types as a string local and infer_str_params skips it (OFI-218 P3).
+// annotate_ptype_params positionally annotates an UNTYPED lambda param with a STRUCT type NAME from `ptys`
+// (the expected `fn(Struct)->..` / HOF param types), so a `|q| q.x` lambda types q as that struct. "" leaves
+// a position unannotated. Mirrors annotate_str_params but positional (not by name) and for struct types.
+fn annotate_ptype_params(params: [ps.Param], ptys: [string]) -> [ps.Param] {
+    var out: [ps.Param] = []
+    var i = 0
+    loop {
+        if i >= params.len() {
+            break
+        }
+        var nty: [ps.Ty] = []
+        if params[i].ty.len() == 0 && i < ptys.len() && ptys[i] != "" {
+            nty.append(ps.TyName("", ptys[i]))
+        } else {
+            var k = 0
+            loop {
+                if k >= params[i].ty.len() {
+                    break
+                }
+                nty.append(params[i].ty[k])
+                k = k + 1
+            }
+        }
+        out.append(ps.Param { qual: params[i].qual, is_self: params[i].is_self, name: params[i].name, ty: nty })
+        i = i + 1
+    }
+    return out
+}
+
+
 fn annotate_str_params(params: [ps.Param], strs: [string]) -> [ps.Param] {
     var out: [ps.Param] = []
     var i = 0
@@ -13590,7 +13656,7 @@ fn compile_fn(f: ps.FnDecl, fn_names: [string], fn_module: [int], cur_module: in
         ntpe.append(wit.nt_pred_e[ntp])
         ntp = ntp + 1
     }
-    var ch = Chunk { code: code, lines: lines, const_is_float: cif, const_int: ci, const_float: cf, strings: strs, locals: locals, local_str: lstr, local_drop: ldr, cur_line: 0, fn_names: clone_strs(fn_names), fn_module: clone_ints(fn_module), cur_module: cur_module, fn_ret_str: clone_bools(fn_rets.str), fn_ret_arr: clone_bools(fn_rets.arr), fn_ret_elem: clone_ints(fn_rets.elem), fn_ret_sid: clone_ints(fn_rets.sid), fn_ret_enum: clone_bools(fn_rets.enm), fn_ret_kind: clone_ints(fn_rets.kind), fn_ret_ok: clone_ints(fn_rets.ok), fn_ret_err: clone_ints(fn_rets.err), ext_names: clone_strs(fn_rets.ext_names), ext_kinds: clone_ints(fn_rets.ext_kinds), ext_pquals: clone_strs(fn_rets.ext_pquals), lambda_base: lambda_base, lifted: [], generic_fns: clone_strs(generic_fns), generic_pquals: clone_strs(generic_pquals), fn_inst_keys: clone_strs(fn_inst_keys), inst_base: inst_base, cont_targets: conts, loop_bases: loopb, break_jumps: brkj, break_bases: brkb, slot_struct: sslot, slot_boxed: sbox, slot_array: sarr, slot_elem: selem, slot_elem2: [], slot_elem_targs: [], slot_elem_kind: [], slot_kind: skind, slot_iface: [], st_mod: clone_ints(fn_rets.st_mod), et_mod: clone_ints(fn_rets.et_mod), imp_from: clone_ints(fn_rets.imp_from), imp_alias: clone_strs(fn_rets.imp_alias), imp_to: clone_ints(fn_rets.imp_to), cur_ret_elem: 0 - 99, cur_return_span: 0, cur_ret_iface: "", ret_box_struct: false, self_is_generic: false, cur_fn_name: f.name, fn_ens_e: ee, fn_ens_l: el, ret_kind: ret_k, ret_droppable: ret_drop, ret_is_str: ret_str, st_names: clone_strs(structs.names), st_kinds: clone_ints(structs.kinds), st_fowner: clone_ints(structs.f_owner), st_fname: clone_strs(structs.f_name), st_fscalar: clone_bools(structs.f_scalar), st_fstring: clone_bools(structs.f_string), st_farray: clone_bools(structs.f_array), st_fstruct: clone_ints(structs.f_struct), st_fiface: clone_strs(structs.f_iface), st_felem: clone_ints(structs.f_elem), st_felem2: clone_ints(structs.f_elem2), st_farrkind: clone_ints(structs.f_arrkind), st_fenum: clone_bools(structs.f_enum), st_fkind: clone_ints(structs.f_kind), st_ftpname: clone_strs(structs.f_tpname), st_ftpidx: clone_ints(structs.f_tpidx), st_felem_payload: clone_ints(structs.f_elem_payload), st_felem_payload_tp: clone_strs(structs.f_elem_payload_tp), st_felem_tpidx: clone_ints(structs.f_elem_tpidx), st_ftargs: clone_strs(structs.f_targs), inst_keys: clone_strs(instances), et_names: clone_strs(enums.e_names), ev_owner: clone_ints(enums.v_owner), ev_name: clone_strs(enums.v_name), ev_tag: clone_ints(enums.v_tag), ev_arity: clone_ints(enums.v_arity), ev_fvar: clone_ints(enums.vf_var), ev_fstring: clone_bools(enums.vf_string), ev_fstruct: clone_ints(enums.vf_struct), ev_farray: clone_bools(enums.vf_array), ev_felem: clone_ints(enums.vf_elem), ev_fenum: clone_bools(enums.vf_enum), ev_fkind: clone_ints(enums.vf_kind), ev_ftpidx: clone_ints(enums.vf_tpidx), ev_fname: clone_strs(enums.vf_name), erecv_name: [], erecv_targs: [], gc_names: clone_strs(globals.names), gc_kind: clone_ints(globals.kind), gc_ival: clone_ints(globals.ival), gc_sval: clone_strs(globals.sval), gc_bval: clone_bools(globals.bval), gc_fval: clone_floats(globals.fval), gc_line: clone_ints(globals.line), expected_key: "", if_names: clone_strs(wit.if_names), ifm_iface: clone_ints(wit.ifm_iface), ifm_name: clone_strs(wit.ifm_name), ifm_owning: clone_bools(wit.ifm_owning), ifm_ret_str: clone_bools(wit.ifm_ret_str), ifm_ret_kind: clone_ints(wit.ifm_ret_kind), gb_fn: clone_strs(wit.gb_fn), gb_tpname: clone_strs(wit.gb_tpname), gb_bound: clone_strs(wit.gb_bound), gb_argidx: clone_ints(wit.gb_argidx), impl_struct: clone_strs(wit.impl_struct), impl_iface: clone_strs(wit.impl_iface), sg_struct: clone_strs(wit.sg_struct), sg_tparam: clone_strs(wit.sg_tparam), sg_bound: clone_strs(wit.sg_bound), gret_fn: clone_strs(wit.gret_fn), gret_arr: clone_bools(wit.gret_arr), gret_argidx: clone_ints(wit.gret_argidx), gret_bare: clone_bools(wit.gret_bare), mpe_key: clone_strs(wit.mpe_key), mpe_flags: clone_strs(wit.mpe_flags), mrp_key: clone_strs(wit.mrp_key), mrp_tpidx: clone_ints(wit.mrp_tpidx), mre_tpidx: clone_ints(wit.mre_tpidx), mrb_tpidx: clone_ints(wit.mrb_tpidx), hof_name: clone_strs(wit.hof_name), hof_fpi: clone_ints(wit.hof_fpi), hof_srcs: clone_strs(wit.hof_srcs), nt_name: clone_strs(wit.nt_name), nt_base: clone_ints(wit.nt_base), nt_pred_owner: clone_ints(wit.nt_pred_owner), nt_pred_e: ntpe, nt_pred_line: clone_ints(wit.nt_pred_line), allfn_name: clone_strs(wit.allfn_name), allfn_pquals: clone_strs(wit.allfn_pquals), allfn_ptypes: clone_strs(wit.allfn_ptypes), allfn_rettype: clone_strs(wit.allfn_rettype), refine_self_arg: [], wit_tpname: [], wit_bound: [], wit_slot: [], tp_pslot: [], tp_pname: [], gopt_params: [], cur_tp_names: [], cur_tp_types: [], cur_self_args: "", copy_tparams: [], at_base_generic: false, mwit_tpname: [], mwit_bound: [], mwit_field: [], mrecv_name: [], mrecv_args: [], prcv_name: [], prcv_args: [], amelem_name: [], amelem_key: [], aei_name: [], aei_iface: [], pending_lambda_str: [] }
+    var ch = Chunk { code: code, lines: lines, const_is_float: cif, const_int: ci, const_float: cf, strings: strs, locals: locals, local_str: lstr, local_drop: ldr, cur_line: 0, fn_names: clone_strs(fn_names), fn_module: clone_ints(fn_module), cur_module: cur_module, fn_ret_str: clone_bools(fn_rets.str), fn_ret_arr: clone_bools(fn_rets.arr), fn_ret_elem: clone_ints(fn_rets.elem), fn_ret_sid: clone_ints(fn_rets.sid), fn_ret_enum: clone_bools(fn_rets.enm), fn_ret_kind: clone_ints(fn_rets.kind), fn_ret_ok: clone_ints(fn_rets.ok), fn_ret_err: clone_ints(fn_rets.err), ext_names: clone_strs(fn_rets.ext_names), ext_kinds: clone_ints(fn_rets.ext_kinds), ext_pquals: clone_strs(fn_rets.ext_pquals), lambda_base: lambda_base, lifted: [], generic_fns: clone_strs(generic_fns), generic_pquals: clone_strs(generic_pquals), fn_inst_keys: clone_strs(fn_inst_keys), inst_base: inst_base, cont_targets: conts, loop_bases: loopb, break_jumps: brkj, break_bases: brkb, slot_struct: sslot, slot_boxed: sbox, slot_array: sarr, slot_elem: selem, slot_elem2: [], slot_elem_targs: [], slot_elem_kind: [], slot_kind: skind, slot_iface: [], st_mod: clone_ints(fn_rets.st_mod), et_mod: clone_ints(fn_rets.et_mod), imp_from: clone_ints(fn_rets.imp_from), imp_alias: clone_strs(fn_rets.imp_alias), imp_to: clone_ints(fn_rets.imp_to), cur_ret_elem: 0 - 99, cur_return_span: 0, cur_ret_iface: "", ret_box_struct: false, self_is_generic: false, in_lambda: false, cur_fn_name: f.name, fn_ens_e: ee, fn_ens_l: el, ret_kind: ret_k, ret_droppable: ret_drop, ret_is_str: ret_str, st_names: clone_strs(structs.names), st_kinds: clone_ints(structs.kinds), st_fowner: clone_ints(structs.f_owner), st_fname: clone_strs(structs.f_name), st_fscalar: clone_bools(structs.f_scalar), st_fstring: clone_bools(structs.f_string), st_farray: clone_bools(structs.f_array), st_fstruct: clone_ints(structs.f_struct), st_fiface: clone_strs(structs.f_iface), st_felem: clone_ints(structs.f_elem), st_felem2: clone_ints(structs.f_elem2), st_farrkind: clone_ints(structs.f_arrkind), st_fenum: clone_bools(structs.f_enum), st_fkind: clone_ints(structs.f_kind), st_ftpname: clone_strs(structs.f_tpname), st_ftpidx: clone_ints(structs.f_tpidx), st_felem_payload: clone_ints(structs.f_elem_payload), st_felem_payload_tp: clone_strs(structs.f_elem_payload_tp), st_felem_tpidx: clone_ints(structs.f_elem_tpidx), st_ftargs: clone_strs(structs.f_targs), inst_keys: clone_strs(instances), et_names: clone_strs(enums.e_names), ev_owner: clone_ints(enums.v_owner), ev_name: clone_strs(enums.v_name), ev_tag: clone_ints(enums.v_tag), ev_arity: clone_ints(enums.v_arity), ev_fvar: clone_ints(enums.vf_var), ev_fstring: clone_bools(enums.vf_string), ev_fstruct: clone_ints(enums.vf_struct), ev_farray: clone_bools(enums.vf_array), ev_felem: clone_ints(enums.vf_elem), ev_fenum: clone_bools(enums.vf_enum), ev_fkind: clone_ints(enums.vf_kind), ev_ftpidx: clone_ints(enums.vf_tpidx), ev_fname: clone_strs(enums.vf_name), erecv_name: [], erecv_targs: [], gc_names: clone_strs(globals.names), gc_kind: clone_ints(globals.kind), gc_ival: clone_ints(globals.ival), gc_sval: clone_strs(globals.sval), gc_bval: clone_bools(globals.bval), gc_fval: clone_floats(globals.fval), gc_line: clone_ints(globals.line), expected_key: "", if_names: clone_strs(wit.if_names), ifm_iface: clone_ints(wit.ifm_iface), ifm_name: clone_strs(wit.ifm_name), ifm_owning: clone_bools(wit.ifm_owning), ifm_ret_str: clone_bools(wit.ifm_ret_str), ifm_ret_kind: clone_ints(wit.ifm_ret_kind), gb_fn: clone_strs(wit.gb_fn), gb_tpname: clone_strs(wit.gb_tpname), gb_bound: clone_strs(wit.gb_bound), gb_argidx: clone_ints(wit.gb_argidx), impl_struct: clone_strs(wit.impl_struct), impl_iface: clone_strs(wit.impl_iface), sg_struct: clone_strs(wit.sg_struct), sg_tparam: clone_strs(wit.sg_tparam), sg_bound: clone_strs(wit.sg_bound), gret_fn: clone_strs(wit.gret_fn), gret_arr: clone_bools(wit.gret_arr), gret_argidx: clone_ints(wit.gret_argidx), gret_bare: clone_bools(wit.gret_bare), mpe_key: clone_strs(wit.mpe_key), mpe_flags: clone_strs(wit.mpe_flags), mrp_key: clone_strs(wit.mrp_key), mrp_tpidx: clone_ints(wit.mrp_tpidx), mre_tpidx: clone_ints(wit.mre_tpidx), mrb_tpidx: clone_ints(wit.mrb_tpidx), hof_name: clone_strs(wit.hof_name), hof_fpi: clone_ints(wit.hof_fpi), hof_srcs: clone_strs(wit.hof_srcs), nt_name: clone_strs(wit.nt_name), nt_base: clone_ints(wit.nt_base), nt_pred_owner: clone_ints(wit.nt_pred_owner), nt_pred_e: ntpe, nt_pred_line: clone_ints(wit.nt_pred_line), allfn_name: clone_strs(wit.allfn_name), allfn_pquals: clone_strs(wit.allfn_pquals), allfn_ptypes: clone_strs(wit.allfn_ptypes), allfn_rettype: clone_strs(wit.allfn_rettype), refine_self_arg: [], wit_tpname: [], wit_bound: [], wit_slot: [], tp_pslot: [], tp_pname: [], gopt_params: [], cur_tp_names: [], cur_tp_types: [], cur_self_args: "", copy_tparams: [], at_base_generic: false, mwit_tpname: [], mwit_bound: [], mwit_field: [], mrecv_name: [], mrecv_args: [], prcv_name: [], prcv_args: [], amelem_name: [], amelem_key: [], aei_name: [], aei_iface: [], pending_lambda_str: [], pending_lambda_ptys: [] }
     ch.cur_return_span = ch.return_struct_span(f.ret)
     ch.cur_ret_elem = ch.ret_elem_code(f.ret)
     if f.ret.len() > 0 {
@@ -13604,6 +13670,7 @@ fn compile_fn(f: ps.FnDecl, fn_names: [string], fn_module: [int], cur_module: in
     // arrives BOXED (single slot, GET_FIELD) not exploded — the caller can't know the concrete layout. A free fn
     // / non-generic method multi-slots (verified against stage-0).
     ch.self_is_generic = self_struct_id >= 0 && cg_index_of(ch.sg_struct, ch.st_names[self_struct_id]) >= 0
+    ch.in_lambda = f.name == "<lambda>"     // a lifted lambda boxes its value-struct params (closure ABI)
     if ch.self_is_generic && ch.cur_return_span > 0 {
         ch.ret_box_struct = true
         ch.cur_return_span = 0
