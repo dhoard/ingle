@@ -10976,6 +10976,63 @@ fn enum_payload_generic(ty: ps.Ty, generics: [ps.GenericParam]) -> bool {
 }
 
 
+// ty_is_refc_concrete reports whether a CONCRETE (non-type-param) type is refcounted / heap-owned — a string,
+// an enum, a closure, an array, or a BOXED (rc/resource/erased) struct. A value struct and a scalar are not.
+fn ty_is_refc_concrete(ty: ps.Ty, en: EnumTab, st: StructTab) -> bool {
+    match ty {
+        case TyName(qual, name) {
+            if name == "string" {
+                return true
+            }
+            if enum_name_known(name, en) {
+                return true
+            }
+            let sid = st.sid_of(name)
+            if sid >= 0 {
+                return st.is_value(sid) == false
+            }
+            return false
+        }
+        case TyGeneric(qual, name, args) {
+            if enum_name_known(name, en) {
+                return true                 // Option/Result/user generic-enum instance
+            }
+            let sid = st.sid_of_ty(ty)
+            if sid >= 0 {
+                return st.is_value(sid) == false
+            }
+            return false
+        }
+        case TyArray(elem) {
+            return true                     // a `[T]` payload is a unique-owner aggregate (own_into_slot clones)
+        }
+        case TyFn(params, ret) {
+            return true                     // a closure is a refcounted heap object
+        }
+    }
+}
+
+
+// opt_result_payload_refc reports whether `ty` is an Option<P>/Result<P,_> whose payload P is a CONCRETE
+// refcounted type. Backs the concrete-payload gopt-PARAM case: `match p { case Ok(v) }` on a param
+// `p: Result<json.Json, string>` binds v a refcounted borrow (json.Json is an enum), so consuming it into a call
+// own_into_slots — matching stage-0's monomorphised emit. enum_payload_generic already covers the erased-T
+// payload; this closes the concrete refcounted payload the merged self-hosted emit does not monomorphise. (OFI-224.)
+fn opt_result_payload_refc(ty: ps.Ty, en: EnumTab, st: StructTab) -> bool {
+    match ty {
+        case TyGeneric(q, n, args) {
+            if (n == "Option" || n == "Result") && args.len() >= 1 {
+                return ty_is_refc_concrete(args[0], en, st)
+            }
+            return false
+        }
+        case _ {
+            return false
+        }
+    }
+}
+
+
 fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: StructTab, en: EnumTab, fn_names: [string], fnres: FnResolve, fn_ret_kind: [int], fn_ret_render: [int], fn_ret_opt_param: [int], fn_ret_str: [bool], fn_ret_array: [bool], fn_ret_elem_kind: [int], fn_ret_elem_struct: [int], fn_ret_struct: [int], fn_ret_enum: [bool], consts: ConstTab, lambda_start: int, fn_ret_det_arg: [int], fn_ret_det_elem: [bool], fn_ret_lam_arg: [int], fn_ret_lam_in: [int], fn_hof_srcs: [int], fn_param_gen_mask: [int], lam_pstr: [bool], lam_pkind: [int], extern_names: [string], extern_ret_kind: [int], extern_ret_str: [bool], extern_ret_struct: [int], lam_pstruct: [int]) -> [int] {
     // This function's source module — an unqualified free call inside it prefers a same-module definition when
     // the name collides across merged modules (a lifted lambda idx runs past the table; "" leaves it unqualified).
@@ -11135,8 +11192,10 @@ fn emit_fn_body(f: ps.FnDecl, idx: int, has_self: bool, owner_sid: int, st: Stru
                     g.set_last_tyvar(true)        // mark it a type-param read source, so `var acc = <this>` inherits (F2)
                 }
                 // A generic Option/Result param (`o: Option<T>`) — record it so `case Some(v)`/`case Ok(v)` on it
-                // binds its erased payload as a refcounted borrow too.
-                if enum_payload_generic(f.params[p].ty[0], f.generics) {
+                // binds its erased payload as a refcounted borrow too. A CONCRETE refcounted payload
+                // (`p: Result<json.Json, string>`) needs the same treatment — the merged emit does not
+                // monomorphise, so `case Ok(v)` must own_into_slot v on consume to match stage-0. (OFI-224.)
+                if enum_payload_generic(f.params[p].ty[0], f.generics) || opt_result_payload_refc(f.params[p].ty[0], en, st) {
                     g.cur_gopt.append(f.params[p].name)
                 }
                 // A param typed as one of the OWNER struct's BOUNDED type-params (`key: K` in a Map<K,V> method)

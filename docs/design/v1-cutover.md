@@ -392,3 +392,17 @@ exactly where Go 1.5 and Rust 1.0 stood.
   **focused OFI-174 return-typing/witness campaign** (+ OFI-225 fix), approached deliberately — not more
   tail-of-session slices. **Recommendation: bank the pushed milestone (46→34, a quarter of the frontier,
   all public + CI-green) and take the remaining frontier as that dedicated campaign.**
+- **2026-07-30 — json.ig runtime-correctness crash FIXED (Karl: "fix it now before flipping").** A class
+  *distinct* from the §4a exit-70 hard-fails: json.ig **emitted C, compiled, and then CRASHED at runtime**
+  (a silent miscompile → double-free → segfault on the next allocation) — the most dangerous flavour for a
+  "flip the default" decision. Root cause: a match on a PARAM whose type is `Result<json.Json, string>` (a
+  **concrete refcounted** payload) bound `case Ok(v)` a borrow, and consuming v into the interpolation-hole
+  call `{json.stringify(v)}` failed to `own_into_slot` it — the callee freed the enum the scrutinee still
+  owned. The self-hosted emit only marked the **generic** `Option<T>`/`Result<T,_>` param payload refcounted
+  (`enum_payload_generic` → `cur_gopt`); the **concrete** refcounted payload (enum/string/closure/array/boxed
+  struct) was missed because the merged emit does not monomorphise. Fix: `opt_result_payload_refc` +
+  `ty_is_refc_concrete` join the gopt over-approximation, so `case Ok(v)` on a concrete-refc-payload param now
+  `own_into_slot`s on consume — matching stage-0's monomorphised `em_fn_N(own_into_slot(&g_em, v))`.
+  json.ig native == VM byte-for-byte. `make selfhost` **1796/0** (33/33 cgen_c_run, 49/49 M5 byte-identical,
+  reproduction fixed point holds — the change bit only the corpus, not any selfhost source). Gated
+  `cgen_c_run/gopt_param_concrete_enum_payload.ig`. **The json gap is closed; G4 (the flip) is unblocked.**
