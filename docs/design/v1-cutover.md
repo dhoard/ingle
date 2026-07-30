@@ -481,3 +481,32 @@ exactly where Go 1.5 and Rust 1.0 stood.
   `<bin>/../std` to /std); with the std path correct, the FFI bands were the complete fix.** **All pre-flip work
   is now done — the only remaining G4 work is Stage B itself: the default-flip (all/test/install/CI) + the
   `inglec`→frozen-frontend-host LSP dispatcher.**
+
+### 5b. Stage B — the flip (plan, Karl-ratified 2026-07-30)
+
+Five phases, each testable + reversible on its own. Ratified answers to the three forks, grounded in what
+Rust/Go/Zig/TypeScript did at the same point:
+- **LSP:** DISPATCHER now, port the LSP in v1.1 — every self-hosting language self-hosted the COMPILER first and
+  treated the LSP as separate later tooling (rustc≫rust-analyzer; Go's gc≫gopls; zig≫zls). A real LSP needs the
+  self-hosted checker to carry source POSITIONS, which it lacks — a v1.1 prerequisite campaign, not a flip
+  blocker. So the frozen frontend hosts `--lsp`/`--doctor` via the dispatcher; retiring it fully is G6/v1.1.
+- **Quick-run (`--emit=run`):** the SELF-HOSTED VM (`emberc.ig` → `.igb` → `--run-bytecode`, frontend-free) — the
+  VM backend is corpus-complete (the 83/83 parity campaign), so quick-run is fully self-hosted AND fast (no cc).
+- **`make test`:** SPLIT, like Rust (stage1 runs the suite) / Go (tests built by the Go compiler) — behaviour
+  tests (`--emit=run`, `-o`) move to the self-hosted compiler; the frontend-internal introspection goldens
+  (`--emit=tokens`/`ast` dumps of the compiler's own stages) stay as the FROZEN frontend's own regression.
+
+Phases:
+- **B1 — one-command native compile.** Grow `compile_c.ig` into the driver: `inglec -o app app.ig` checks →
+  emits C → invokes cc → links the runtime, auto-selected from the program's profile (reuse `ffi_band_profile`
+  for db/web/net + a concurrency check for par, else default). Needs `std/proc` (to run cc) + `exe_path` (find
+  the runtime lib/headers relative to the binary — the resolution added in Stage A).
+- **B2 — the dispatcher.** `inglec` routes: build/compile (`-o`, `--emit=c`) → self-hosted; quick-run
+  (`--emit=run`) → the self-hosted VM; `--lsp`/`--doctor`/introspection → EXEC the frozen frontend host. Needs a
+  small `exec` native (replace-process, for the long-lived LSP stdio), consistent with the `exe_path` native.
+- **B3 — the frozen frontend host.** A `make stage0` target that still builds the C frontend as `inglec-stage0`
+  (the LSP/tooling host), kept + buildable, never deleted (G5(b)).
+- **B4 — flip make/install/CI.** `make`/`install` produce + install the self-hosted `inglec` (default) +
+  `inglec-stage0` (host) + the runtime libs + headers + std; CI builds + guards both.
+- **B5 — flavored targets.** Point the flavored NATIVE compiles at the self-hosted driver + the right runtime
+  (db/web proven; net/par/graphics too); the flavored VMs stay the frozen frontend flavors.
