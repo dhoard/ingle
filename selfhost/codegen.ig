@@ -7449,9 +7449,10 @@ struct Chunk {
                 }
                 let midx = self.resolve_method_index(recv, self.st_names[sid], mname)
                 let erase = self.method_param_erasure(self.st_names[sid], mname)
+                let gen_recv = self.recv_struct_is_generic(sid)   // a GENERIC-struct receiver boxes value-struct args
                 self.cur_line = line
                 if self.slot_boxed[slot] {
-                    let plan = self.plan_erased_mask(args, erase)
+                    let plan = self.plan_erased_mask(args, erase, gen_recv)
                     if plan.keep == 0 {
                         self.emit(OP_GET_LOCAL)
                         self.emit_idx(slot)
@@ -7460,7 +7461,7 @@ struct Chunk {
                         self.emit_idx(midx)
                         self.emit_idx(1 + n)
                     } else {
-                        self.push_mask_temps(args, line, plan)   // owning-temp args pushed BELOW the receiver
+                        self.push_mask_temps(args, line, plan, gen_recv)   // owning-temp args pushed BELOW the receiver
                         self.emit(OP_GET_LOCAL)
                         self.emit_idx(slot)
                         let n = self.push_masked_args(args, line, erase, plan)
@@ -7562,7 +7563,8 @@ struct Chunk {
                     // directly. A method on a generic-struct field retargets to its monomorphized instance.
                     let midx = self.resolve_field_method_index(object, self.st_names[tk], mname)
                     let erase = self.method_param_erasure(self.st_names[tk], mname)
-                    let plan = self.plan_erased_mask(args, erase)
+                    let gen_recv2 = self.recv_struct_is_generic(tk)
+                    let plan = self.plan_erased_mask(args, erase, gen_recv2)
                     self.cur_line = line
                     if self.is_owning_temp_obj(object) {
                         match object {
@@ -7603,7 +7605,7 @@ struct Chunk {
                     } else {
                         // an owning-temp arg (`map.set(k, Win{..})`) is kept BELOW the borrowed receiver, then
                         // PICK'd as a borrow alias and DROP_UNDER'd from under the result (stage-0's mask).
-                        self.push_mask_temps(args, line, plan)
+                        self.push_mask_temps(args, line, plan, gen_recv2)
                         self.gen_expr(object, line)
                         let n = self.push_masked_args(args, line, erase, plan)
                         self.emit(OP_CALL)
@@ -7670,7 +7672,16 @@ struct Chunk {
     // DROP_UNDER around the call: (a) an owning-temp ARRAY/object (`s.bytes()`, `[..]`, an array-returning call)
     // passed to a borrow param — user_arg_masked; or (b) an owning-temp STRING or STRUCT-literal passed to an
     // ERASED param (`kw.add("fn")`, `map.set(k, Win{..})`, erase[i]=='1'). keep = how many.
-    fn plan_erased_mask(self, args: [ps.Expr], erase: string) -> MaskPlan {
+    // recv_struct_is_generic reports whether struct `sid` is a GENERIC struct (a member of the sg_struct
+    // table) — the caller-side mirror of the self_is_generic flag set on the decl side. A method call on such
+    // a receiver passes/returns every value-struct param/result BOXED (the generic ABI), so a value-struct arg
+    // must be boxed + masked as an owning temp, not spread multi-slot (OFI-224 VM-parity; workflow-mapped).
+    fn recv_struct_is_generic(self, sid: int) -> bool {
+        return sid >= 0 && sid < self.st_names.len() && cg_index_of(self.sg_struct, self.st_names[sid]) >= 0
+    }
+
+
+    fn plan_erased_mask(self, args: [ps.Expr], erase: string, gen_recv: bool) -> MaskPlan {
         let em = erase.bytes()
         var masked: [bool] = []
         var keep = 0
@@ -7685,6 +7696,9 @@ struct Chunk {
                     m = true
                 }
             }
+            if gen_recv && self.value_struct_arg_sid(args[i]) >= 0 {
+                m = true   // a value-struct arg to a GENERIC-struct method is boxed into one owning temp (kept + PICK'd)
+            }
             masked.append(m)
             if m {
                 keep = keep + 1
@@ -7696,7 +7710,7 @@ struct Chunk {
 
 
     // push_mask_temps pushes each masked owning-temp arg (in arg order) so they sit BELOW the receiver + args.
-    fn push_mask_temps(mut self, args: [ps.Expr], line: int, plan: MaskPlan) {
+    fn push_mask_temps(mut self, args: [ps.Expr], line: int, plan: MaskPlan, gen_recv: bool) {
         var k = 0
         loop {
             if k >= args.len() {
@@ -7707,6 +7721,8 @@ struct Chunk {
                 // not exploded multi-slot; everything else pushes normally.
                 if self.arg_is_owning_temp_struct(args[k]) {
                     self.gen_struct_construct(args[k], line, true)
+                } else if gen_recv && self.value_struct_arg_sid(args[k]) >= 0 {
+                    self.gen_value_struct_boxed_arg(args[k], line)   // a value-struct arg to a generic method -> ONE boxed temp
                 } else {
                     self.gen_expr(args[k], line)
                 }
@@ -8052,6 +8068,15 @@ struct Chunk {
                                     let sname = self.st_names[self.slot_struct[slot]]
                                     let midx = self.resolve_method_index(rname, sname, mname)
                                     return self.call_result_box_sid(midx)
+                                } else if slot >= 0 && slot < self.slot_struct.len() && self.slot_struct[slot] >= 0 && self.slot_boxed[slot] && self.recv_struct_is_generic(self.slot_struct[slot]) {
+                                    // a BOXED GENERIC-struct receiver (`m.insert(..)` on SlotMap<V>): its method returns
+                                    // an all-scalar struct BOXED (ret_box_struct fired on the callee, since its struct is
+                                    // generic), so a `let h = m.insert(..)` binding must UNBOX it into leaf slots. Only for
+                                    // a generic receiver — a non-generic boxed-struct method returns MULTI-SLOT. Use the
+                                    // BASE method's fn-index for the return sid (the monomorph INSTANCE index is beyond
+                                    // fn_ret_sid's bounds; base + instance share the same return type). (OFI-224)
+                                    let bidx = cg_index_of(self.fn_names, "{self.st_names[self.slot_struct[slot]]}.{mname}")
+                                    return self.call_result_box_sid(bidx)
                                 }
                             }
                             case _ {
