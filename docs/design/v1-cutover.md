@@ -463,3 +463,21 @@ exactly where Go 1.5 and Rust 1.0 stood.
   gated `cgen_c_run/exe_path_native.ig`. **Stage A done — the self-hosted compiler is a first-class, installable,
   CI-guarded, frontend-free toolchain.** Next (Karl's ratified order): teach db/web the self-hosted FFI bands,
   then Stage B (default-flip + the `inglec`→frozen-host LSP dispatcher).
+- **2026-07-30 — DB + WEB FFI BANDS DONE: every flavor is self-native (`025ed86`, `fe71e5e`).** Karl's ratified
+  pre-flip work. The em_ffi index of a band function is its position in the runtime's `#if`-gated g_sigs
+  (src/cextern.c) — profile-dependent: default band 0-41, then `web_*` (GFX_HEADLESS) / `http_*` (NET) /
+  `sqlite_*` (SQLITE) at 42+, mutually exclusive per runtime lib. The self-hosted compiler is ONE binary, so it
+  now INFERS the profile from the program's declared externs (`ffi_band_profile`: sqlite_* → db, web_* → web,
+  else http/default) and `cextern_names_ordered(profile)` composes the default band + the matching profile band —
+  so the emitted index matches whichever `libember_rt_*.a` links. The checker's `ffi_registry_names` gains the
+  full superset (name recognition only, not the index; a wrong link fails loudly at link, never a silent
+  miscompile). **Byte-safe:** the compiler's own sources declare no sqlite_/web_ externs → always profile 0 =
+  the old default+http table → reproduction fixed point intact (`make selfhost` 1814/0, seed reseeded). **Both
+  proven END-TO-END, not just compile+link:** a std/sqlite program runs byte-identical to the DB VM (inglec-db),
+  a std/web `web_set_html` program runs byte-identical to the WEB VM (inglec-web). Gated: new `cgen_c_run_db`
+  (SQLite runtime) + `cgen_c_run_web` (headless web runtime) stages in run-selfhost.sh, each with a fixture and a
+  CI `make db`/`make web` step. **A misdiagnosis worth noting: db/web first looked blocked by OFI-173
+  "unresolved callee" — that was entirely a std-PATH artifact (the current-source driver in /tmp resolved
+  `<bin>/../std` to /std); with the std path correct, the FFI bands were the complete fix.** **All pre-flip work
+  is now done — the only remaining G4 work is Stage B itself: the default-flip (all/test/install/CI) + the
+  `inglec`→frozen-frontend-host LSP dispatcher.**
