@@ -40,10 +40,14 @@ jobs:
       #     runtime to run against; otherwise that stage skips. (OFI-224 db-band guard.) ---
       - name: Database build (vendored SQLite)
         run: make db
+      # The WEB build (headless, no raylib/curl) is built before the differential so its cgen_c_run_web
+      # stage (self-hosted web FFI band vs the WEB VM) has build/inglec-web + the web runtime. (OFI-224.)
+      - name: Web build (headless SSR)
+        run: make web
       # --- Self-hosting bootstrap differential: compiler-shaped programs (recursive ASTs, symbol
       #     tables) run on both backends with byte-identical stdout. The drift guard for the staged
       #     port of the compiler into Ingle (docs/design/self-hosting.md). Includes the cgen_c_run_db
-      #     stage now that the DB build is present. ---
+      #     and cgen_c_run_web stages now that the DB + web builds are present. ---
       - name: Self-hosting differential
         run: make selfhost
 

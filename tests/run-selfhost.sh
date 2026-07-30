@@ -523,6 +523,39 @@ if [ -f "$CCSRC" ]; then
             fi
             pass=$((pass + cdbpass)); fail=$((fail + cdbfail))
         fi
+
+        # cgen_c_run_web: the WEB sibling. A `std/web` program's self-hosted native emit is linked against the
+        # HEADLESS web runtime (build/libember_rt_web.a) and must RUN identical to the WEB-flavored VM
+        # (build/inglec-web). Guards the self-hosted WEB FFI band: the emitted em_ffi indices (default band 0-41 +
+        # web_* at 42-46, where the net profile puts http_*) must match libember_rt_web.a's g_sigs. Fixtures MUST
+        # render-and-exit (a web_set_html call, non-blocking) — the interactive web_next_* pumps would hang.
+        # Skipped when the web build isn't present. (OFI-224 — teach web the self-hosted FFI band before the flip.)
+        if [ -f "$ROOT/build/libember_rt_web.a" ] && [ -x "$ROOT/build/inglec-web" ] && [ -d "$ROOT/tests/selfhost/cgen_c_run_web" ]; then
+            cwbpass=0; cwbfail=0
+            for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run_web -name '*.ig' 2>/dev/null | sort); do
+                want=$(cd "$ROOT" && "$ROOT/build/inglec-web" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')
+                cwbc="${TMPDIR:-/tmp}/emberc_cgenc_web_$$.c"
+                cwbbin="${TMPDIR:-/tmp}/emberc_cgenc_web_$$"
+                (cd "$ROOT" && "$ccbin" "$src" 2>/dev/null) | sed '/^=> 0$/d' > "$cwbc"
+                if cc -std=c17 -O2 -D_DEFAULT_SOURCE -I"$ROOT/include" "$cwbc" "$ROOT/build/libember_rt_web.a" -lm -o "$cwbbin" 2>/dev/null; then
+                    got=$("$cwbbin" 2>/dev/null | sed '/^=> 0$/d')
+                    if [ "$want" = "$got" ]; then
+                        cwbpass=$((cwbpass + 1))
+                    else
+                        cwbfail=$((cwbfail + 1))
+                        echo "FAIL    self-hosted C-emit (web) RUNS differently from the WEB VM on $src"
+                    fi
+                else
+                    cwbfail=$((cwbfail + 1))
+                    echo "FAIL    self-hosted C-emit (web) output did not compile: $src"
+                fi
+                rm -f "$cwbc" "$cwbbin"
+            done
+            if [ $((cwbpass + cwbfail)) -gt 0 ]; then
+                echo "selfhost cgen_c: $cwbpass/$((cwbpass + cwbfail)) cgen_c_run_web fixtures RUN identical to the WEB VM (headless web runtime)"
+            fi
+            pass=$((pass + cwbpass)); fail=$((fail + cwbfail))
+        fi
     fi
 
     # The real payoff: whole self-hosted MODULES whose C-emit is byte-identical to stage-0 (not fixtures —
