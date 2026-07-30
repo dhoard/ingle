@@ -113,6 +113,7 @@ void           rt_free_objects(EmberRt *ctx);
 // *out_len; NULL/0 when the directory can't be opened or has no entries.
 char          *em_list_dir_join(const char *path, size_t *out_len);
 char          *em_exe_path_dup(size_t *out_len);
+long long      em_do_exec(int argc, const Value *args);   // exec(path, args): execv, replaces the process
 
 // Boxed enum aggregates the C backend emits calls to: em_enum constructs a variant
 // (refcounted); em_enum_field borrows a payload field for a match binding. The variant

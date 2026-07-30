@@ -1490,6 +1490,9 @@ fn native_id_for_name(name: string) -> int {
     if name == "exe_path" {
         return 26
     }
+    if name == "exec" {
+        return 27
+    }
     if name == "exit" {
         return 19
     }

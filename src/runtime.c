@@ -2328,6 +2328,29 @@ static int _entry_cmp(const void *a, const void *b) {
 }
 
 
+// em_do_exec — the ONE body behind the exec(path, args) builtin (VM + native backend; see ember_rt.h). Builds
+// argv = [path, args...] and REPLACES this process via POSIX execv. Returns ONLY on failure (-1); on success the
+// process image is replaced. ObjString->chars is always NUL-terminated (make_string), so AS_CSTRING is a valid C
+// string. Used by the self-hosted `inglec` dispatcher to become the .igb runner or the frozen frontend host.
+long long em_do_exec(int argc, const Value *args) {
+    const char *path = argc >= 1 ? AS_CSTRING(args[0]) : "";
+    const ObjArray *a = (argc >= 2 && IS_ARRAY(args[1])) ? AS_ARRAY(args[1]) : NULL;
+    size_t n = a ? a->length : 0;
+    char **argv = (char **)malloc((n + 2) * sizeof(char *));
+    argv[0] = (char *)path;
+    for (size_t i = 0; i < n; i++) {
+        Value ev = ((const Value *)a->data)[i];   // a [string] is a boxed array: data is Value[]
+        argv[i + 1] = IS_STRING(ev) ? AS_CSTRING(ev) : (char *)"";
+    }
+    argv[n + 1] = NULL;
+    fflush(stdout);
+    fflush(stderr);
+    execv(path, argv);   // returns ONLY on failure
+    free(argv);
+    return -1;
+}
+
+
 // em_exe_path_dup — the ONE body behind the exe_path() builtin (VM + native backend; see ember_rt.h).
 // Returns the running executable's absolute path in a heap buffer (caller frees) + sets *out_len, or NULL
 // when unavailable (an unsupported platform, or the read failed). Lets an installed self-hosted toolchain
@@ -2678,7 +2701,9 @@ Value em_native(EmberRt *ctx, int nid, int argc, const Value *args) {
             }
             return OBJ_VAL(s);
         }
-#endif  // !EMBER_FREESTANDING (getenv / exe_path)
+        case NATIVE_EXEC:
+            return INT_VAL(em_do_exec(argc, args));   // the shared body (VM + native backend); returns -1 on failure
+#endif  // !EMBER_FREESTANDING (getenv / exe_path / exec)
         case NATIVE_EXIT:
             exit(argc >= 1 ? (int)AS_INT(args[0]) : 0);
         default:

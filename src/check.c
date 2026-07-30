@@ -4646,6 +4646,12 @@ static SemType check_expr_inner(Checker *c, Expr *e) {
                     }
                     return TY_STRING;
                 }
+                if (nid == NATIVE_EXEC) {
+                    if (argc != 2) {
+                        type_error(c, e->line, e->col, "exec takes (path: string, args: [string])");
+                    }
+                    return TY_INT;   // -1 on failure; never returns on success (the process is replaced)
+                }
                 if (nid == NATIVE_EXIT) {
                     if (argc != 1) {
                         type_error(c, e->line, e->col,

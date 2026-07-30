@@ -1405,6 +1405,8 @@ static Value call_native(VM *vm, int native_id, Value *args, int argc) {
             }
             return OBJ_VAL(s);
         }
+        case NATIVE_EXEC:
+            return INT_VAL(em_do_exec(argc, args));   // the shared body (runtime.c); replaces the process, -1 on fail
         case NATIVE_EXIT: {
             // Request a clean halt rather than calling C exit() here, so a capturing
             // replay/check run still finishes and the `run` driver controls the real exit.

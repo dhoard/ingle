@@ -39,6 +39,7 @@ int native_id_for_name(const char *name) {
     if (strcmp(name, "args") == 0)           return NATIVE_ARGS;
     if (strcmp(name, "env") == 0)            return NATIVE_ENV;
     if (strcmp(name, "exe_path") == 0)       return NATIVE_EXE_PATH;
+    if (strcmp(name, "exec") == 0)           return NATIVE_EXEC;
     if (strcmp(name, "exit") == 0)           return NATIVE_EXIT;
     // Graphics primitives resolve in EVERY build so the checker/LSP knows their signatures; the
     // implementation is still graphics-only (see the VM / native-backend dispatch).

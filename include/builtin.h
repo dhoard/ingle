@@ -54,10 +54,15 @@ enum {
                               // must list identically on every run and platform — directory order is
                               // a nondeterministic input, and inputs must record/replay (like read_file).
 
-    NATIVE_EXE_PATH      = 26 // exe_path() -> string — the absolute path of the running executable
+    NATIVE_EXE_PATH      = 26,// exe_path() -> string — the absolute path of the running executable
                               // (readlink /proc/self/exe on Linux, _NSGetExecutablePath on macOS), "" if
                               // unavailable. Lets an installed self-hosted toolchain locate its stdlib
                               // relative to its own binary (<bin>/../std), like the C frontend's init_std_dir.
+
+    NATIVE_EXEC          = 27 // exec(path, args) -> int — REPLACE this process with `path` invoked as
+                              // [path, args...] (POSIX execv). On success it never returns; on failure it
+                              // returns -1. The self-hosted `inglec` dispatcher uses it to become the
+                              // standalone bytecode runner (--emit=run) or the frozen frontend host (--lsp).
 };
 
 // A witness method slot normally holds an Ingle function-table index. For a built-in

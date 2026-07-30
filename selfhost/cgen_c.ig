@@ -10764,6 +10764,9 @@ fn native_id_for_name(name: string) -> int {
     if name == "exe_path" {
         return 26
     }
+    if name == "exec" {
+        return 27
+    }
     if name == "exit" {
         return 19
     }
@@ -10919,7 +10922,7 @@ fn native_id_for_name(name: string) -> int {
 // is_em_native_id reports whether a native id goes through the em_native dispatcher (the READ_LINE..EXIT band
 // plus byte_slice and from_bytes; print/println keep their own em_print/em_println path, and 20/21 are witness-only).
 fn is_em_native_id(nid: int) -> bool {
-    return (nid >= 2 && nid <= 19) || nid == 22 || nid == 23 || nid == 24 || nid == 25 || nid == 26 || (nid >= 100 && nid <= 142)
+    return (nid >= 2 && nid <= 19) || nid == 22 || nid == 23 || nid == 24 || nid == 25 || nid == 26 || nid == 27 || (nid >= 100 && nid <= 142)
 }
 
 

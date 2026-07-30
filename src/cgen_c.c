@@ -1540,7 +1540,7 @@ static void emit_call(CgcGen *g, const Expr *e) {
         // which are NOT runtime calls), so they're named explicitly rather than by widening the range.
         if ((nid >= NATIVE_READ_LINE && nid <= NATIVE_EXIT) || nid == NATIVE_BYTE_SLICE ||
             nid == NATIVE_FROM_BYTES || nid == NATIVE_FLOAT_BITS || nid == NATIVE_LIST_DIR ||
-            nid == NATIVE_EXE_PATH
+            nid == NATIVE_EXE_PATH || nid == NATIVE_EXEC
 #if EMBER_GRAPHICS
             // A graphics-flavored native binary drives raylib through em_native → ember_gfx_native, the
             // SAME dispatcher the VM uses. Only emitted when the compiler is built -DEMBER_GRAPHICS (so
