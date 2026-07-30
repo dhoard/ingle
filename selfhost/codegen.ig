@@ -147,6 +147,30 @@ fn ty_is_array(ty: ps.Ty) -> bool {
         case TyArray(elem) {
             return true
         }
+        case TyGeneric(q, n, args) {
+            return n == "Slice" && args.len() >= 1   // a `Slice<T>` view is array-like (len / index / for-loop)
+        }
+        case _ {
+            return false
+        }
+    }
+}
+
+
+// is_slice_expr reports whether `e` is a slice VIEW `arr[lo..hi]` — an EIndex whose index is a range (mirrors
+// cgen_c.ig). The value is a borrowed ObjArray aliasing its source, array-like for len/index/iteration.
+fn is_slice_expr(e: ps.Expr) -> bool {
+    match e {
+        case EIndex(object, index) {
+            match index.value {
+                case ERange(lo, hi) {
+                    return true
+                }
+                case _ {
+                    return false
+                }
+            }
+        }
         case _ {
             return false
         }
@@ -3890,6 +3914,12 @@ fn elem_ty_of(ty: ps.Ty) -> ps.Ty {
         case TyArray(elem) {
             return elem.value
         }
+        case TyGeneric(q, n, args) {
+            if n == "Slice" && args.len() >= 1 {
+                return args[0]                       // `Slice<int>`'s element is int
+            }
+            return ty
+        }
         case _ {
             return ty
         }
@@ -5352,6 +5382,14 @@ struct Chunk {
                                         return self.slot_elem[sl]
                                     }
                                 }
+                                case EGet(inner, fname) {
+                                    // `convos[i].turns.slice(..)` — the source array is a struct FIELD; the sliced
+                                    // copy's element is that field's element code (so `cut[i].role` types).
+                                    let osid = self.expr_type_kind(inner.value)
+                                    if osid >= 0 {
+                                        return self.field_elem_code(osid, fname)
+                                    }
+                                }
                                 case _ {
                                 }
                             }
@@ -5935,6 +5973,9 @@ struct Chunk {
                 return self.expr_ret_kind(e)     // a call's return type (free-fn returns only)
             }
             case EIndex(object, index) {
+                if is_slice_expr(e) {
+                    return -2                    // `arr[lo..hi]` is a SLICE — array-like (`.len()`, `[i]`, `for`)
+                }
                 let ek = self.index_elem_code(e) // `arr[i]` has the array's element type
                 if ek == 0 - 99 {
                     return -1
@@ -10887,9 +10928,22 @@ struct Chunk {
                 }
             }
             case EIndex(object, index) {
-                self.gen_expr(object.value, line)       // the array (a borrow)
-                self.gen_expr(index.value, line)        // the index
-                self.emit(OP_INDEX)
+                match index.value {
+                    case ERange(lo, hi) {
+                        // `arr[lo..hi]` -> a borrowed Slice<T> VIEW: push array, lo, hi, then OP_SLICE (a fresh
+                        // ObjArray header aliasing the source buffer, borrowed=1). It inherits the source's
+                        // element kind, so every array op (INDEX/ARRAY_LEN/FOR_ARRAY/SLICE) works on it unchanged.
+                        self.gen_expr(object.value, line)
+                        self.gen_expr(lo.value, line)
+                        self.gen_expr(hi.value, line)
+                        self.emit(OP_SLICE)
+                    }
+                    case _ {
+                        self.gen_expr(object.value, line)   // the array (a borrow)
+                        self.gen_expr(index.value, line)    // the index
+                        self.emit(OP_INDEX)
+                    }
+                }
             }
             case ETry(operand) {
                 // the `?` operator: evaluate a Result/Option; if Ok/Some (tag 0), unwrap its payload
@@ -11141,6 +11195,16 @@ struct Chunk {
                     // slot, dropped at every exit and INCREF'd when passed to a spawn/call.
                     self.gen_expr(value.value, value.line)
                     self.declare_binding(name, 1, -1, false, true, false, false)
+                    return
+                }
+                if is_slice_expr(value.value) {
+                    // `let win = data[lo..hi]` — a borrowed Slice<T> VIEW (OP_SLICE). Bind it array-like (slot_array)
+                    // whose element is the source array's element, so win.len()/win[i]/`for x in win`/win[a..b]
+                    // dispatch as arrays. A slice owns only its ObjArray header (borrowed=1) — droppable so the
+                    // header (not the aliased buffer) is freed at scope exit (OFI-224 VM-parity).
+                    self.gen_expr(value.value, value.line)
+                    self.declare_binding(name, 1, -1, false, true, false, true)
+                    self.slot_elem[self.slot_elem.len() - 1] = self.index_elem_code(value.value)
                     return
                 }
                 if self.is_fn_value(value.value) || (ty.len() > 0 && ty_is_fn(ty[0])) {
