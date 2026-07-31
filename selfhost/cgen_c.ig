@@ -4505,7 +4505,7 @@ struct CgcGen {
                     case EGet(object, mname) {
                         let sid = self.struct_sid_any(object.value)
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 {
                                 return fi < self.res.ret_gopt.len() && self.res.ret_gopt[fi]
                             }
@@ -5361,7 +5361,7 @@ struct CgcGen {
                     case EGet(obj, mname) {
                         let sid = self.struct_sid_any(obj.value)
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 && fi < self.res.ret_iface.len() {
                                 return self.res.ret_iface[fi]
                             }
@@ -6120,7 +6120,7 @@ struct CgcGen {
                         }
                         let rsid = self.struct_sid_any(object.value)
                         if rsid >= 0 {
-                            let fi = self.fn_index("{self.st.names[rsid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(rsid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_struct[fi]
                             }
@@ -6639,7 +6639,7 @@ struct CgcGen {
                         // an enum-returning METHOD call `let k = self.scan_token(…)`.
                         let sid = self.struct_sid_any(object.value)
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_enum[fi]
                             }
@@ -6859,7 +6859,7 @@ struct CgcGen {
                     case EGet(object, mname) {
                         let rsid = self.struct_sid_any(object.value)
                         if rsid >= 0 {
-                            let fi = self.fn_index("{self.st.names[rsid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(rsid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_render[fi]
                             }
@@ -7766,7 +7766,11 @@ struct CgcGen {
                 // em_set_field reach the caller's object). (cgen_c.c method path.)
                 let rsid = self.struct_sid_any(object.value)
                 if rsid >= 0 {
-                    let fi = self.fn_index("{self.st.names[rsid]}.{mname}")
+                    // rsid may be a generic-INSTANCE sid (`Map<string,string>`), which is beyond the base
+                    // `names` table — map it to its BASE via base_of before indexing (the erased model resolves
+                    // to the base generic method `Map.get`). Without this, a method call on a generic-instance
+                    // receiver indexed names out of bounds and crashed the emit (found dogfooding quog). OFI-224.
+                    let fi = self.fn_index("{self.st.names[self.st.base_of(rsid)]}.{mname}")
                     if fi >= 0 {
                         // A NON-IDENT receiver (`self.st.field_index(x)`, `f(x).m()`) is evaluated ONCE into a
                         // C temp, then the call reads it — sequencing the receiver before the args
@@ -8554,7 +8558,7 @@ struct CgcGen {
                         // `let a = lx.advance()`).
                         let rsid = self.struct_sid_any(object.value)
                         if rsid >= 0 {
-                            let fi = self.fn_index("{self.st.names[rsid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(rsid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_kind[fi]
                             }
@@ -8698,7 +8702,7 @@ struct CgcGen {
                         }
                         let sid = self.struct_sid_any(object.value)
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 {
                                 let es = self.fn_ret_elem_struct[fi]
                                 if es >= 0 {
@@ -8879,7 +8883,7 @@ struct CgcGen {
                         }
                         let sid = self.struct_sid_any(object.value)   // an array-returning struct METHOD `self.ty_arg_types()`
                         if sid >= 0 {
-                            fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                         } else {
                             fi = self.qual_free_fi(object.value, mname, args.len())   // a module-qualified array-returning call
                         }
@@ -9077,7 +9081,7 @@ struct CgcGen {
                         // a string-returning METHOD call `let v = recv.method(…)`.
                         let sid = self.struct_sid_any(object.value)
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_str[fi]
                             }
@@ -9106,7 +9110,7 @@ struct CgcGen {
                             case EGet(object, mname) {
                                 let sid = self.struct_sid_any(object.value)
                                 if sid >= 0 {
-                                    let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                                    let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                                     if fi >= 0 && fi < self.res.ret_ok_str.len() {
                                         return self.res.ret_ok_str[fi]
                                     }
@@ -9197,7 +9201,7 @@ struct CgcGen {
                         }
                         let sid = self.struct_sid_any(object.value)   // an array-returning struct METHOD `self.parse_params()`
                         if sid >= 0 {
-                            let fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            let fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                             if fi >= 0 {
                                 return self.fn_ret_array[fi]
                             }
@@ -9322,7 +9326,7 @@ struct CgcGen {
                     case EGet(object, mname) {
                         let sid = self.struct_sid_any(object.value)
                         if sid >= 0 {
-                            fi = self.fn_index("{self.st.names[sid]}.{mname}")
+                            fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
                         }
                         if fi < 0 {
                             fi = self.qual_free_fi(object.value, mname, args.len())
