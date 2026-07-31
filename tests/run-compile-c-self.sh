@@ -107,5 +107,28 @@ else
 fi
 rm -f "$hprog"
 
+# 6. FLAVORED -o (Stage B5): `inglec -o` must AUTO-SELECT the runtime from the program. Concurrency → the
+#    parallel runtime (runnable, deterministic → check == VM); graphics → the net+gfx runtime (needs raylib, so
+#    compile+link only — no display). db/web/default are covered above / by cgen_c_run_db|web.
+cprog=tests/run/nested_nursery.ig
+if [ -f "$ROOT/build/libember_rt_par.a" ]; then
+    if (cd "$ROOT" && "$CC_SELF" -o "$tmpbin" "$cprog" 2>/dev/null) && \
+       [ "$("$tmpbin" 2>/dev/null | sed '/^=> 0$/d')" = "$("$VM" --emit=run "$cprog" 2>/dev/null | sed '/^=> 0$/d')" ]; then
+        pass=$((pass + 1)); echo "PASS    compile_c-self -o auto-links the parallel runtime (concurrency == VM)"
+    else
+        fail=$((fail + 1)); echo "FAIL    compile_c-self -o concurrency (parallel runtime) differs from the VM"
+    fi
+    rm -f "$tmpbin"
+fi
+if [ -f "$ROOT/build/libember_rt_net_gfx.a" ]; then
+    gprog=$(cd "$ROOT" && find examples/graphics -name '*.ig' 2>/dev/null | head -1)
+    if [ -n "$gprog" ] && (cd "$ROOT" && "$CC_SELF" -o "$tmpbin" "$gprog" 2>/dev/null) && [ -x "$tmpbin" ]; then
+        pass=$((pass + 1)); echo "PASS    compile_c-self -o auto-links the graphics runtime (compiles + links)"
+    else
+        fail=$((fail + 1)); echo "FAIL    compile_c-self -o graphics (net+gfx runtime) did not build"
+    fi
+    rm -f "$tmpbin"
+fi
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]

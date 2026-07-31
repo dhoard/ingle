@@ -675,7 +675,7 @@ inglec-emberc: $(INGLEC_EMBERC)
 # Smoke the frontend-free checked compiler end-to-end: it must REJECT a type error (exit 65) and COMPILE+RUN
 # every cgen_c_run fixture identically to the VM. Proves the shipped self-hosted toolchain works from a binary
 # with no src/ frontend anywhere in its build. (v1.0 cutover Stage A guard.)
-test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(RT_LIB)
+test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(RT_LIB) $(RT_LIB_PAR)
 	@tests/run-compile-c-self.sh
 
 # --- OFI-224 G4 Stage B2: the standalone, FRONTEND-FREE bytecode runner ---

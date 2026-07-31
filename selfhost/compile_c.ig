@@ -332,19 +332,90 @@ fn dq(s: string) -> string {
 }
 
 
-// runtime_lib picks the runtime static library for a program's PROFILE, resolved next to the compiler's own
-// binary (bindir). db/web are inferred from the DECLARED externs — the same ffi_band_profile the FFI-index emit
-// uses, so the linked runtime always matches the baked em_ffi indices. Default otherwise. (net/parallel/graphics
-// carry extra -l/-D flags and land in Stage B5; a program needing them will fail LOUDLY at link, never silently.)
-fn runtime_lib(externs: [string], bindir: string) -> string {
-    let profile = cc.ffi_band_profile(externs)
-    if profile == 1 {
-        return bindir + "/libember_rt_db.a"      // db (SQLite, vendored — statically inside the lib)
+// FlavorSpec is the runtime a program's `-o` native link needs: extra -D defines, the runtime static library,
+// and extra link libs (raylib/curl/-pthread). The self-hosted compiler is one binary, so it detects the flavor
+// from the PROGRAM (its externs + imports + concurrency) at compile time — the runtime analog of the C
+// frontend's COMPILE-time `#if` in compile_native (src/main.c). (OFI-224 Stage B5.)
+struct FlavorSpec {
+    defines: string
+    lib: string
+    ldextra: string
+}
+
+
+// str_contains reports whether `needle` occurs in `hay` (a tiny substring search — no std/string dependency).
+fn str_contains(hay: string, needle: string) -> bool {
+    let hb = hay.bytes()
+    let nb = needle.bytes()
+    if nb.len() == 0 {
+        return true
     }
+    if nb.len() > hb.len() {
+        return false
+    }
+    var i = 0
+    loop {
+        if i + nb.len() > hb.len() {
+            break
+        }
+        var j = 0
+        var ok = true
+        loop {
+            if j >= nb.len() {
+                break
+            }
+            if hb[i + j] != nb[j] {
+                ok = false
+                break
+            }
+            j = j + 1
+        }
+        if ok {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+
+// imports_graphics reports whether the merged program pulls in the graphics stack — std/draw or std/ui, directly
+// or transitively (a std/flare program imports std/draw), matched on the resolved import paths.
+fn imports_graphics(imp_paths: [string]) -> bool {
+    var i = 0
+    loop {
+        if i >= imp_paths.len() {
+            break
+        }
+        if str_contains(imp_paths[i], "draw.ig") || str_contains(imp_paths[i], "ui.ig") {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+
+// flavor_spec picks the runtime + link flags for a program's `-o` native compile, matching the C frontend's
+// compile_native precedence (web > graphics > db > concurrent > default). db/web come from the FFI band profile
+// (so the linked runtime matches the baked em_ffi indices); graphics from the imports; concurrency from
+// program_concurrent. All libs resolve next to THIS binary (bindir). A net-only program keeps the default lib
+// (the frontend's net `-o` is likewise curl-less — networking is run via --emit=run, not compiled native).
+fn flavor_spec(decls: [ps.Decl], imp_paths: [string], bindir: string) -> FlavorSpec {
+    let profile = cc.ffi_band_profile(cc.build_extern_names(decls))
     if profile == 2 {
-        return bindir + "/libember_rt_web.a"      // web (headless SSR)
+        return FlavorSpec { defines: "-DEMBER_GRAPHICS=1 -DEMBER_GFX_HEADLESS=1", lib: "{bindir}/libember_rt_web.a", ldextra: "" }
     }
-    return bindir + "/libember_rt.a"              // default (dependency-free)
+    if imports_graphics(imp_paths) {
+        return FlavorSpec { defines: "-DEMBER_PARALLEL=1 -DEMBER_GRAPHICS=1 -DEMBER_NET=1", lib: "{bindir}/libember_rt_net_gfx.a", ldextra: "`pkg-config --libs raylib freetype2` `curl-config --libs` -pthread" }
+    }
+    if profile == 1 {
+        return FlavorSpec { defines: "", lib: "{bindir}/libember_rt_db.a", ldextra: "" }
+    }
+    if cc.program_concurrent(decls) {
+        return FlavorSpec { defines: "-DEMBER_PARALLEL=1", lib: "{bindir}/libember_rt_par.a", ldextra: "-pthread" }
+    }
+    return FlavorSpec { defines: "", lib: "{bindir}/libember_rt.a", ldextra: "" }
 }
 
 
@@ -453,10 +524,11 @@ fn main() -> int {
     let exe = exe_path()
     let bindir = dirname(exe)
     let inc = dirname(bindir) + "/include"
-    let lib = runtime_lib(cc.build_extern_names(ld.decls), bindir)
+    let fl = flavor_spec(ld.decls, ld.imp_path, bindir)
     // `-x c -` reads the piped C from stdin; `-x none` resets the language so the runtime .a that follows is
-    // treated as a library, not compiled as C (its `!<arch>` header would otherwise be a syntax error).
-    let cmd = dq(exe) + " " + dq(entry) + " | cc -std=c17 -O2 -D_DEFAULT_SOURCE -I" + dq(inc) + " -x c - -x none " + dq(lib) + " -lm -o " + dq(outpath)
+    // treated as a library, not compiled as C (its `!<arch>` header would otherwise be a syntax error). The
+    // flavor's -D defines + link-extras (raylib/curl/-pthread) match the runtime lib and the emitted em_ffi bands.
+    let cmd = dq(exe) + " " + dq(entry) + " | cc -std=c17 -O2 -D_DEFAULT_SOURCE " + fl.defines + " -I" + dq(inc) + " -x c - -x none " + dq(fl.lib) + " " + fl.ldextra + " -lm -o " + dq(outpath)
     let r = proc.run(cmd)
     if r.code() != 0 {
         println("inglec: native compile of {entry} failed")
