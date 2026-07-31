@@ -1407,6 +1407,20 @@ static Value call_native(VM *vm, int native_id, Value *args, int argc) {
         }
         case NATIVE_EXEC:
             return INT_VAL(em_do_exec(argc, args));   // the shared body (runtime.c); replaces the process, -1 on fail
+        case NATIVE_MIN: {   // min(a, b) — the smaller of two same-typed numbers (self-hosting dogfood)
+            Value a = args[0], b = args[1];
+            if (IS_FLOAT(a)) {
+                return AS_FLOAT(a) <= AS_FLOAT(b) ? a : b;
+            }
+            return AS_INT(a) <= AS_INT(b) ? a : b;
+        }
+        case NATIVE_MAX: {   // max(a, b) — the larger of two same-typed numbers
+            Value a = args[0], b = args[1];
+            if (IS_FLOAT(a)) {
+                return AS_FLOAT(a) >= AS_FLOAT(b) ? a : b;
+            }
+            return AS_INT(a) >= AS_INT(b) ? a : b;
+        }
         case NATIVE_EXIT: {
             // Request a clean halt rather than calling C exit() here, so a capturing
             // replay/check run still finishes and the `run` driver controls the real exit.

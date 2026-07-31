@@ -7551,9 +7551,11 @@ struct CgcGen {
                     return "em_clock()"
                 }
                 let nid = native_id_for_name(name)
-                if is_em_native_id(nid) {
-                    // a native runtime builtin (byte_slice, read_file, math, …) → em_native(&g_em, <id>, <argc>,
-                    // (Value[]){ args }); its args are read as BORROWS. (print/println keep em_print/em_println.)
+                if is_em_native_id(nid) && self.fn_index(name) < 0 {
+                    // a native runtime builtin (byte_slice, read_file, math, min/max, …) → em_native(&g_em,
+                    // <id>, <argc>, (Value[]){ args }); its args are read as BORROWS. A USER-DEFINED fn of the
+                    // same name WINS (fn_index guard) — so a program's own `max<T>()` shadows the builtin.
+                    // (print/println keep em_print/em_println.)
                     if args.len() == 0 {
                         return "em_native(&g_em, {nid}, 0, 0)"
                     }
@@ -10771,6 +10773,12 @@ fn native_id_for_name(name: string) -> int {
     if name == "exec" {
         return 27
     }
+    if name == "min" {
+        return 28
+    }
+    if name == "max" {
+        return 29
+    }
     if name == "exit" {
         return 19
     }
@@ -10926,7 +10934,7 @@ fn native_id_for_name(name: string) -> int {
 // is_em_native_id reports whether a native id goes through the em_native dispatcher (the READ_LINE..EXIT band
 // plus byte_slice and from_bytes; print/println keep their own em_print/em_println path, and 20/21 are witness-only).
 fn is_em_native_id(nid: int) -> bool {
-    return (nid >= 2 && nid <= 19) || nid == 22 || nid == 23 || nid == 24 || nid == 25 || nid == 26 || nid == 27 || (nid >= 100 && nid <= 142)
+    return (nid >= 2 && nid <= 19) || nid == 22 || nid == 23 || nid == 24 || nid == 25 || nid == 26 || nid == 27 || nid == 28 || nid == 29 || (nid >= 100 && nid <= 142)
 }
 
 

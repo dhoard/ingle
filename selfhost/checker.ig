@@ -111,7 +111,7 @@ fn prim_type(name: string) -> int {
 fn builtin_names() -> [string] {
     return ["print", "println", "concat", "hash", "abs", "ceil", "floor", "round", "sqrt", "pow",
         "parse_float", "char_code", "from_char_code", "byte_slice", "from_bytes", "float_bits", "read_line", "read_file", "write_file", "list_dir",
-        "random", "args", "env", "exe_path", "exec", "exit", "channel", "send", "recv", "close", "to_int", "to_float",
+        "random", "args", "env", "exe_path", "exec", "min", "max", "exit", "channel", "send", "recv", "close", "to_int", "to_float",
         "draw_rect", "draw_text", "fill_circle", "fill_grad", "fill_round", "stroke_round", "shadow",
         "measure_text", "measure_misses", "text_line_height", "load_font", "set_font", "set_alpha",
         "set_layer", "set_cursor", "clip_push", "clip_pop", "screen_width", "screen_height",
@@ -2475,8 +2475,10 @@ struct Checker {
                             }
                         }
                         // D1: a bare-ident call to a top-level free function (not a local closure, builtin,
-                        // method, or constructor) — arity, then argument types.
-                        if self.resolve_local(name) == false && is_builtin(name) == false {
+                        // method, or constructor) — arity, then argument types. A USER fn whose name shadows a
+                        // builtin (its own `max<T: Ord>()`) still gets arg + generic-bound checking (fn_index_of
+                        // guard) — otherwise a bound violation slips through once common names became builtins.
+                        if self.resolve_local(name) == false && (is_builtin(name) == false || self.fn_index_of(name) >= 0) {
                             let fi = self.fn_index_of(name)
                             // OFI-167: a DIRECT extern (an `extern "c"` fn NOT in the hosted FFI registry) has no
                             // bytecode-VM binding — it is native-only (`--emit=c`). CALLING one in the default
@@ -2624,7 +2626,10 @@ struct Checker {
                 // calls stay TY_INFER (lenient); only a CONCRETE result drives the void-bind / assignment check.
                 match callee.value {
                     case EIdent(name) {
-                        if self.resolve_local(name) == false && is_builtin(name) {
+                        // A USER-DEFINED fn of a builtin's name WINS (fn_index_of guard) — so a program's own
+                        // `max<T: Ord>()` is checked (bounds and all), not silently treated as the builtin. (Same
+                        // shadowing rule the codegens use; needed once common names like min/max became builtins.)
+                        if self.resolve_local(name) == false && is_builtin(name) && self.fn_index_of(name) < 0 {
                             return builtin_ret_type(name)
                         }
                         if self.resolve_local(name) == false {

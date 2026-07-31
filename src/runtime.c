@@ -2704,6 +2704,20 @@ Value em_native(EmberRt *ctx, int nid, int argc, const Value *args) {
         case NATIVE_EXEC:
             return INT_VAL(em_do_exec(argc, args));   // the shared body (VM + native backend); returns -1 on failure
 #endif  // !EMBER_FREESTANDING (getenv / exe_path / exec)
+        case NATIVE_MIN: {   // min(a, b): the smaller of two same-typed numbers (self-hosting dogfood — added in Ingle)
+            Value a = args[0], b = args[1];
+            if (IS_FLOAT(a)) {
+                return AS_FLOAT(a) <= AS_FLOAT(b) ? a : b;
+            }
+            return AS_INT(a) <= AS_INT(b) ? a : b;
+        }
+        case NATIVE_MAX: {   // max(a, b): the larger of two same-typed numbers
+            Value a = args[0], b = args[1];
+            if (IS_FLOAT(a)) {
+                return AS_FLOAT(a) >= AS_FLOAT(b) ? a : b;
+            }
+            return AS_INT(a) >= AS_INT(b) ? a : b;
+        }
         case NATIVE_EXIT:
             exit(argc >= 1 ? (int)AS_INT(args[0]) : 0);
         default:

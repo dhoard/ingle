@@ -130,5 +130,19 @@ if [ -f "$ROOT/build/libember_rt_net_gfx.a" ]; then
     rm -f "$tmpbin"
 fi
 
+# 7. The min/max builtins (a self-hosting DOGFOOD feature added entirely in Ingle — the C frontend does not
+#    know them, so the golden output is hardcoded rather than diffed against the stage-0 VM). Also checks a
+#    USER fn of the same name still WINS (shadows the builtin).
+mmprog="${TMPDIR:-/tmp}/ccself_mm_$$.ig"
+printf 'fn max(a: int, b: int) -> int { return 999 }\nfn main() -> int {\n    println("min={min(3, 7)} max={max(3, 7)}")\n    println("user_max={max(3, 7)}")\n    return 0\n}\n' > "$mmprog"
+if (cd "${TMPDIR:-/tmp}" && "$CC_SELF" -o "$tmpbin" "$mmprog" 2>/dev/null) && \
+   [ "$("$tmpbin" 2>/dev/null | sed '/^=> 0$/d')" = "min=3 max=999
+user_max=999" ]; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self min/max builtins work + a user fn shadows the builtin"
+else
+    fail=$((fail + 1)); echo "FAIL    compile_c-self min/max builtins / user-fn shadowing"
+fi
+rm -f "$mmprog" "$tmpbin"
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]

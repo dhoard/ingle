@@ -1493,6 +1493,12 @@ fn native_id_for_name(name: string) -> int {
     if name == "exec" {
         return 27
     }
+    if name == "min" {
+        return 28
+    }
+    if name == "max" {
+        return 29
+    }
     if name == "exit" {
         return 19
     }
@@ -10905,10 +10911,10 @@ struct Chunk {
                             return
                         }
                         let nid = native_id_for_name(name)
-                        if nid >= 0 {
-                            self.gen_builtin_call(nid, args, line)   // a built-in: CALL_NATIVE, not CALL
-                            return
-                        }
+                        if nid >= 0 && cg_index_of(self.fn_names, name) < 0 {
+                            self.gen_builtin_call(nid, args, line)   // a built-in: CALL_NATIVE, not CALL. A
+                            return                                    // USER-DEFINED fn of the same name WINS
+                        }                                             // (fn_names guard) — e.g. a program's own max<T>().
                         let vi = self.resolve_ctor_vi(name, args.len())
                         if vi >= 0 {
                             // a payload enum variant: push the payload args (named → declared order, OFI-222),

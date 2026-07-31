@@ -59,10 +59,16 @@ enum {
                               // unavailable. Lets an installed self-hosted toolchain locate its stdlib
                               // relative to its own binary (<bin>/../std), like the C frontend's init_std_dir.
 
-    NATIVE_EXEC          = 27 // exec(path, args) -> int — REPLACE this process with `path` invoked as
+    NATIVE_EXEC          = 27,// exec(path, args) -> int — REPLACE this process with `path` invoked as
                               // [path, args...] (POSIX execv). On success it never returns; on failure it
                               // returns -1. The self-hosted `inglec` dispatcher uses it to become the
                               // standalone bytecode runner (--emit=run) or the frozen frontend host (--lsp).
+
+    NATIVE_MIN           = 28,// min(a, b) -> the smaller of two numbers (int or float, same type). Added as
+                              // a self-hosting DOGFOOD entirely in Ingle (selfhost/*.ig) — the C frontend does
+                              // not know it; only the self-hosted compiler emits it. The runtime primitive is C
+                              // (like Go's runtime).
+    NATIVE_MAX           = 29 // max(a, b) -> the larger of two numbers (int or float, same type).
 };
 
 // A witness method slot normally holds an Ingle function-table index. For a built-in
