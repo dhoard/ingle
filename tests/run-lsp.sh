@@ -9,7 +9,9 @@
 
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/build/emberc"
+# The LSP host is the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is the
+# self-hosted dispatcher, which delegates --lsp to inglec-stage0 anyway — this tests the host directly.
+BIN="$ROOT/build/inglec-stage0"
 
 if [ ! -x "$BIN" ]; then
     echo "skip: $BIN not built — run 'make' first"

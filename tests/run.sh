@@ -18,7 +18,15 @@
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/build/emberc"
+# OFI-224 G4 (B4): the Tier 1 golden snapshots are FRONTEND artifacts — positioned diagnostics, bytecode
+# disassembly, --emit=tokens/ast/check dumps, the frontend's --emit=run behaviour + Fault renders — that the
+# self-hosted compiler does not reproduce yet (its checker carries no source positions; its bytecode backend
+# has OFI-218 coverage gaps the C-emit lacks). Post-cutover the frozen frontend `inglec-stage0` OWNS these
+# modes (the shipping dispatcher DELEGATES them to it), so the goldens are locked against stage0. The
+# self-hosted compiler's own behaviour is guarded by `make selfhost` + `test-compile-c-self` + Tier 1b below.
+BIN="$ROOT/build/inglec-stage0"
+# Tier 1b compiles with the SHIPPING self-hosted compiler (the flipped build/inglec dispatcher).
+SELF="$ROOT/build/inglec"
 
 UPDATE=0
 if [ "${1:-}" = "--update" ]; then
@@ -26,7 +34,11 @@ if [ "${1:-}" = "--update" ]; then
 fi
 
 if [ ! -x "$BIN" ]; then
-    echo "error: $BIN not found — run 'make' first" >&2
+    echo "error: $BIN not found — run 'make stage0' first" >&2
+    exit 2
+fi
+if [ ! -x "$SELF" ]; then
+    echo "error: $SELF not found — run 'make' first" >&2
     exit 2
 fi
 
@@ -146,20 +158,20 @@ for dir in "$ROOT"/tests/*/; do
     done
 done
 
-# Tier 1b — native backend differential (docs/architecture.md "Decision: native
-# backend"). Each tests/native/*.ig is run BOTH on the bytecode VM and as a binary
-# compiled by `emberc -o`, and their STDOUT must match — the drift guard that keeps
-# AST→C in lockstep with the reference VM. (Only stdout: rich structured Faults are the
-# VM's job and go to stderr; native aborts via a bare em_panic by design — OFI-109.)
-# Skipped under --update (no goldens) and
-# if no C compiler is on PATH.
+# Tier 1b — native backend differential (docs/architecture.md "Decision: native backend"). Each
+# tests/native/*.ig is compiled by the SHIPPING self-hosted compiler (`$SELF -o`) AND run on the frozen
+# frontend VM (`$BIN --emit=run`, the trusted oracle); their STDOUT must match — the drift guard that keeps
+# the self-hosted AST→C emit in lockstep with the reference VM. Post-cutover (B4) this is the gate in
+# `make test` that directly exercises the shipping compiler's native path. (Only stdout: rich structured
+# Faults are the VM's job and go to stderr; native aborts via a bare em_panic by design — OFI-109.)
+# Skipped under --update (no goldens) and if no C compiler is on PATH.
 if [ "$UPDATE" -eq 0 ] && [ -d "$ROOT/tests/native" ] && command -v cc >/dev/null 2>&1; then
     for em in "$ROOT"/tests/native/*.ig; do
         [ -e "$em" ] || continue
         rel=${em#"$ROOT"/}
         bin="${TMPDIR:-/tmp}/emberc_native_$$_$(basename "${em%.ig}")"
-        vm=$(cd "$ROOT" && "$BIN" --emit=run "$rel" 2>/dev/null)
-        if ! (cd "$ROOT" && "$BIN" -o "$bin" "$rel" >/dev/null 2>&1); then
+        vm=$(cd "$ROOT" && "$BIN" --emit=run "$rel" 2>/dev/null)               # oracle = frozen frontend VM
+        if ! (cd "$ROOT" && "$SELF" -o "$bin" "$rel" >/dev/null 2>&1); then    # native = SHIPPING self-hosted C-emit
             echo "FAIL    $rel  (native — compile failed)"
             fail=$((fail + 1))
             continue

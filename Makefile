@@ -178,16 +178,29 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release stage0 asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp doctor help release stage0 frontend asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
-# OFI-224 G4 (B4): $(STAGE0_BIN) — the frozen C frontend / tooling host — is now built by default so it is
-# always present after `make`. The self-hosted dispatcher (the flipped `inglec`) execs it for --lsp/--doctor
-# and the introspection --emit modes, and the differential harnesses use it as the C reference oracle.
-all: $(BIN) $(STAGE0_BIN) $(RT_LIB) $(RT_LIB_PAR)
+# OFI-224 G4 (B4) — THE FLIP: `inglec` IS the self-hosted compiler. The default build produces the
+# self-hosted dispatcher (build/compile_c-self, copied to build/inglec) plus the three sibling binaries it
+# execs at runtime — inglec-stage0 (the frozen frontend / LSP+tooling host for --lsp/--doctor/the introspection
+# --emit modes), inglec-emberc + inglec-run (the --emit=run bytecode path) — all resolved beside it in build/.
+all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
 
-$(BIN): $(OBJECTS)
-	$(CC) $(CFLAGS) $(OBJECTS) $(LDLIBS_MATH) -o $@
+# build/inglec = a copy of the checked self-hosted dispatcher, sitting beside its exec'd siblings (which its
+# deps build). rm-then-cp, NOT cp-in-place: macOS caches the ad-hoc code signature per inode, so overwriting
+# in place makes the kernel SIGKILL the next exec ("Killed: 9") — a fresh inode avoids it (as install does).
+$(BIN): $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(STAGE0_BIN)
+	rm -f $@
+	cp $(COMPILE_C_SELF) $@
 	@$(call LINK_COMPAT,$@)
+
+# The C frontend, kept buildable for anyone still working in src/ before the G6 archival: an incremental,
+# debuggable (-O0 -g, header-dep tracked) build under a NON-default name so it is never confused with the
+# shipped self-hosted `inglec`. The frozen -O2 frontend is `make stage0` (build/inglec-stage0).
+FRONTEND_DEV_BIN := build/inglec-cc
+$(FRONTEND_DEV_BIN): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) $(LDLIBS_MATH) -o $@
+frontend: $(FRONTEND_DEV_BIN)
 
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -278,8 +291,9 @@ test-update: all
 test-lsp: all
 	@tests/run-lsp.sh
 
-# Optimized compiler. Recompiles all sources (the project is small and release
-# builds are infrequent), so it always reflects the current source.
+# Optimized C FRONTEND binary (build/inglec-release). Post-cutover (B4) this is NO LONGER the shipped
+# compiler — `make install` ships the self-hosted dispatcher; the shipped -O2 frontend is `make stage0`.
+# `release` is kept as the frontend release build used by `make bench` (perf baselining --emit=run).
 release: | build
 	$(CC) $(RELEASE_FLAGS) $(SOURCES) $(LDLIBS_MATH) -o $(RELEASE_BIN)
 	@$(call LINK_COMPAT,$(RELEASE_BIN))
@@ -321,23 +335,31 @@ asan-trace: | build
 	$(CC) $(ASAN_FLAGS) -DEMBER_DROP_TRACE=1 $(SOURCES) $(LDLIBS_MATH) -o build/inglec-trace
 	@$(call LINK_COMPAT,build/inglec-trace)
 
-# Install a release build to a central, self-contained toolchain dir (default ~/.ingle) so editors
-# and tools find it from ANY folder: the binary lands at $(PREFIX)/bin/inglec and the stdlib at
-# $(PREFIX)/std, which the binary resolves relative to itself (<bin>/../std). The VS Code client
-# launches $(PREFIX)/bin/inglec --lsp. A compat `emberc` symlink is installed alongside (F3). Re-run
-# after changes: `make install`.
+# OFI-224 G4 (B4): install the SELF-HOSTED toolchain to a central, self-contained dir (default ~/.ingle) so
+# editors and tools find it from ANY folder. `inglec` is the self-hosted dispatcher; it execs its siblings
+# from its OWN bin dir, so all four binaries land together in $(PREFIX)/bin, and it resolves the runtime
+# archives + headers relative to itself ($(PREFIX)/bin/*.a and $(PREFIX)/include; std at <bin>/../std). The
+# default install is DEPENDENCY-FREE: it ships the serial + parallel runtimes so `inglec -o` works for plain
+# and concurrent programs; graphics/db/web native `-o` additionally need their flavored archive installed
+# (follow-on). Editors launch $(PREFIX)/bin/inglec --lsp, which the dispatcher delegates to inglec-stage0.
 PREFIX ?= $(HOME)/.ingle
-install: release
-	mkdir -p "$(PREFIX)/bin" "$(PREFIX)/std"
-	# rm-then-cp, NOT cp-in-place: overwriting the existing binary keeps its inode, and macOS
-	# caches the ad-hoc code signature (cdhash) per-inode. The new content's cdhash then mismatches
-	# the cache and the kernel SIGKILLs the process on exec ("Killed: 9") — the launched LSP dies
-	# silently and editors show no hover/diagnostics. Removing first gives the copy a fresh inode.
-	rm -f "$(PREFIX)/bin/inglec" "$(PREFIX)/bin/emberc"
-	cp $(RELEASE_BIN) "$(PREFIX)/bin/inglec"
+install: $(BIN) $(STAGE0_BIN) $(INGLEC_EMBERC) $(RUNNER_BIN) $(RT_LIB) $(RT_LIB_PAR)
+	mkdir -p "$(PREFIX)/bin" "$(PREFIX)/std" "$(PREFIX)/include"
+	# rm-then-cp, NOT cp-in-place: overwriting keeps the inode, and macOS caches the ad-hoc code signature
+	# (cdhash) per-inode — a content change then mismatches the cache and the kernel SIGKILLs the next exec
+	# ("Killed: 9"), silently killing the launched LSP. A fresh inode avoids it. Applies to every binary.
+	rm -f "$(PREFIX)/bin/inglec" "$(PREFIX)/bin/emberc" "$(PREFIX)/bin/inglec-stage0" \
+	      "$(PREFIX)/bin/inglec-emberc" "$(PREFIX)/bin/inglec-run"
+	cp $(BIN)           "$(PREFIX)/bin/inglec"          # the self-hosted dispatcher (check → C-emit → cc / --emit=run)
+	cp $(STAGE0_BIN)    "$(PREFIX)/bin/inglec-stage0"   # the frozen frontend / LSP+tooling host it execs
+	cp $(INGLEC_EMBERC) "$(PREFIX)/bin/inglec-emberc"   # --emit=run: source → bytecode
+	cp $(RUNNER_BIN)    "$(PREFIX)/bin/inglec-run"      # --emit=run: execute the .igb
 	ln -sf inglec "$(PREFIX)/bin/emberc"
+	cp $(RT_LIB) $(RT_LIB_PAR) "$(PREFIX)/bin/"         # runtime archives — resolved next to the binary (bin/, not lib/)
+	cp include/*.h "$(PREFIX)/include/"                 # headers the emitted C #includes (ember_rt.h + deps)
 	cp std/*.ig "$(PREFIX)/std/"
-	@echo "installed inglec (+ emberc alias) + std to $(PREFIX)  (VS Code: ingleLsp.serverPath = $(PREFIX)/bin/inglec)"
+	@echo "installed the self-hosted inglec toolchain (+ stage0 host, emberc/run, runtime, headers, std) to $(PREFIX)"
+	@echo "  VS Code: ingleLsp.serverPath = $(PREFIX)/bin/inglec"
 
 # Deploy the VS Code extension. The CANONICAL SOURCE is editors/vscode/ in this repo.
 # IMPORTANT: modern VS Code (1.74+) does NOT scan ~/.vscode/extensions on startup — it
@@ -567,18 +589,20 @@ install-quog: quog
 	cp $(QUOG_BIN) "$(PREFIX)/bin/quog"
 	@echo "installed quog -> $(PREFIX)/bin/quog  (ensure $(PREFIX)/bin is on your PATH)"
 
-# Bare-metal kernel image (OFI-167 / kernel milestone 1). Uses the DEFAULT emberc with
-# `--emit=c --freestanding` (bare entry, no stdio/argv; main's int result = the exit code), then
+# Bare-metal kernel image (OFI-167 / kernel milestone 1). Uses the frozen frontend host (inglec-stage0) with
+# `--emit=c --freestanding` — post-cutover (B4) `--freestanding` is a frozen-host-only flag the self-hosted
+# dispatcher does not implement (it would delegate anyway; naming stage0 directly keeps it unambiguous).
+# Bare entry, no stdio/argv; main's int result = the exit code, then
 # cross-compiles the C + the freestanding shim against the boot stub and linker script into a flat
 # aarch64 ELF for QEMU `virt`. Opt-in (LLVM cross toolchain + qemu).
 # Shared freestanding objects every kernel image links: the boot stub, the exception/IRQ vectors, the
 # GIC/timer driver (vectors.o references em_irq), the real runtime, and the platform layer.
 KERNEL_SHARED := kernel/boot.o kernel/vectors.o kernel/timer.o kernel/runtime.o kernel/platform.o
 
-kernel: $(BIN)
-	$(BIN) --emit=c --freestanding kernel/hello.ig > kernel/hello.c
-	$(BIN) --emit=c --freestanding kernel/faultdemo.ig > kernel/faultdemo.c
-	$(BIN) --emit=c --freestanding kernel/timerdemo.ig > kernel/timerdemo.c
+kernel: $(STAGE0_BIN)
+	$(STAGE0_BIN) --emit=c --freestanding kernel/hello.ig > kernel/hello.c
+	$(STAGE0_BIN) --emit=c --freestanding kernel/faultdemo.ig > kernel/faultdemo.c
+	$(STAGE0_BIN) --emit=c --freestanding kernel/timerdemo.ig > kernel/timerdemo.c
 	$(KERNEL_CC) $(KERNEL_CC_FLAGS) -c kernel/boot.S -o kernel/boot.o
 	$(KERNEL_CC) $(KERNEL_CC_FLAGS) -c kernel/vectors.S -o kernel/vectors.o
 	$(KERNEL_CC) $(KERNEL_CC_FLAGS) $(KERNEL_FS_FLAGS) -c kernel/timer.c -o kernel/timer.o

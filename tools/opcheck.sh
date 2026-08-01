@@ -28,7 +28,10 @@ cc -std=c17 -Wall -Wextra -Werror -Iinclude -O1 \
 say "opcheck: building the OPCHECK VM…"
 OC="$ROOT/build/inglec-opcheck"
 mkdir -p "$ROOT/build"
-cc -std=c17 -Iinclude -D_DEFAULT_SOURCE -O1 -g -DEMBER_OPCHECK=1 "$ROOT"/src/*.c -lm -o "$OC" 2>"$TMP/blog" \
+# Exclude src/runner_main.c — the standalone runner's OWN main() (OFI-224 Stage B2); linking it beside
+# src/main.c gives a duplicate `_main`. (The Makefile filters it out of $(SOURCES) the same way.)
+OC_SRCS=$(ls "$ROOT"/src/*.c | grep -v '/runner_main\.c$')
+cc -std=c17 -Iinclude -D_DEFAULT_SOURCE -O1 -g -DEMBER_OPCHECK=1 $OC_SRCS -lm -o "$OC" 2>"$TMP/blog" \
    || { say "opcheck: OPCHECK VM failed to build"; tail -20 "$TMP/blog"; exit 1; }
 
 # 3) run the corpus through it; any "*** OPCHECK:" on stderr is a handler/spec width mismatch. We

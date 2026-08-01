@@ -23,11 +23,16 @@
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/build/emberc"
+# The reference HOST/ORACLE is the FROZEN frontend (inglec-stage0), NOT build/inglec: post-cutover (OFI-224
+# B4) build/inglec is the self-hosted dispatcher, whose `--emit=run` does not forward a driver's argv (it
+# quick-runs a single program). This harness RUNS the self-hosted compiler SOURCE (selfhost/*.ig) as argv
+# drivers and diffs their output against the frozen reference — so it needs the frontend's driver-run + the
+# stage-0 --emit oracle, both of which stage0 provides. (This is the exact binary emberc pointed at pre-flip.)
+BIN="$ROOT/build/inglec-stage0"
 export EMBER_STD="$ROOT/std"
 
 if [ ! -x "$BIN" ]; then
-    echo "selfhost: $BIN not built — run 'make' first" >&2
+    echo "selfhost: $BIN not built — run 'make stage0' first" >&2
     exit 2
 fi
 

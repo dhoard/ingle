@@ -12,7 +12,9 @@ set -u
 
 ELF="kernel/kernel.elf"
 QEMU="${QEMU_AARCH64:-qemu-system-aarch64}"
-EMBERC="${EMBERC:-build/emberc}"
+# --freestanding is a frozen-host-only flag post-cutover (OFI-224 B4) — use inglec-stage0, as the Makefile
+# kernel target does; the self-hosted dispatcher does not implement bare-metal codegen.
+EMBERC="${EMBERC:-build/inglec-stage0}"
 EXPECT="Hello from Ingle"
 EXPECT_INTERP="= 42"   # the interpolated array sum — proves heap strings + interpolation + arrays
 EXPECT_EXIT=42         # hello.ig sums [10,20,12] and returns it
