@@ -68,7 +68,10 @@ enum {
                               // a self-hosting DOGFOOD entirely in Ingle (selfhost/*.ig) — the C frontend does
                               // not know it; only the self-hosted compiler emits it. The runtime primitive is C
                               // (like Go's runtime).
-    NATIVE_MAX           = 29 // max(a, b) -> the larger of two numbers (int or float, same type).
+    NATIVE_MAX           = 29,// max(a, b) -> the larger of two numbers (int or float, same type).
+    NATIVE_READ_STDIN    = 30,// read_stdin(n) -> string — up to n bytes from stdin (blocking; "" = EOF/closed).
+                              // Self-hosted-only (like min/max); the LSP transport reads framed messages with it.
+    NATIVE_FLUSH         = 31 // flush() -> int — flush stdout (returns 0). Self-hosted-only; the LSP must flush each reply.
 };
 
 // A witness method slot normally holds an Ingle function-table index. For a built-in

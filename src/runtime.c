@@ -2703,7 +2703,21 @@ Value em_native(EmberRt *ctx, int nid, int argc, const Value *args) {
         }
         case NATIVE_EXEC:
             return INT_VAL(em_do_exec(argc, args));   // the shared body (VM + native backend); returns -1 on failure
-#endif  // !EMBER_FREESTANDING (getenv / exe_path / exec)
+        case NATIVE_READ_STDIN: {   // read_stdin(n) -> up to n bytes from stdin, blocking; "" = EOF (LSP transport)
+            long n = (argc >= 1) ? (long)AS_INT(args[0]) : 0;
+            if (n < 0) { n = 0; }
+            char *buf = (n > 0) ? (char *)malloc((size_t)n) : NULL;
+            size_t got = (buf != NULL) ? fread(buf, 1, (size_t)n, stdin) : 0;
+            ObjString *s = make_string(ctx, got);
+            if (got > 0) { memcpy(s->chars, buf, got); }
+            if (buf != NULL) { free(buf); }
+            return OBJ_VAL(s);
+        }
+        case NATIVE_FLUSH:   // flush() -> flush stdout (an editor pipe is fully buffered; each LSP reply must flush)
+            (void)argc; (void)args;
+            fflush(stdout);
+            return INT_VAL(0);
+#endif  // !EMBER_FREESTANDING (getenv / exe_path / exec / read_stdin / flush)
         case NATIVE_MIN: {   // min(a, b): the smaller of two same-typed numbers (self-hosting dogfood — added in Ingle)
             Value a = args[0], b = args[1];
             if (IS_FLOAT(a)) {

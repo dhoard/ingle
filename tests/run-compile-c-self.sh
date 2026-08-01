@@ -173,5 +173,18 @@ else
 fi
 rm -f "$mmprog" "$tmpbin"
 
+# 8. The LSP transport natives (self-hosted-only, like min/max): read_stdin(n) reads up to n bytes from
+#    stdin (blocking; "" = EOF), and flush() flushes stdout. These gate the Ingle LSP port (Phase 1). Feed a
+#    known 11-byte stdin and assert the partial-read + rest + EOF behaviour.
+rsprog="${TMPDIR:-/tmp}/ccself_rs_$$.ig"
+printf 'fn main() -> int {\n    let a = read_stdin(5)\n    let b = read_stdin(100)\n    let c = read_stdin(10)\n    println("{a}|{b}|{a.len()},{b.len()},{c.len()}")\n    let _ = flush()\n    return 0\n}\n' > "$rsprog"
+if (cd "${TMPDIR:-/tmp}" && "$CC_SELF" -o "$tmpbin" "$rsprog" 2>/dev/null) && \
+   [ "$(printf 'hello world' | "$tmpbin" 2>/dev/null | sed '/^=> 0$/d')" = "hello| world|5,6,0" ]; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self read_stdin(n)/flush transport natives (partial read + EOF)"
+else
+    fail=$((fail + 1)); echo "FAIL    compile_c-self read_stdin/flush transport natives"
+fi
+rm -f "$rsprog" "$tmpbin"
+
 echo "compile_c-self smoke: $pass passed, $fail failed (frontend-free checked compiler)"
 [ "$fail" -eq 0 ]
