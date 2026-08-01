@@ -18,7 +18,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-EMBERC="${EMBERC:-./build/inglec}"
+# The stage-0 C reference is the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is
+# the self-hosted compiler, so the reference must name stage0 explicitly to stay a real oracle. EMBERC=… overrides.
+EMBERC="${EMBERC:-./build/inglec-stage0}"
 DRIVER="selfhost/cgen_c_dump.ig"
 CACHE="${TMPDIR:-/tmp}/ccdiff_native_$$"
 LIST="${TMPDIR:-/tmp}/ccdiff_list_$$"

@@ -21,7 +21,9 @@
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-EMB="$ROOT/build/inglec"
+# Limits oracle = the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is the
+# self-hosted compiler. Re-aiming this fuzzer AT the self-hosted compiler is a G2 oracle-succession follow-on.
+EMB="${EMB:-$ROOT/build/inglec-stage0}"
 KNOWN="$ROOT/tools/ceilings-known.txt"
 N="${1:-600}"   # default well past BOTH 256 and the old 512-class internal buffers (a regression
                 # that reintroduces a fixed array sized ≤512 is then caught by the standard gate)

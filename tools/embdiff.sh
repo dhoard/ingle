@@ -16,9 +16,11 @@
 
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/build/inglec"
+# The stage-0 C reference is the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is
+# the self-hosted compiler, so the bytecode-container reference must name stage0 explicitly. BIN=… overrides.
+BIN="${BIN:-$ROOT/build/inglec-stage0}"
 export INGLE_STD="$ROOT/std"
-[ -x "$BIN" ] || { echo "embdiff: $BIN not built — run 'make' first" >&2; exit 2; }
+[ -x "$BIN" ] || { echo "embdiff: $BIN not built — run 'make stage0' first" >&2; exit 2; }
 
 A="${TMPDIR:-/tmp}/embdiff_stage0_$$.igb"
 B="${TMPDIR:-/tmp}/embdiff_self_$$.igb"

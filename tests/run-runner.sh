@@ -8,7 +8,9 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 RUNNER="$ROOT/build/inglec-run"
-REF="$ROOT/build/inglec"
+# The reference VM is the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is the
+# self-hosted dispatcher, so the "runner == reference VM" guarantee needs a stable C reference to hold.
+REF="$ROOT/build/inglec-stage0"
 
 if [ ! -x "$RUNNER" ] || [ ! -x "$REF" ]; then
     echo "SKIP    runner — build/inglec-run or build/inglec missing (run: make runner)"

@@ -180,7 +180,10 @@ GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
 .PHONY: all test test-update test-lsp doctor help release stage0 asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
-all: $(BIN) $(RT_LIB) $(RT_LIB_PAR)
+# OFI-224 G4 (B4): $(STAGE0_BIN) — the frozen C frontend / tooling host — is now built by default so it is
+# always present after `make`. The self-hosted dispatcher (the flipped `inglec`) execs it for --lsp/--doctor
+# and the introspection --emit modes, and the differential harnesses use it as the C reference oracle.
+all: $(BIN) $(STAGE0_BIN) $(RT_LIB) $(RT_LIB_PAR)
 
 $(BIN): $(OBJECTS)
 	$(CC) $(CFLAGS) $(OBJECTS) $(LDLIBS_MATH) -o $@
@@ -289,10 +292,15 @@ release: | build
 # self-hosted compiler does not implement. The LSP port + the full frontend retirement are v1.1 (G6). This is
 # the SAME binary as `release`, just under the stage0 name the dispatcher looks for.
 STAGE0_BIN := build/inglec-stage0
-stage0: | build
+# A real FILE target (not phony) so `all` can depend on it and it only rebuilds when a frontend source
+# changes — a phony would recompile the whole frontend on every `make`. Post-flip (B4) the self-hosted
+# dispatcher execs this for --lsp/--doctor/the introspection --emit modes, and the differential harnesses
+# use it as the C reference oracle, so it must always be present after `make`.
+$(STAGE0_BIN): $(SOURCES) | build
 	$(CC) $(RELEASE_FLAGS) $(SOURCES) $(LDLIBS_MATH) -o $(STAGE0_BIN)
 	@$(call LINK_COMPAT,$(STAGE0_BIN))
 	@echo "built $(STAGE0_BIN) — the frozen C frontend / LSP+tooling host (non-default; the dispatcher execs it)."
+stage0: $(STAGE0_BIN)
 
 # AddressSanitizer compilers (see ASAN_FLAGS). Run the suite under one with:
 #   make asan && ASAN_OPTIONS=detect_leaks=0 build/inglec-asan --emit=run <file.ig>
@@ -675,7 +683,7 @@ inglec-emberc: $(INGLEC_EMBERC)
 # Smoke the frontend-free checked compiler end-to-end: it must REJECT a type error (exit 65) and COMPILE+RUN
 # every cgen_c_run fixture identically to the VM. Proves the shipped self-hosted toolchain works from a binary
 # with no src/ frontend anywhere in its build. (v1.0 cutover Stage A guard.)
-test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(RT_LIB) $(RT_LIB_PAR)
+test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(STAGE0_BIN) $(RT_LIB) $(RT_LIB_PAR)
 	@tests/run-compile-c-self.sh
 
 # --- OFI-224 G4 Stage B2: the standalone, FRONTEND-FREE bytecode runner ---
@@ -696,7 +704,7 @@ $(RUNNER_BIN): $(RUNNER_SRCS) | build
 runner: $(RUNNER_BIN)
 
 # Guard the standalone runner: it must execute serialized .igb bytecode identically to the full compiler's VM.
-test-runner: $(RUNNER_BIN) $(BIN)
+test-runner: $(RUNNER_BIN) $(STAGE0_BIN)
 	@tests/run-runner.sh
 
 # Re-snapshot the seed from the CURRENT selfhost sources (a deliberate maintenance step — the Go-1.5
@@ -712,7 +720,7 @@ bootstrap-refresh: $(RT_LIB)
 # each through five oracles — the double-drop detector, ASan, an RSS leak check, and the VM↔native
 # differential — deduping and shrinking each finding to a minimal repro. Fails on a NEW finding (one
 # not baselined in tools/crucible-known.txt). Override the seed count: `tools/crucible.sh <N>`.
-crucible:
+crucible: $(STAGE0_BIN)
 	@tools/crucible.sh
 
 # Ceilings — the compiler-LIMITS stress tester (tools/ceilings.sh). Crucible's sibling for the OTHER
@@ -721,7 +729,7 @@ crucible:
 # strings, locals, functions, struct types, fields, variants) past the 256 boundary and asserts the
 # only safe outcomes — WORKS (compiles, runs, VM == native) or CAPPED (clean error) — never a wrap.
 # Fails on drift from tools/ceilings-known.txt. Override the size: `tools/ceilings.sh <N>`.
-ceilings:
+ceilings: $(STAGE0_BIN)
 	@tools/ceilings.sh
 
 # Opcheck — the bytecode operand-layer consistency gate (tools/opcheck.{c,sh}). The operand layout of
@@ -739,7 +747,7 @@ opcheck:
 # affine `moved`. It generates Ptr-lifetime programs (if/else+match trees, close-on-break read loops,
 # reassignment chains) each with a KNOWN accept/reject oracle and asserts the compiler's verdict
 # matches — catching BOTH a leak that compiles (unsound) and a balanced program rejected (over-strict).
-ledger:
+ledger: $(STAGE0_BIN)
 	@tools/ledger.sh
 
 # mn-stress — the M:N green-thread scheduler stress/scaling fuzzer (tools/mn-stress.sh). Generates

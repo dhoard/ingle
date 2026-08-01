@@ -18,7 +18,9 @@ GEN="$ROOT/build/crucible"
 # Binaries are overridable so the same generated memory-ownership corpus can be re-run against a
 # different runtime — e.g. CRUCIBLE_EMB=build/inglec-mn CRUCIBLE_ASAN=build/inglec-asan-mn to check the
 # value-struct/generic/aggregate bug class still holds when `main` runs as an M:N scheduler fiber.
-EMB="${CRUCIBLE_EMB:-$ROOT/build/inglec}"
+# Default oracle = the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is the
+# self-hosted compiler. Re-aiming this fuzzer AT the self-hosted compiler is a G2 oracle-succession follow-on.
+EMB="${CRUCIBLE_EMB:-$ROOT/build/inglec-stage0}"
 DT="${CRUCIBLE_DT:-$ROOT/build/inglec-dt}"
 ASAN="${CRUCIBLE_ASAN:-$ROOT/build/inglec-asan}"
 

@@ -10,7 +10,9 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CC_SELF="$ROOT/build/compile_c-self"
-VM="$ROOT/build/inglec"
+# The C reference oracle is the FROZEN frontend (inglec-stage0), NOT build/inglec: post-cutover (OFI-224 B4)
+# build/inglec IS the self-hosted compiler, so diffing against it would be self-vs-self (vacuously green).
+VM="$ROOT/build/inglec-stage0"
 LIB="$ROOT/build/libember_rt.a"
 
 if [ ! -x "$CC_SELF" ]; then

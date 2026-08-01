@@ -21,7 +21,9 @@ set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 export INGLE_STD="$ROOT/std"
 GEN="$ROOT/build/ledger"
-EMB="$ROOT/build/inglec"
+# Linearity oracle = the FROZEN frontend (inglec-stage0): post-cutover (OFI-224 B4) build/inglec is the
+# self-hosted compiler. Re-aiming this fuzzer AT the self-hosted checker is a G2 oracle-succession follow-on.
+EMB="${EMB:-$ROOT/build/inglec-stage0}"
 TMP="${TMPDIR:-/tmp}/ledger.$$"
 FINDS="$ROOT/tools/ledger-finds"
 COUNT="${1:-300}"
