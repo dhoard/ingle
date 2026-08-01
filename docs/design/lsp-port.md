@@ -75,5 +75,22 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
 
 ## 5. Progress log
 
-- **2026-08-01 — Campaign opened; scoped (5-agent recon); full parity ratified (Karl).** Plan above. Next:
-  Phase 1 — the `read_stdin`/`flush` transport natives, then `selfhost/lsp.ig` (JSON-RPC loop + diagnostics).
+- **2026-08-01 — Campaign opened; scoped (5-agent recon); full parity ratified (Karl).** Plan above.
+- **2026-08-01 — Phase 1a DONE: the transport natives** (`74cee77`) — `read_stdin(n)` + `flush()`,
+  self-hosted-only, both backends, gated. Plus a Makefile fix (`4fe6469`): the B4 flip had forward-referenced
+  `$(BIN)`'s prerequisite vars, so a plain `make` silently reused STALE self-hosted binaries (it bit the
+  positions + LSP work repeatedly) — hoisted the definitions above the rule.
+- **2026-08-01 — Phase 1b BLOCKED on the return-typing frontier (OFI-173) → a campaign RE-SCOPE.** Wrote the
+  JSON-RPC transport skeleton (`read_message`/`write_message`/`initialize` handshake) behind a `--lsp-self`
+  dev flag — but it hit OFI-173 HARD, in the *transport itself*, not the Phase-3 index. The self-hosted
+  C-emit resolves only a few string INTRINSICS (`.len`/`.split`/`.chars`/`.parse_int` + `char_code`);
+  `.substring`/`.index_of`/`.slice` are `std/string` free functions it can't UFCS-resolve, and chaining
+  `.split()[i].method()` is the "method-on-array-element" gap. `std/json` (needed for real message parsing)
+  also fails to compile INTO the compiler — its `Parser`/`_escape` trip the same gap on `.chars()`/`self.cs`.
+  Reverted the skeleton to keep the build green (`make test` 458/0). **THE FINDING: the LSP port is gated on
+  the OFI-173 return-typing work far EARLIER than planned — the transport's own string handling needs it, not
+  just the SemanticIndex. So the campaign's true first phase is the return-typing / OFI-174 completeness work
+  in the self-hosted C-emit** — make a bound method/function/array-element result carry its type so a
+  `.method()` on it resolves (the same plumbing the deferred expression-precise positions + the SemanticIndex
+  need). Everything downstream — transport, `std/json`, the index, the providers — unblocks once it lands.
+  This is a real compiler campaign of its own; **next: scope the return-typing work (size + approach).**
