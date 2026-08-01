@@ -29,6 +29,16 @@ LDLIBS_MATH   := -lm
 # Without this, stale objects can desync silently (see git history / OFI-003).
 CFLAGS  := -std=c17 -Wall -Wextra -Werror -Iinclude -O0 -g -MMD -MP $(PORTABLE_DEFS)
 BIN     := build/inglec
+# The self-hosted toolchain binaries the default `$(BIN)` rule (below) copies/execs. Defined HERE, before
+# that rule, for the SAME reason as RT_LIB: make expands a rule's prerequisites when the rule is READ, so a
+# forward definition expands to empty — that was the B4-flip stale-rebuild bug (`make compile_c-self` worked,
+# but plain `make` silently reused a stale binary because `$(BIN)`'s prereqs were empty). The build RULES for
+# these stay in their sections below; only the := definitions live up here.
+COMPILE_C_SELF := build/compile_c-self
+INGLEC_EMBERC  := build/inglec-emberc
+RUNNER_BIN     := build/inglec-run
+STAGE0_BIN     := build/inglec-stage0
+INGLEC_SELF    := build/inglec-self
 # The native backend's runtime library, linked into compiled Ingle programs (emberc -o).
 # Defined here (before `all`) so it is in `all`'s prerequisites — GNU make expands a rule's
 # prerequisites when the rule is read, so a later definition would expand to empty.
@@ -304,8 +314,7 @@ release: | build
 # tooling/LSP host: the self-hosted dispatcher execs it for --lsp / --doctor / the introspection --emit modes
 # (--emit=ast/tokens/check/bytecode/trace/docs/prove/replay) and --run-bytecode/--tape/--freestanding, which the
 # self-hosted compiler does not implement. The LSP port + the full frontend retirement are v1.1 (G6). This is
-# the SAME binary as `release`, just under the stage0 name the dispatcher looks for.
-STAGE0_BIN := build/inglec-stage0
+# the SAME binary as `release`, just under the stage0 name the dispatcher looks for. (STAGE0_BIN := up top.)
 # A real FILE target (not phony) so `all` can depend on it and it only rebuilds when a frontend source
 # changes — a phony would recompile the whole frontend on every `make`. Post-flip (B4) the self-hosted
 # dispatcher execs this for --lsp/--doctor/the introspection --emit modes, and the differential harnesses
@@ -658,7 +667,7 @@ bootstrap: $(RT_LIB)
 
 # --- OFI-224 G1: the self-hosted compiler as a first-class, frontend-free artifact ---
 SEED        := bootstrap/seed/inglec_boot.c
-INGLEC_SELF := build/inglec-self
+# (INGLEC_SELF := build/inglec-self is defined up top, before the $(BIN) rule.)
 
 # build/inglec-self — the self-hosted C-emit compiler (selfhost/cgen_c.ig), built from the checked-in
 # SEED + the runtime ALONE, with NO src/ frontend. This is the same binary bootstrap.sh calls N1, kept
@@ -680,7 +689,7 @@ inglec-self: $(INGLEC_SELF)
 # runtime. Depends only on inglec-self + the selfhost sources + $(RT_LIB) — no src/ frontend in the loop, so
 # it survives frontend retirement. This is the additive, reversible Stage-A foundation of the v1.0 cutover:
 # the self-hosted compiler is now buildable/installable/CI-guardable WITHOUT touching the default build.
-COMPILE_C_SELF := build/compile_c-self
+# (COMPILE_C_SELF := build/compile_c-self is defined up top, before the $(BIN) rule.)
 $(COMPILE_C_SELF): $(INGLEC_SELF) $(wildcard selfhost/*.ig) $(RT_LIB)
 	@echo "building the CHECKED self-hosted compiler (compile_c.ig) frontend-free…"
 	$(INGLEC_SELF) selfhost/compile_c.ig | sed -e '/^=> 0$$/d' > build/compile_c-self.c
@@ -693,8 +702,7 @@ compile_c-self: $(COMPILE_C_SELF)
 # build/inglec-emberc — the unified self-hosted compiler (selfhost/emberc.ig): check → serialize a runnable
 # `.igb`. Built FRONTEND-FREE the same way as compile_c-self. The dispatcher (compile_c.ig) execs this to
 # compile a program to bytecode, then execs the standalone runner (build/inglec-run) on the .igb — so quick-run
-# is fully self-hosted and independent of the frozen C frontend.
-INGLEC_EMBERC := build/inglec-emberc
+# is fully self-hosted and independent of the frozen C frontend. (INGLEC_EMBERC := up top.)
 $(INGLEC_EMBERC): $(INGLEC_SELF) $(wildcard selfhost/*.ig) $(RT_LIB)
 	@echo "building the self-hosted bytecode compiler (emberc.ig) frontend-free…"
 	$(INGLEC_SELF) selfhost/emberc.ig | sed -e '/^=> 0$$/d' > build/inglec-emberc.c
@@ -716,8 +724,7 @@ test-compile-c-self: $(COMPILE_C_SELF) $(INGLEC_EMBERC) $(RUNNER_BIN) $(STAGE0_B
 # self-hosted `inglec --emit=run` hands its compiled bytecode to, so quick-run is independent of the frozen C
 # frontend (which retires in v1.1). Built from a curated file set — every VM/runtime translation unit
 # run_bytecode needs, but none of the six frontend files. Compiled together (not via $(SOURCES)) with matching
-# flags so the value/bytecode ABI is consistent end to end.
-RUNNER_BIN  := build/inglec-run
+# flags so the value/bytecode ABI is consistent end to end. (RUNNER_BIN := up top.)
 RUNNER_SRCS := src/runner_main.c src/vm.c src/bytecode_io.c src/program.c src/chunk.c src/arena.c \
                src/fault.c src/builtin.c src/opcode.c src/jsonw.c src/runtime.c src/cextern.c
 $(RUNNER_BIN): $(RUNNER_SRCS) | build
