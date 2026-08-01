@@ -1906,3 +1906,47 @@ end state so the workflow change is not lost.
 The net effect: extending the language is now **edit `selfhost/*.ig` → `make bootstrap`** — the compiler,
 written in Ingle, compiles the edited Ingle sources into a new self-reproducing compiler, no C frontend
 touched. Ingle is developed and built upon in Ingle.
+
+## Decision: `inglec` IS the self-hosted compiler — the default+install flip, with the frontend as a frozen dispatched host (OFI-224 G4)
+
+The bootstrap flip above made Ingle *build* Ingle; this entry records the **default + install** flip that
+makes the self-hosted compiler the toolchain users and editors actually run — the v1.0 "birthday" milestone
+(v1.0 = G4/G5(b), Karl-ratified). Landed 2026-08-01.
+
+- **`build/inglec` is a copy of the self-hosted dispatcher** (`selfhost/compile_c.ig` → `compile_c-self`), not
+  the C frontend. `make`/`make install`/CI build and ship it. The frontend is not deleted — it survives under a
+  non-default `make frontend` (an incremental `-O0 -g` dev build) and, canonically, as the **frozen
+  `inglec-stage0`** the dispatcher execs. Full `src/` archival is G6/v1.1.
+
+- **The dispatcher model — why the frontend must stay a HOST, not just a seed.** The self-hosted compiler is
+  check + two backends (C-emit `-o`/`--emit=c`; bytecode `--emit=run`). It has **no LSP, no `--doctor`, no
+  introspection `--emit=tokens/ast/bytecode/check/trace`, no positioned diagnostics, no `--freestanding`**. So
+  the default `inglec` OWNS `-o`/`--emit=c`/`--emit=run` and **execs `inglec-stage0` for everything else** —
+  editors keep launching `inglec --lsp` and get the frozen frontend's LSP transparently (`execv`, so a
+  long-lived stdio server is handed over cleanly). This is the Rust/Go pattern (self-host the compiler first;
+  the LSP is later, separate tooling): a self-hosted LSP needs the checker to carry source POSITIONS, a v1.1
+  prerequisite campaign, not a flip blocker.
+
+- **Install layout: everything in `bin/`.** `make install` ships `inglec` + `inglec-stage0` + `inglec-emberc` +
+  `inglec-run` + the runtime archives + `include/` + `std/`, all under `$(PREFIX)/bin` — the compiler resolves
+  the `.a` archives and headers next to its own binary via `exe_path()`, `std` at `<bin>/../std`. The default
+  install stays **dependency-free** (serial + parallel runtimes only); graphics/db/web native `-o` need their
+  flavored archive installed. The `emberc` compat symlink tracks `inglec` automatically.
+
+- **`make test` is SPLIT (the Rust/Go precedent).** The Tier-1 golden snapshots are **frontend artifacts** —
+  positioned diagnostics, bytecode disassembly, `--emit=tokens/ast/check` dumps, the frontend's `--emit=run`
+  behaviour + agent-Fault renders — that the self-hosted compiler does not reproduce (position-less checker;
+  the bytecode backend has OFI-218 coverage gaps the C-emit lacks). They are locked against the frozen
+  `inglec-stage0` (which the dispatcher delegates to anyway). The Tier-1b native differential compiles with the
+  **shipping self-hosted `-o`** against the stage0 VM oracle, so `make test` still directly exercises the
+  shipping native path; `make selfhost` (VM↔C-emit differential + reproduction fixed point) +
+  `test-compile-c-self` further guard the self-hosted compiler. Every differential/fuzzer oracle that used the
+  C reference now names `inglec-stage0` explicitly — it is the frozen reference, so the flip cannot make it
+  circular.
+
+- **Two honest v1.0 known-limitations (deliberately shipped, not silent).** (1) `inglec --emit=run` (bytecode)
+  is NARROWER than `inglec -o` (native): the bytecode backend still has OFI-218 gaps the C-emit does not, so a
+  program that native-compiles may fail quick-run. (2) Self-hosted checker diagnostics are generic (no
+  `file:line:col`); the frozen host owns positioned diagnostics until the v1.1 LSP/positions port. Re-aiming
+  the generative fuzzers (crucible/ceilings/ledger) at the self-hosted compiler is the G2 oracle-succession
+  follow-on (gated on OFI-225 for the `-o` path).

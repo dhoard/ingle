@@ -481,6 +481,47 @@ exactly where Go 1.5 and Rust 1.0 stood.
   `<bin>/../std` to /std); with the std path correct, the FFI bands were the complete fix.** **All pre-flip work
   is now done — the only remaining G4 work is Stage B itself: the default-flip (all/test/install/CI) + the
   `inglec`→frozen-frontend-host LSP dispatcher.**
+- **2026-08-01 — B4 COMPLETE: the default + install flip landed; `inglec` IS the self-hosted compiler.**
+  The last G4 piece, executed in three internally-staged, each-gate-green steps after a 6-surface blast-radius
+  recon (build spine · flavored targets · install/tooling · test/CI · a RE-MEASURE of the corpus frontier ·
+  downstream consumers).
+  - **Re-measure finding (the elephant is gone):** §4a's "47 hard-fails" was stale (2026-07-25, pre the
+    json/ufcs/proc/base_of/min-max fixes). LIVE re-measure: **252/252 corpus programs compile clean via the
+    self-hosted `-o`, 0 exit-70 coverage gaps** — the 7 residual failures are all SHARED with stage-0's native
+    path (channel-flavor detection ×2, OFI-082 clone, 4 no-`main` library files). The self-hosted C-emit is at
+    FULL native parity. OFI-225 flake **not reproducible — 0/425** compile attempts.
+  - **Stage A (additive, provable no-op — `a984865`):** `stage0` is now a real FILE target + a default `all`
+    prereq (always present after `make`), and every differential oracle that hardcoded `build/inglec` as the C
+    REFERENCE (run-compile-c-self, run-runner, cc/cg/embdiff, ledger/ceilings/crucible) is repointed to the
+    frozen `inglec-stage0` — a no-op today (stage0 ≡ inglec), which is precisely what proves the repoints
+    correct before the flip.
+  - **Stage B (the flip — `be4ce7b`):** `build/inglec` = a copy of the self-hosted dispatcher; the C frontend
+    survives under a non-default `frontend` target + the frozen `inglec-stage0` host. `install` ships the full
+    self-hosted toolchain (inglec + stage0 + emberc + run + serial/parallel runtime archives + headers + std,
+    all in `bin/`; DEPENDENCY-FREE default). `kernel`/`release` repointed (--freestanding → stage0; release =
+    the frontend bench binary). **The run.sh SPLIT (as §5b planned):** Tier 1 golden snapshots run against the
+    frozen `inglec-stage0` — they are frontend artifacts (positioned diagnostics, bytecode dumps, the
+    frontend's --emit=run + Fault renders) the self-hosted compiler does not reproduce; Tier 1b native
+    differential compiles with the SHIPPING self-hosted `-o` vs the stage0 VM oracle. Also fixed
+    run-selfhost/run-lsp/run-kernel (reference host → stage0) + a pre-existing opcheck dup-`_main`
+    (`runner_main.c` in the source glob, latent since Stage B2).
+  - **Stage C (downstream + docs):** Inglenook's launchers point their Verified Loop at the full frontend
+    (inglec-net-gfx — it needs positioned diagnostics + --check + --faults); `run-selfhost.sh` SIMPLIFIED to a
+    one-command `inglec -o` native build (the manual --emit=c→cc→re-emit pipeline it used IS what `inglec -o`
+    now does). **CI needs no yml changes** — every step is a `make` target the flip handles internally; the
+    `make` step builds the self-hosted chain + stage0 first, satisfying every downstream stage0 dependency.
+  **Two honest v1.0 known-limitations this surfaced (documented, not silent):** (1) the self-hosted BYTECODE
+  backend (`--emit=run`) has OFI-218 P1 coverage gaps the C-emit (`-o`) does not — so `inglec --emit=run`
+  fails on some programs `inglec -o` compiles fine (quick-run is narrower than native compile); (2) the
+  self-hosted checker diagnostics are generic (no source positions) — the frozen frontend owns the
+  positioned-diagnostic surface until the v1.1 LSP/positions port. **Follow-on (G2 oracle succession):**
+  re-aim the generative fuzzers (crucible/ceilings/ledger) at the self-hosted compiler, gated on OFI-225 for
+  the `-o` path. Gates after the flip: `make verify` **all 9 green** (test 458/0, selfhost 1817/0, bootstrap
+  frontend-free, opcheck 396, ceilings/ledger/crucible clean); `make install PREFIX=…` produces a working
+  installed toolchain (native -o, --emit=run, --version, --lsp via delegation — all from a neutral cwd,
+  resolving runtime/headers/std relative to the binary). **G4 is DONE: the bootstrapped compiler is the
+  default + installed build/run toolchain. v1.0 = G4/G5(b) — G5(b) is the frozen host (in place) + the
+  known-limitations writeup + the birthday.**
 
 ### 5b. Stage B — the flip (plan, Karl-ratified 2026-07-30)
 

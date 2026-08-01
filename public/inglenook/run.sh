@@ -13,9 +13,11 @@ cd "$ROOT"
 make net-graphics >/dev/null
 : "${EMBER_TAPE:=/tmp/inglenook.tape}"
 export EMBER_TAPE
-# The Verified Loop / linter / tape-scrubber shell out to the compiler; default to the one we just
-# built so they work without a separately-installed `inglec` on PATH (override with INGLENOOK_INGLEC=).
-: "${INGLENOOK_INGLEC:=$ROOT/build/inglec}"
+# The Verified Loop / linter / tape-scrubber shell out to the compiler, using the frontend's positioned
+# diagnostics, --emit=check (prover) and --faults=agent. Post-cutover (OFI-224 B4) the default `build/inglec`
+# is the SELF-HOSTED dispatcher, which has none of those yet (it delegates them to inglec-stage0) — so point
+# the loop at the full frontend we just built (inglec-net-gfx). Override with INGLENOOK_INGLEC=.
+: "${INGLENOOK_INGLEC:=$ROOT/build/inglec-net-gfx}"
 export INGLENOOK_INGLEC
 # The Source panel shells out to the `quog` VCS (a sibling Ingle app). Build it and point the panel at
 # it so it works without a separately-installed `quog` on PATH (override with INGLENOOK_QUOG=). Kept
