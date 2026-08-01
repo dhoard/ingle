@@ -6788,7 +6788,7 @@ struct CgcGen {
             if self.hole_has_show(hole) {
                 var no_args: [ps.Expr] = []
                 var no_names: [string] = []
-                return self.emit_call(ps.EGet(ps.Box<ps.Expr>{ value: hole, line: 0 }, "show"), no_args, no_names)
+                return self.emit_call(ps.EGet(ps.Box<ps.Expr>{ value: hole, line: 0, col: 0 }, "show"), no_args, no_names)
             }
             let rk = self.render_kind_of_expr(hole)   // int 0 · float 9 · bool 10 · sized 1..8
             return "em_to_string(&g_em, {self.emit_expr(hole)}, {rk})"

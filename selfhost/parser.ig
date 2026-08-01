@@ -19,6 +19,8 @@ import "lexer" as lx
 struct Box<T> {
     value: T
     line: int          // source line of the wrapped node's first token (0 for types — codegen ignores)
+    col: int           // source column of that first token (1-based; 0 = synthetic/none). DIAGNOSTIC-ONLY —
+                       // codegen/cgen_c never read it, so it stays out of emitted bytecode/C (positions M2).
 }
 
 
@@ -1341,9 +1343,9 @@ struct Parser {
         var pred: [Box<Expr>] = []
         if self.at(TAG_WHERE) {
             let _ = self.advance()
-            pred.append(Box<Expr>{ value: self.parse_expr(), line: 0 })
+            pred.append(Box<Expr>{ value: self.parse_expr(), line: 0, col: 0 })
         }
-        return DType(name, Box<Ty>{ value: base, line: 0 }, pred)
+        return DType(name, Box<Ty>{ value: base, line: 0, col: 0 }, pred)
     }
 
 
@@ -1357,8 +1359,9 @@ struct Parser {
         }
         let _ = self.advance()                      // =
         let vstart = self.peek().line
+        let vcol = self.peek().col
         let value = self.parse_expr()
-        return DLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart })
+        return DLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart, col: vcol })
     }
 
 
@@ -1408,7 +1411,7 @@ struct Parser {
             let _ = self.advance()
             let elem = self.parse_type()
             let _ = self.expect(TAG_RBRACKET)
-            return TyArray(Box<Ty>{ value: elem, line: 0 })
+            return TyArray(Box<Ty>{ value: elem, line: 0, col: 0 })
         }
         if self.at(TAG_FN) {
             let _ = self.advance()
@@ -1685,7 +1688,7 @@ struct Parser {
             case TMatch { return self.parse_match() }
             case TSpawn {
                 let kw = self.advance()
-                return SSpawn(Box<Expr>{ value: self.parse_expr(), line: kw.line })
+                return SSpawn(Box<Expr>{ value: self.parse_expr(), line: kw.line, col: kw.col })
             }
             case TNursery {
                 let kw = self.advance()
@@ -1694,20 +1697,22 @@ struct Parser {
             case TLBrace { return SBlock(self.parse_block()) }
             case _ {
                 let estart = self.peek().line
+                let ecol = self.peek().col
                 let mark = self.pos
                 let mns = self.no_struct
                 let mgt = self.pending_gt
                 let e = self.parse_expr()
                 if lx.is_compound_assign(self.peek_kind()) {
-                    return self.parse_compound_assign(e, mark, mns, mgt, estart, lx.binop_of_compound(self.peek_kind()))
+                    return self.parse_compound_assign(e, mark, mns, mgt, estart, ecol, lx.binop_of_compound(self.peek_kind()))
                 }
                 if self.at(TAG_ASSIGN) {
                     let _ = self.advance()
                     let vstart = self.peek().line
+                    let vcol = self.peek().col
                     let v = self.parse_expr()
-                    return SAssign(Box<Expr>{ value: e, line: estart }, Box<Expr>{ value: v, line: vstart })
+                    return SAssign(Box<Expr>{ value: e, line: estart, col: ecol }, Box<Expr>{ value: v, line: vstart, col: vcol })
                 }
-                return SExpr(Box<Expr>{ value: e, line: estart })
+                return SExpr(Box<Expr>{ value: e, line: estart, col: ecol })
             }
         }
     }
@@ -1717,7 +1722,7 @@ struct Parser {
     // target `e` as the binary's left operand, so it re-parses the LHS from `mark` under the same parser
     // flags (mns/mgt) — an identical token range + flag state yields a structurally identical subtree,
     // mirroring stage-0's pointer-shared target/left. `op` is the infix Tk (`+`, `&`, …).
-    fn parse_compound_assign(mut self, e: Expr, mark: int, mns: bool, mgt: int, estart: int, op: lx.Tk) -> Stmt {
+    fn parse_compound_assign(mut self, e: Expr, mark: int, mns: bool, mgt: int, estart: int, ecol: int, op: lx.Tk) -> Stmt {
         let after = self.pos
         self.pos = mark
         self.no_struct = mns
@@ -1726,9 +1731,10 @@ struct Parser {
         self.pos = after
         let _ = self.advance()                      // consume the compound-assign operator
         let vstart = self.peek().line
+        let vcol = self.peek().col
         let v = self.parse_expr()
-        let bin = EBinary(op, Box<Expr>{ value: eleft, line: estart }, Box<Expr>{ value: v, line: vstart })
-        return SAssign(Box<Expr>{ value: e, line: estart }, Box<Expr>{ value: bin, line: vstart })
+        let bin = EBinary(op, Box<Expr>{ value: eleft, line: estart, col: ecol }, Box<Expr>{ value: v, line: vstart, col: vcol })
+        return SAssign(Box<Expr>{ value: e, line: estart, col: ecol }, Box<Expr>{ value: bin, line: vstart, col: vcol })
     }
 
 
@@ -1742,8 +1748,9 @@ struct Parser {
         }
         let _ = self.expect(TAG_ASSIGN)
         let vstart = self.peek().line
+        let vcol = self.peek().col
         let value = self.parse_expr()
-        return SLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart })
+        return SLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart, col: vcol })
     }
 
 
@@ -1755,13 +1762,15 @@ struct Parser {
             return SReturn(none, rline)
         }
         let rstart = self.peek().line
-        return SReturn([Box<Expr>{ value: self.parse_expr(), line: rstart }], rline)
+        let rcol = self.peek().col
+        return SReturn([Box<Expr>{ value: self.parse_expr(), line: rstart, col: rcol }], rline)
     }
 
 
     fn parse_if(mut self) -> Stmt {
         let _ = self.advance()                      // if
         let cstart = self.peek().line
+        let ccol = self.peek().col
         let cond = self.parse_cond()
         let then_blk = self.parse_block()
         var els: [Stmt] = []
@@ -1774,7 +1783,7 @@ struct Parser {
                 els.append(SBlock(self.parse_block()))
             }
         }
-        return SIf(Box<Expr>{ value: cond, line: cstart }, then_blk, els)
+        return SIf(Box<Expr>{ value: cond, line: cstart, col: ccol }, then_blk, els)
     }
 
 
@@ -1795,15 +1804,17 @@ struct Parser {
         }
         let _ = self.advance()                      // in
         let istart = self.peek().line
+        let icol = self.peek().col
         let iter = self.parse_cond()
         let body = self.parse_block()
-        return SFor(var_name, idx_var, Box<Expr>{ value: iter, line: istart }, body)
+        return SFor(var_name, idx_var, Box<Expr>{ value: iter, line: istart, col: icol }, body)
     }
 
 
     fn parse_match(mut self) -> Stmt {
         let _ = self.advance()                      // match
         let vstart = self.peek().line
+        let vcol = self.peek().col
         let value = self.parse_cond()
         let _ = self.expect(TAG_LBRACE)
         var cases: [Case] = []
@@ -1840,7 +1851,7 @@ struct Parser {
             cases.append(Case{ pattern: pat, guard: guard, body: body })
         }
         let _ = self.expect(TAG_RBRACE)
-        return SMatch(Box<Expr>{ value: value, line: vstart }, cases)
+        return SMatch(Box<Expr>{ value: value, line: vstart, col: vcol }, cases)
     }
 
 
@@ -1941,6 +1952,7 @@ struct Parser {
 
     fn parse_expr(mut self) -> Expr {
         let estart = self.peek().line
+        let ecol = self.peek().col
         let e = self.parse_binary(1)
         if self.at(TAG_DOTDOT) {
             let _ = self.advance()
@@ -1952,11 +1964,12 @@ struct Parser {
                 let _ = self.advance()
             }
             let hstart = self.peek().line
+            let hcol = self.peek().col
             var hi = self.parse_binary(1)
             if inclusive {
-                hi = EBinary(lx.plus_token(), Box<Expr>{ value: hi, line: hstart }, Box<Expr>{ value: EInt(1, 0), line: hstart })
+                hi = EBinary(lx.plus_token(), Box<Expr>{ value: hi, line: hstart, col: hcol }, Box<Expr>{ value: EInt(1, 0), line: hstart, col: hcol })
             }
-            return ERange(Box<Expr>{ value: e, line: estart }, Box<Expr>{ value: hi, line: hstart })
+            return ERange(Box<Expr>{ value: e, line: estart, col: ecol }, Box<Expr>{ value: hi, line: hstart, col: hcol })
         }
         return e
     }
@@ -1964,6 +1977,7 @@ struct Parser {
 
     fn parse_binary(mut self, min_prec: int) -> Expr {
         let lstart = self.peek().line
+        let lcol = self.peek().col
         var left = self.parse_unary()
         loop {
             let prec = binary_prec(self.peek_kind())
@@ -1972,8 +1986,9 @@ struct Parser {
             }
             let op = self.advance().kind
             let rstart = self.peek().line
+            let rcol = self.peek().col
             let right = self.parse_binary(prec + 1)
-            left = EBinary(op, Box<Expr>{ value: left, line: lstart }, Box<Expr>{ value: right, line: rstart })
+            left = EBinary(op, Box<Expr>{ value: left, line: lstart, col: lcol }, Box<Expr>{ value: right, line: rstart, col: rcol })
         }
         return left
     }
@@ -1981,9 +1996,9 @@ struct Parser {
 
     fn parse_unary(mut self) -> Expr {
         match self.peek_kind() {
-            case TBang { let op = self.advance().kind  let os = self.peek().line  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os }) }
-            case TMinus { let op = self.advance().kind  let os = self.peek().line  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os }) }
-            case TTilde { let op = self.advance().kind  let os = self.peek().line  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os }) }
+            case TBang { let op = self.advance().kind  let os = self.peek().line  let oc = self.peek().col  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os, col: oc }) }
+            case TMinus { let op = self.advance().kind  let os = self.peek().line  let oc = self.peek().col  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os, col: oc }) }
+            case TTilde { let op = self.advance().kind  let os = self.peek().line  let oc = self.peek().col  return EUnary(op, Box<Expr>{ value: self.parse_unary(), line: os, col: oc }) }
             case _ { return self.parse_postfix() }
         }
     }
@@ -1991,13 +2006,14 @@ struct Parser {
 
     fn parse_postfix(mut self) -> Expr {
         let start = self.peek().line                        // base line; postfix steps inherit it (stage-0)
+        let scol = self.peek().col
         var e = self.parse_primary()
         loop {
             match self.peek_kind() {
                 case TDot {
                     let _ = self.advance()
                     let name = self.advance().text
-                    e = EGet(Box<Expr>{ value: e, line: start }, name)
+                    e = EGet(Box<Expr>{ value: e, line: start, col: scol }, name)
                 }
                 case TLParen {
                     let args = self.parse_args()
@@ -2010,18 +2026,19 @@ struct Parser {
                         names.append(self.last_arg_names[ni])
                         ni = ni + 1
                     }
-                    e = ECall(Box<Expr>{ value: e, line: start }, args, names)
+                    e = ECall(Box<Expr>{ value: e, line: start, col: scol }, args, names)
                 }
                 case TLBracket {
                     let _ = self.advance()
                     let idxstart = self.peek().line
+                    let idxcol = self.peek().col
                     let idx = self.parse_expr()
                     let _ = self.expect(TAG_RBRACKET)
-                    e = EIndex(Box<Expr>{ value: e, line: start }, Box<Expr>{ value: idx, line: idxstart })
+                    e = EIndex(Box<Expr>{ value: e, line: start, col: scol }, Box<Expr>{ value: idx, line: idxstart, col: idxcol })
                 }
                 case TQuestion {
                     let _ = self.advance()
-                    e = ETry(Box<Expr>{ value: e, line: start })
+                    e = ETry(Box<Expr>{ value: e, line: start, col: scol })
                 }
                 case _ {
                     break
@@ -2226,7 +2243,7 @@ struct Parser {
         self.skip_newlines()
         self.no_struct = saved
         let _ = self.expect(TAG_RBRACE)
-        return EStructLit(Box<Ty>{ value: ty, line: 0 }, fields)
+        return EStructLit(Box<Ty>{ value: ty, line: 0, col: 0 }, fields)
     }
 
 
@@ -2257,7 +2274,8 @@ struct Parser {
         } else {
             // an expression body `|x| expr` is the lifted function's `return expr` (implicit return).
             let ln = self.peek().line
-            body = [SReturn([Box<Expr>{ value: self.parse_expr(), line: ln }], ln)]
+            let lncol = self.peek().col
+            body = [SReturn([Box<Expr>{ value: self.parse_expr(), line: ln, col: lncol }], ln)]
         }
         return ELambda(params, body)
     }

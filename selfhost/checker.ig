@@ -257,16 +257,21 @@ struct Checker {
                                  // bound)? A method call on one is an error (check.c:4073); parallel to `locals`.
     scope_depth: int
     diags: [string]            // collected diagnostics, each pre-rendered "file:line: error: msg" (M1)
-    cur_line: int              // M1: source line of the stmt/expr currently being checked (0 = unknown)
-    cur_file: string           // M1: path of the module being checked, for the diagnostic's `file:` prefix
+    cur_line: int              // source line of the stmt/expr currently being checked (0 = unknown)
+    cur_col: int               // source column of it (M2; 0 = unknown → rendered line-only)
+    cur_file: string           // path of the module being checked, for the diagnostic's `file:` prefix
 
 
-    // error records a diagnostic at the position currently being checked (self.cur_file/self.cur_line, set as
-    // the walk descends — statement granularity in M1; expression granularity + column follow). A 0 line means
-    // the site has no position yet (e.g. a signature/decl-level check) → the message is rendered file-only.
+    // error records a diagnostic at the position currently being checked (self.cur_file/line/col, set as the
+    // walk descends — statement granularity; expression granularity is a later refinement). A 0 line means the
+    // site has no position yet (e.g. a signature/decl-level check) → rendered file-only; a 0 col → line-only.
     fn error(mut self, msg: string) {
         if self.cur_line > 0 {
-            self.diags.append("{self.cur_file}:{self.cur_line}: error: {msg}")
+            if self.cur_col > 0 {
+                self.diags.append("{self.cur_file}:{self.cur_line}:{self.cur_col}: error: {msg}")
+            } else {
+                self.diags.append("{self.cur_file}:{self.cur_line}: error: {msg}")
+            }
         } else {
             self.diags.append("{self.cur_file}: error: {msg}")
         }
@@ -1710,10 +1715,31 @@ struct Checker {
     }
 
 
+    // stmt_col mirrors stmt_line for the column (0 for the keyword-only forms, which have no column of their own).
+    fn stmt_col(self, s: ps.Stmt) -> int {
+        match s {
+            case SLet(_, _, _, value) { return value.col }
+            case SReturn(_, _) { return 0 }
+            case SExpr(expr) { return expr.col }
+            case SAssign(target, _) { return target.col }
+            case SIf(cond, _, _) { return cond.col }
+            case SFor(_, _, iter, _) { return iter.col }
+            case SLoop(_) { return 0 }
+            case SBreak(_) { return 0 }
+            case SContinue(_) { return 0 }
+            case SMatch(value, _) { return value.col }
+            case SSpawn(call) { return call.col }
+            case SNursery(_, _) { return 0 }
+            case SBlock(_) { return 0 }
+        }
+    }
+
+
     fn check_stmt(mut self, s: ps.Stmt) {
         let sl = self.stmt_line(s)
         if sl > 0 {
             self.cur_line = sl
+            self.cur_col = self.stmt_col(s)
         }
         match s {
             case SLet(is_var, name, ty, value) {
@@ -3791,7 +3817,7 @@ fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_file: path }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies

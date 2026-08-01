@@ -48,10 +48,10 @@ rm -f "$bad"
 badp="${TMPDIR:-/tmp}/ccself_badp_$$.ig"
 printf 'fn main() -> int {\n  let x: int = "no"\n  return 0\n}\n' > "$badp"
 dout=$("$CC_SELF" "$badp" 2>&1)
-if printf '%s\n' "$dout" | grep -qE ':2: error: '; then
-    pass=$((pass + 1)); echo "PASS    compile_c-self emits a positioned 'file:line: error:' diagnostic"
+if printf '%s\n' "$dout" | grep -qE ':2:[0-9]+: error: '; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self emits a positioned 'file:line:col: error:' diagnostic"
 else
-    fail=$((fail + 1)); echo "FAIL    compile_c-self diagnostic lacks a line position (got: $dout)"
+    fail=$((fail + 1)); echo "FAIL    compile_c-self diagnostic lacks a line:col position (got: $dout)"
 fi
 rm -f "$badp"
 

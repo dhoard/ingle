@@ -10670,8 +10670,8 @@ struct Chunk {
                             // owned-string result is consumed by the fold's CONCAT like any string temp, no TO_STRING).
                             var sh_args: [ps.Expr] = []
                             var sh_names: [string] = []
-                            let sh_getter = ps.EGet(ps.Box<ps.Expr>{ value: h, line: line }, "show")
-                            let sh_call = ps.ECall(ps.Box<ps.Expr>{ value: sh_getter, line: line }, sh_args, sh_names)
+                            let sh_getter = ps.EGet(ps.Box<ps.Expr>{ value: h, line: line, col: 0 }, "show")
+                            let sh_call = ps.ECall(ps.Box<ps.Expr>{ value: sh_getter, line: line, col: 0 }, sh_args, sh_names)
                             self.gen_expr(sh_call, line)
                         } else {
                             self.gen_expr(h, line)
