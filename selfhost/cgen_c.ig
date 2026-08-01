@@ -419,6 +419,9 @@ struct FnResolve {
                                // — so `match load_config(t) { case Ok(cfg) }` types cfg's struct (OFI-173)
     mut_self_value: [bool]     // per-em_fn: is it a POINTER-RECEIVER mut-self value method? — so `c.m()` passes
                                // `&c` (a value-struct field write reaches the caller's struct) (OFI-054)
+    fn_ret_elem_str: [bool]    // per-em_fn: does it return `[string]`? — so `let ns = f(); ns[i].len()` tracks the
+                               // element as a boxed string. Carried HERE (not an emit_fn_body param) because the
+                               // frozen stage-0 host caps functions at 32 params and emit_fn_body is already at 32. (OFI-173)
 }
 
 
@@ -1786,6 +1789,44 @@ fn build_fn_ret_elem_kinds(decls: [ps.Decl]) -> [int] {
                     }
                     if methods[mi].has_body {
                         out.append(ret_elem_kind(methods[mi].ret))
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
+// build_fn_ret_elem_str marks each body-bearing fn (parallel to build_fn_names) that returns `[string]`, so
+// an inferred binding `let ns = f()` of a `[string]`-returning call records its element as a boxed refcounted
+// STRING (AEK 0) — inline `ns[i].len()`/`.split()` then resolve as a string method. Precise: ONLY string
+// elements (never `[[T]]`/`[enum]`, which would mis-resolve), the analogue of stage-0's element-typed AST. (OFI-173.)
+fn build_fn_ret_elem_str(decls: [ps.Decl]) -> [bool] {
+    var out: [bool] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    out.append(f.ret.len() > 0 && is_array_ty(f.ret[0]) && is_string_ty(elem_ty_of(f.ret[0])))
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        out.append(methods[mi].ret.len() > 0 && is_array_ty(methods[mi].ret[0]) && is_string_ty(elem_ty_of(methods[mi].ret[0])))
                     }
                     mi = mi + 1
                 }
@@ -8812,10 +8853,21 @@ struct CgcGen {
                         if self.is_string_expr(obj.value) && (mname == "split" || mname == "chars") {
                             return 0
                         }
-                        fi = self.qual_free_fi(obj.value, mname, args.len())
+                        let sid = self.struct_sid_any(obj.value)   // a struct METHOD returning `[string]` (`d.lines()`)
+                        if sid >= 0 {
+                            fi = self.fn_index("{self.st.names[self.st.base_of(sid)]}.{mname}")
+                        } else {
+                            fi = self.qual_free_fi(obj.value, mname, args.len())
+                        }
                     }
                     case _ {
                     }
+                }
+                // a CONCRETE `[string]`-returning call (`let ns = split_lines(t); ns[i].len()`): its elements are
+                // boxed strings (aek 0), so an inline `ns[i]` is a string receiver — the analogue of split/chars
+                // above for a user fn. Precise: only `[string]` (fn_ret_elem_str), never `[[T]]`. (OFI-173, un-dodged.)
+                if fi >= 0 && fi < self.res.fn_ret_elem_str.len() && self.res.fn_ret_elem_str[fi] {
+                    return 0
                 }
                 if fi >= 0 && fi < self.fn_ret_det_arg.len() && self.fn_ret_array[fi] {
                     let da = self.fn_ret_det_arg[fi]
@@ -12180,7 +12232,7 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
     let stab = build_struct_tab(decls)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab), fn_ret_elem_str: build_fn_ret_elem_str(decls) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index

@@ -94,3 +94,19 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   `.method()` on it resolves (the same plumbing the deferred expression-precise positions + the SemanticIndex
   need). Everything downstream — transport, `std/json`, the index, the providers — unblocks once it lands.
   This is a real compiler campaign of its own; **next: scope the return-typing work (size + approach).**
+- **2026-08-01 — RE-SCOPE CORRECTED: the Phase-1b "wall" was largely a false alarm (scoped via a 5-agent
+  read-only recon + hands-on verification against stage-0).** The return-typing frontier had already MOVED far
+  past the Phase-1b framing: structs/fields/generics/method-chains all resolve (**234/235** corpus programs
+  emit clean), and **`std/json` + `std/string` compile to native binaries today** (the Phase-1b "json won't
+  compile" was the stale-binary Makefile bug, since fixed in `4fe6469`). The *real* correction: **`s.substring(…)`
+  UFCS-on-a-string is INVALID Ingle** — stage-0 rejects it (`no such string method`); the corpus/stdlib always
+  call the `std/string` free fns QUALIFIED (`str.substring(s,…)`, `str.index_of(header, name)` — exactly what
+  `std/http_server` does for LSP-shaped header parsing). My reverted skeleton had used the invalid UFCS form,
+  which is what "hit OFI-173 in the transport." **So the transport is writable TODAY** with idiomatic qualified
+  calls + `std/json`; it is NOT gated on a big return-typing campaign. Of the three "gaps" scoped: **(1)** UFCS-on-string
+  = phantom (invalid syntax); **(2)** an inline string method on a `[string]`-returning call/method result
+  (`let ns = f(); ns[i].len()`) = a genuine but narrow gap, **FIXED** (`fn_ret_elem_str` on `FnResolve`, `make
+  verify` all-9-green — [OFI-226](../OFI.md)); **(3)** value-struct `.clone()` in native = **OFI-082** (a feature
+  gap, not return-typing). The big "checker stamps types → C-emit consumes" rearchitecture stays deferred to
+  the **SemanticIndex** phase (hover/definition), where it is genuinely required — not a transport prerequisite.
+  **Next: resume the port at Phase 1 (transport + diagnostics) on solid ground.**
