@@ -12010,7 +12010,7 @@ struct LamColl {
             case ELambda(params, body) {
                 let caps = cgc_lambda_captures(params, body)
                 let lp = cgc_lifted_params(caps, params)
-                self.lams.append(ps.FnDecl { name: "<lambda>", generics: [], params: lp, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [] })
+                self.lams.append(ps.FnDecl { name: "<lambda>", generics: [], params: lp, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [], line: 0, col: 0 })
             }
             case _ {
             }

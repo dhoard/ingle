@@ -149,6 +149,8 @@ struct FnDecl {
     req_lines: [int]                                // printed by ast_print, so M2 stays byte-identical
     enss: [Expr]                                    // `ensures` clause predicates (parallel to ens_lines)
     ens_lines: [int]
+    line: int                                       // the `fn` keyword's line/col — DIAGNOSTIC-ONLY (positions
+    col: int                                        // signature/decl errors; not printed by ast_print, not read by codegen)
 }
 
 
@@ -1488,6 +1490,8 @@ struct Parser {
 
 
     fn parse_fn(mut self, with_body: bool) -> FnDecl {
+        let fline = self.peek().line                // the `fn` keyword's position (for signature/decl diagnostics)
+        let fcol = self.peek().col
         let _ = self.advance()                      // fn
         let name = self.advance().text
         let generics = self.parse_generics()
@@ -1498,7 +1502,7 @@ struct Parser {
             ret.append(self.parse_type())
         }
         if with_body == false {
-            return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: false, body: [], reqs: [], req_lines: [], enss: [], ens_lines: [] }
+            return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: false, body: [], reqs: [], req_lines: [], enss: [], ens_lines: [], line: fline, col: fcol }
         }
         // requires/ensures contract clauses — captured into parallel predicate/line arrays (the line is the
         // clause keyword's, for codegen attribution), but ast_print does NOT print them, so the M2
@@ -1522,7 +1526,7 @@ struct Parser {
             }
         }
         let body = self.parse_block()
-        return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: true, body: body, reqs: reqs, req_lines: req_lines, enss: enss, ens_lines: ens_lines }
+        return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: true, body: body, reqs: reqs, req_lines: req_lines, enss: enss, ens_lines: ens_lines, line: fline, col: fcol }
     }
 
 

@@ -55,6 +55,19 @@ else
 fi
 rm -f "$badp"
 
+# 1c. DECL-LEVEL POSITION (positions M3): a signature/declaration error (here a duplicate function name on
+#     line 2) must ALSO carry a `file:line:col`, not render file-only — decl errors are positioned via the
+#     FnDecl's own `fn`-keyword position.
+badd="${TMPDIR:-/tmp}/ccself_badd_$$.ig"
+printf 'fn foo() -> int { return 1 }\nfn foo() -> int { return 2 }\nfn main() -> int { return 0 }\n' > "$badd"
+ddout=$("$CC_SELF" "$badd" 2>&1)
+if printf '%s\n' "$ddout" | grep -qE ':2:[0-9]+: error: '; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self positions a decl-level (duplicate-fn) error"
+else
+    fail=$((fail + 1)); echo "FAIL    compile_c-self decl-level error not positioned (got: $ddout)"
+fi
+rm -f "$badd"
+
 # 2. EMIT + RUN: every cgen_c_run fixture must run identically to the VM.
 for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run -name '*.ig' 2>/dev/null | sort); do
     want=$(cd "$ROOT" && "$VM" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')

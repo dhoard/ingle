@@ -701,6 +701,10 @@ struct Checker {
             }
             match decls[i] {
                 case DFn(f) {
+                    if f.line > 0 {
+                        self.cur_line = f.line
+                        self.cur_col = f.col
+                    }
                     if index_of(self.fns, f.name) >= 0 {
                         self.error("a function with this name is already declared in this module")
                     }
@@ -861,6 +865,10 @@ struct Checker {
             }
             match decls[i] {
                 case DFn(f) {
+                    if f.line > 0 {
+                        self.cur_line = f.line
+                        self.cur_col = f.col
+                    }
                     self.tparams = gp_names(f.generics)      // T in a param type → lenient, not a struct
                     self.fn_pstart.append(self.fn_ptype.len())
                     var p = 0
@@ -1491,6 +1499,12 @@ struct Checker {
 
 
     fn check_fn(mut self, f: ps.FnDecl) {
+        // Attribute this function's signature-level diagnostics to its `fn` keyword — and RESET the stale
+        // position carried over from the previous function's body (M3 decl-level positions).
+        if f.line > 0 {
+            self.cur_line = f.line
+            self.cur_col = f.col
+        }
         if f.has_body == false {
             return
         }

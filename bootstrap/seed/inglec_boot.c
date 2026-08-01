@@ -77,6 +77,8 @@ typedef struct {
     Value f7;
     Value f8;
     Value f9;
+    Value f10;
+    Value f11;
 } em_s10;
 
 typedef struct {
@@ -291,9 +293,9 @@ static int em_s8_fst[] = {-1, -1};
 static int em_s9_off[] = {0, 16};
 static int em_s9_knd[] = {0, 0};
 static int em_s9_fst[] = {-1, -1};
-static int em_s10_off[] = {0, 16, 32, 48, 64, 65, 81, 97, 113, 129};
-static int em_s10_knd[] = {0, 0, 0, 0, 11, 0, 0, 0, 0, 0};
-static int em_s10_fst[] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+static int em_s10_off[] = {0, 16, 32, 48, 64, 65, 81, 97, 113, 129, 145, 153};
+static int em_s10_knd[] = {0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 4, 4};
+static int em_s10_fst[] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 static int em_s11_off[] = {0, 16, 24, 40, 41, 49, 50};
 static int em_s11_knd[] = {0, 4, 0, 11, 4, 11, 0};
 static int em_s11_fst[] = {-1, -1, -1, -1, -1, -1, -1};
@@ -350,7 +352,7 @@ static const StructType em_structs[26] = {
     { .field_count = 3, .total_size = 33, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s7_off, .kind = em_s7_knd, .field_struct = em_s7_fst },
     { .field_count = 2, .total_size = 32, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s8_off, .kind = em_s8_knd, .field_struct = em_s8_fst },
     { .field_count = 2, .total_size = 32, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s9_off, .kind = em_s9_knd, .field_struct = em_s9_fst },
-    { .field_count = 10, .total_size = 145, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s10_off, .kind = em_s10_knd, .field_struct = em_s10_fst },
+    { .field_count = 12, .total_size = 161, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s10_off, .kind = em_s10_knd, .field_struct = em_s10_fst },
     { .field_count = 7, .total_size = 66, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s11_off, .kind = em_s11_knd, .field_struct = em_s11_fst },
     { .field_count = 14, .total_size = 224, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s12_off, .kind = em_s12_knd, .field_struct = em_s12_fst },
     { .field_count = 2, .total_size = 32, .is_rc = 0, .is_resource = 0, .drop_fn = -1, .offset = em_s13_off, .kind = em_s13_knd, .field_struct = em_s13_fst },
@@ -5117,70 +5119,72 @@ static Value em_fn_55(Value a0) {
 }
 
 static Value em_fn_56(Value a0, Value a1) {
-    Value v0 = em_fn_37(a0);
-    Value v1 = own_into_slot(&g_em, ({ Value v2 = em_fn_37(a0); Value v3 = em_enum_field(&g_em, v2, 3); if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); drop_value(&g_em, v2); v3; }));
-    Value v4 = em_fn_53(a0);
-    Value v5 = em_fn_55(a0);
-    Value v6 = em_array(&g_em, 0, 0);
+    int64_t v0 = (int64_t)AS_INT(({ Value v1 = em_fn_34(a0); Value v2 = em_enum_field(&g_em, v1, 1); if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); drop_value(&g_em, v1); v2; }));
+    int64_t v3 = (int64_t)AS_INT(({ Value v4 = em_fn_34(a0); Value v5 = em_enum_field(&g_em, v4, 2); if (IS_OBJ(v5)) OBJ_RETAIN(AS_OBJ(v5)); drop_value(&g_em, v4); v5; }));
+    Value v6 = em_fn_37(a0);
+    Value v7 = own_into_slot(&g_em, ({ Value v8 = em_fn_37(a0); Value v9 = em_enum_field(&g_em, v8, 3); if (IS_OBJ(v9)) OBJ_RETAIN(AS_OBJ(v9)); drop_value(&g_em, v8); v9; }));
+    Value v10 = em_fn_53(a0);
+    Value v11 = em_fn_55(a0);
+    Value v12 = em_array(&g_em, 0, 0);
     if (em_truthy(em_fn_39(a0, INT_VAL(19LL)))) {
-        Value v7 = em_fn_37(a0);
-        (void)(em_array_append(&g_em, v6, em_fn_54(a0)));
-        drop_value(&g_em, v7);
+        Value v13 = em_fn_37(a0);
+        (void)(em_array_append(&g_em, v12, em_fn_54(a0)));
+        drop_value(&g_em, v13);
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v8 = a1; if (IS_OBJ(v8)) OBJ_RETAIN(AS_OBJ(v8)); v8; }), INT_VAL(0)))) {
-        { Value v9 = em_struct(&g_em, 10, 10, own_into_slot(&g_em, v1), ({ Value v10 = v4; v4 = INT_VAL(0); v10; }), ({ Value v11 = v5; v5 = INT_VAL(0); v11; }), ({ Value v12 = v6; v6 = INT_VAL(0); v12; }), INT_VAL(0), em_array(&g_em, 0, 0), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4));
+    if (em_truthy(em_eq_op(&g_em, ({ Value v14 = a1; if (IS_OBJ(v14)) OBJ_RETAIN(AS_OBJ(v14)); v14; }), INT_VAL(0)))) {
+        { Value v15 = em_struct(&g_em, 10, 12, own_into_slot(&g_em, v7), ({ Value v16 = v10; v10 = INT_VAL(0); v16; }), ({ Value v17 = v11; v11 = INT_VAL(0); v17; }), ({ Value v18 = v12; v12 = INT_VAL(0); v18; }), INT_VAL(0), em_array(&g_em, 0, 0), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), INT_VAL((int64_t)v0), INT_VAL((int64_t)v3));
+            drop_value(&g_em, v12);
+            drop_value(&g_em, v11);
+            drop_value(&g_em, v10);
+            drop_value(&g_em, v7);
             drop_value(&g_em, v6);
-            drop_value(&g_em, v5);
-            drop_value(&g_em, v4);
-            drop_value(&g_em, v1);
-            drop_value(&g_em, v0);
-            return v9;
+            return v15;
         }
     }
-    Value v13 = em_array(&g_em, 0, 0);
-    Value v14 = em_array(&g_em, 0, 4);
-    Value v15 = em_array(&g_em, 0, 0);
-    Value v16 = em_array(&g_em, 0, 4);
+    Value v19 = em_array(&g_em, 0, 0);
+    Value v20 = em_array(&g_em, 0, 4);
+    Value v21 = em_array(&g_em, 0, 0);
+    Value v22 = em_array(&g_em, 0, 4);
     for (;;) {
         (void)(em_fn_40(a0));
         if (em_truthy(em_fn_39(a0, INT_VAL(22LL)))) {
-            Value v17 = em_fn_37(a0);
-            (void)(em_array_append(&g_em, v13, em_fn_71(a0)));
-            (void)(em_array_append(&g_em, v14, em_enum_field(&g_em, v17, 1)));
-            drop_value(&g_em, v17);
+            Value v23 = em_fn_37(a0);
+            (void)(em_array_append(&g_em, v19, em_fn_71(a0)));
+            (void)(em_array_append(&g_em, v20, em_enum_field(&g_em, v23, 1)));
+            drop_value(&g_em, v23);
         } else if (em_truthy(em_fn_39(a0, INT_VAL(23LL)))) {
-            Value v18 = em_fn_37(a0);
-            (void)(em_array_append(&g_em, v15, em_fn_71(a0)));
-            (void)(em_array_append(&g_em, v16, em_enum_field(&g_em, v18, 1)));
-            drop_value(&g_em, v18);
+            Value v24 = em_fn_37(a0);
+            (void)(em_array_append(&g_em, v21, em_fn_71(a0)));
+            (void)(em_array_append(&g_em, v22, em_enum_field(&g_em, v24, 1)));
+            drop_value(&g_em, v24);
         } else {
             break;
         }
     }
-    Value v19 = em_fn_61(a0);
-    { Value v20 = em_struct(&g_em, 10, 10, own_into_slot(&g_em, v1), ({ Value v21 = v4; v4 = INT_VAL(0); v21; }), ({ Value v22 = v5; v5 = INT_VAL(0); v22; }), ({ Value v23 = v6; v6 = INT_VAL(0); v23; }), INT_VAL(1), ({ Value v24 = v19; v19 = INT_VAL(0); v24; }), ({ Value v25 = v13; v13 = INT_VAL(0); v25; }), ({ Value v26 = v14; v14 = INT_VAL(0); v26; }), ({ Value v27 = v15; v15 = INT_VAL(0); v27; }), ({ Value v28 = v16; v16 = INT_VAL(0); v28; }));
+    Value v25 = em_fn_61(a0);
+    { Value v26 = em_struct(&g_em, 10, 12, own_into_slot(&g_em, v7), ({ Value v27 = v10; v10 = INT_VAL(0); v27; }), ({ Value v28 = v11; v11 = INT_VAL(0); v28; }), ({ Value v29 = v12; v12 = INT_VAL(0); v29; }), INT_VAL(1), ({ Value v30 = v25; v25 = INT_VAL(0); v30; }), ({ Value v31 = v19; v19 = INT_VAL(0); v31; }), ({ Value v32 = v20; v20 = INT_VAL(0); v32; }), ({ Value v33 = v21; v21 = INT_VAL(0); v33; }), ({ Value v34 = v22; v22 = INT_VAL(0); v34; }), INT_VAL((int64_t)v0), INT_VAL((int64_t)v3));
+        drop_value(&g_em, v25);
+        drop_value(&g_em, v22);
+        drop_value(&g_em, v21);
+        drop_value(&g_em, v20);
         drop_value(&g_em, v19);
-        drop_value(&g_em, v16);
-        drop_value(&g_em, v15);
-        drop_value(&g_em, v14);
-        drop_value(&g_em, v13);
+        drop_value(&g_em, v12);
+        drop_value(&g_em, v11);
+        drop_value(&g_em, v10);
+        drop_value(&g_em, v7);
         drop_value(&g_em, v6);
-        drop_value(&g_em, v5);
-        drop_value(&g_em, v4);
-        drop_value(&g_em, v1);
-        drop_value(&g_em, v0);
-        return v20;
+        return v26;
     }
+    drop_value(&g_em, v25);
+    drop_value(&g_em, v22);
+    drop_value(&g_em, v21);
+    drop_value(&g_em, v20);
     drop_value(&g_em, v19);
-    drop_value(&g_em, v16);
-    drop_value(&g_em, v15);
-    drop_value(&g_em, v14);
-    drop_value(&g_em, v13);
+    drop_value(&g_em, v12);
+    drop_value(&g_em, v11);
+    drop_value(&g_em, v10);
+    drop_value(&g_em, v7);
     drop_value(&g_em, v6);
-    drop_value(&g_em, v5);
-    drop_value(&g_em, v4);
-    drop_value(&g_em, v1);
-    drop_value(&g_em, v0);
     return INT_VAL(0);
 }
 
@@ -21921,7 +21925,7 @@ static Value em_fn_433(Value a0, Value a1) {
             Value v33 = em_enum_field(&g_em, v0, 1);
             Value v34 = em_fn_431(v32, v33);
             Value v35 = em_fn_432(v34, v32);
-            (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), em_struct(&g_em, 10, 10, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "<lambda>", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_array(&g_em, 0, 0), ({ Value v36 = v35; v35 = INT_VAL(0); v36; }), em_array(&g_em, 0, 0), INT_VAL(1), own_into_slot(&g_em, v33), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4))));
+            (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), em_struct(&g_em, 10, 12, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "<lambda>", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_array(&g_em, 0, 0), ({ Value v36 = v35; v35 = INT_VAL(0); v36; }), em_array(&g_em, 0, 0), INT_VAL(1), own_into_slot(&g_em, v33), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), INT_VAL(0LL), INT_VAL(0LL))));
             drop_value(&g_em, v35);
             drop_value(&g_em, v34);
         } else {
