@@ -256,11 +256,37 @@ struct Checker {
     local_unbounded_tp: [bool]   // ...is this local a param of an UNBOUNDED generic type-param `T` (no interface
                                  // bound)? A method call on one is an error (check.c:4073); parallel to `locals`.
     scope_depth: int
-    diags: [string]            // collected diagnostic messages (positions added in M3c)
+    diags: [string]            // collected diagnostics, each pre-rendered "file:line: error: msg" (M1)
+    cur_line: int              // M1: source line of the stmt/expr currently being checked (0 = unknown)
+    cur_file: string           // M1: path of the module being checked, for the diagnostic's `file:` prefix
 
 
+    // error records a diagnostic at the position currently being checked (self.cur_file/self.cur_line, set as
+    // the walk descends — statement granularity in M1; expression granularity + column follow). A 0 line means
+    // the site has no position yet (e.g. a signature/decl-level check) → the message is rendered file-only.
     fn error(mut self, msg: string) {
-        self.diags.append(msg)
+        if self.cur_line > 0 {
+            self.diags.append("{self.cur_file}:{self.cur_line}: error: {msg}")
+        } else {
+            self.diags.append("{self.cur_file}: error: {msg}")
+        }
+    }
+
+
+    // report prints each collected diagnostic — iterating the [string] FIELD directly, whose element type is
+    // known from the struct declaration. (A [string] passed through a function RETURN and then indexed is NOT
+    // yet element-typed by the self-hosted compiler — OFI-173 return-typing frontier — so the printing must
+    // read the field, not a returned value.) Returns whether any diagnostics were raised.
+    fn report(self) -> bool {
+        var i = 0
+        loop {
+            if i >= self.diags.len() {
+                break
+            }
+            println(self.diags[i])
+            i = i + 1
+        }
+        return self.diags.len() > 0
     }
 
 
@@ -1662,7 +1688,33 @@ struct Checker {
     }
 
 
+    // stmt_line extracts the source line a statement attributes its diagnostics to — its primary boxed
+    // sub-expression's line, or the keyword line for the position-only forms (return/break/continue/nursery).
+    // SLoop/SBlock have no line of their own; their nested statements set cur_line as they are checked.
+    fn stmt_line(self, s: ps.Stmt) -> int {
+        match s {
+            case SLet(_, _, _, value) { return value.line }
+            case SReturn(_, line) { return line }
+            case SExpr(expr) { return expr.line }
+            case SAssign(target, _) { return target.line }
+            case SIf(cond, _, _) { return cond.line }
+            case SFor(_, _, iter, _) { return iter.line }
+            case SLoop(_) { return 0 }
+            case SBreak(line) { return line }
+            case SContinue(line) { return line }
+            case SMatch(value, _) { return value.line }
+            case SSpawn(call) { return call.line }
+            case SNursery(_, line) { return line }
+            case SBlock(_) { return 0 }
+        }
+    }
+
+
     fn check_stmt(mut self, s: ps.Stmt) {
+        let sl = self.stmt_line(s)
+        if sl > 0 {
+            self.cur_line = sl
+        }
         match s {
             case SLet(is_var, name, ty, value) {
                 let vt = self.check_expr(value.value)  // initialiser checked BEFORE the binding is in scope
@@ -3662,22 +3714,34 @@ fn assignable(actual: int, expected: int, a_is_int_lit: bool, a_is_float_lit: bo
 }
 
 
-// check parses + checks a source string and returns whether it was REJECTED (true = a diagnostic was
-// raised). M3a verdict parity; the diagnostic text + positions (M3c) follow.
-// check parses + checks a SINGLE source file (used by the single-file callers). check_decls checks an
-// already-merged declaration list (entry module + its transitive imports) so the checker sees imported
-// declarations — e.g. a `std/web` direct extern — exactly like stage-0's whole-program check (OFI-218 P4).
-fn check(src: string) -> bool {
-    // A malformed argument list (OFI-140: a duplicate named argument, or positional and named mixed) is a
-    // parser-level verdict the AST does not carry, so read it via the parser's side-channel and OR it in.
-    if check_decls(ps.parse(src)) {
+// check returns the accept/reject verdict ONLY (no output), for verdict-parity callers (check_dump). `path`
+// names the file for the diagnostic prefix (only used on the printing path, check_report).
+fn check(src: string, path: string) -> bool {
+    if check_decls(ps.parse(src), path, false) {
         return true
     }
+    // A malformed argument list (OFI-140: a duplicate named argument, or positional and named mixed) is a
+    // parser-level verdict the AST does not carry, so read it via the parser's side-channel and OR it in.
     return ps.parse_bad_call(src)
 }
 
 
-fn check_decls(decls: [ps.Decl]) -> bool {
+// check_report checks and PRINTS each `file:line: error: msg` (M1), returning the verdict — used by the
+// compile drivers. The [string] diagnostics never cross a module or a function-return into a driver:
+// check_decls's `report` flag prints them from the checker's own field (see Checker.report / OFI-173).
+fn check_report(src: string, path: string) -> bool {
+    if check_decls(ps.parse(src), path, true) {
+        return true
+    }
+    if ps.parse_bad_call(src) {
+        println("{path}: error: malformed argument list (a duplicate named argument, or positional and named arguments mixed)")
+        return true
+    }
+    return false
+}
+
+
+fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
     var fns: [string] = []
     var structs: [string] = []
     var enums: [string] = ["Option", "Result"]                    // always-in-scope prelude enums
@@ -3727,9 +3791,12 @@ fn check_decls(decls: [ps.Decl]) -> bool {
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_file: path }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies
+    if report {
+        return c.report()                // print each `file:line: error: msg`, return whether any were raised
+    }
     return c.diags.len() > 0
 }

@@ -194,10 +194,10 @@ fn main() -> int {
         exit(1)
     }
     let entry = argv[0]
-    // 1. TYPE-CHECK the entry program. A diagnostic → reject with exit 65 (stage-0's check-error code).
-    //    The checker is import-lenient, so it accepts every valid program (including this compiler).
-    if ck.check(read_file(entry)) {
-        println("error: '{entry}' did not type-check")
+    // 1. TYPE-CHECK the entry program. check_report prints each `file:line: error: msg` and returns the
+    //    verdict → reject with exit 65 (stage-0's check-error code). The checker is import-lenient, so it
+    //    accepts every valid program (including this compiler).
+    if ck.check_report(read_file(entry), entry) {
         exit(65)
     } else {
         // 2. CODEGEN every (merged) module. With an output path, write a RUNNABLE `.igb` container (the

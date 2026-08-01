@@ -81,7 +81,7 @@ fn main() -> int {
             break
         }
         let src = read_file(queue[qi])
-        if ck.check(src) {
+        if ck.check(src, queue[qi]) {   // bool verdict — the diagnostic message format never shifts ACCEPT/REJECT
             rejected = true
         }
         // enqueue this module's not-yet-seen imports

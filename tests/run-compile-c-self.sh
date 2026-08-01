@@ -41,6 +41,20 @@ else
 fi
 rm -f "$bad"
 
+# 1b. POSITIONED DIAGNOSTIC (positions M1): the reject must carry a `file:line: error: msg` — the self-hosted
+#     checker's own source position, not the old generic "did not type-check". The error above is on line 2.
+#     (These diagnostics are the self-hosted compiler's OWN, not golden-locked to stage-0 — post-B4 the
+#     positioned goldens stay pinned to the frozen frontend — so this is where they are regression-guarded.)
+badp="${TMPDIR:-/tmp}/ccself_badp_$$.ig"
+printf 'fn main() -> int {\n  let x: int = "no"\n  return 0\n}\n' > "$badp"
+dout=$("$CC_SELF" "$badp" 2>&1)
+if printf '%s\n' "$dout" | grep -qE ':2: error: '; then
+    pass=$((pass + 1)); echo "PASS    compile_c-self emits a positioned 'file:line: error:' diagnostic"
+else
+    fail=$((fail + 1)); echo "FAIL    compile_c-self diagnostic lacks a line position (got: $dout)"
+fi
+rm -f "$badp"
+
 # 2. EMIT + RUN: every cgen_c_run fixture must run identically to the VM.
 for src in $(cd "$ROOT" && find tests/selfhost/cgen_c_run -name '*.ig' 2>/dev/null | sort); do
     want=$(cd "$ROOT" && "$VM" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')

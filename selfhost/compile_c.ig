@@ -504,11 +504,11 @@ fn main() -> int {
         exit(1)
     }
 
-    // 1. TYPE-CHECK the entry program. A diagnostic → REJECT with exit 65 (stage-0's check-error code),
-    //    so this compiler accepts/rejects the same programs stage-0 does. The self-hosted checker is
-    //    single-module + import-lenient (it carries no source positions yet, so the reject is code-only,
-    //    not a `file:line:col` message — the precise-diagnostic/LSP port is deferred cutover work).
-    if ck.check(read_file(entry)) {
+    // 1. TYPE-CHECK the entry program. check_report prints each `file:line: error: msg` and returns the
+    //    verdict → REJECT with exit 65 (stage-0's check-error code), so this compiler accepts/rejects the
+    //    same programs stage-0 does. The self-hosted checker is single-module + import-lenient. M1 renders
+    //    line-granularity positions (statement line); expression precision + column + the LSP port follow.
+    if ck.check_report(read_file(entry), entry) {
         exit(65)
     }
     let ld = load_modules(entry)
