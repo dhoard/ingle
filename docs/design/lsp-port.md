@@ -114,6 +114,25 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   no cross-file resolution — the Phase-3 SemanticIndex); utf-8 position encoding only (byte columns pass through;
   utf-16 negotiation deferred); a minimal 1-column diagnostic range (real token spans deferred). **NEXT = Phase 2:
   the cheap providers (documentSymbol, codeAction, global completion, signatureHelp) over today's AST.**
+- **2026-08-02 — PHASE 2 DONE: the AST/token providers — documentSymbol, completion, signatureHelp, codeAction.**
+  Added to `selfhost/lsp.ig`, all driven by `ps.parse` + `lx.lex` of the doc text (both best-effort on malformed
+  input). **documentSymbol**: a hierarchical DocumentSymbol[] — fn(12), struct(23) with field(8)+method(6)
+  children, enum(10) with variant(22) children, interface(11), let(13). Positions come from `FnDecl.line/col`
+  (fns + methods) and, for struct/enum/interface/let (which the AST doesn't position), a brace-depth-0 token scan
+  for `<keyword> <name>` (fields/variants reuse the parent's position, as the C server does). **completion**:
+  global items (every named top-level decl with a kind + signature detail, then the 31 keywords, kind 14) — the
+  member-vs-global split is lexical (`receiver.|` → empty items, deferred). **signatureHelp**: walks left from the
+  cursor to the enclosing `(` (bracket-depth tracking + comma count → activeParameter), resolves a FREE-fn callee
+  by name, emits the signature label + per-user-param labels (self skipped; member/builtin → null). **codeAction**:
+  the two contract scaffolds (`requires`/`ensures`, refactor.rewrite WorkspaceEdits inserting a clause before a
+  top-level fn's body `{`). KEY enabler: `lx.kind_name(...)` (a stable string like "IDENT"/"LPAREN") for all token
+  comparisons — lsp.ig cannot `match` the lexer's `Tk` variants across the module boundary. Gated: `tests/run-lsp-self.sh`
+  grew 9 Phase-2 assertions (13 total, `make test-lsp-self`). `make verify` all-9-green, selfhost 1822/0,
+  reproduction fixed point intact, NO reseed. KNOWN Phase-2 limits: the struct/enum position token-scan can be
+  thrown off by a top-level struct-literal `{` (rare); no member completion / member signatureHelp (Phase-3
+  SemanticIndex); no builtins/snippets in completion. **NEXT = Phase 3: the SemanticIndex** — per-node positions +
+  definition sites + recorders, the foundation for hover / go-to-definition / member completion / references /
+  rename (the big one; needs the deferred expression-precise positions + cross-module resolution).
 - **2026-08-01 — RE-SCOPE CORRECTED: the Phase-1b "wall" was largely a false alarm (scoped via a 5-agent
   read-only recon + hands-on verification against stage-0).** The return-typing frontier had already MOVED far
   past the Phase-1b framing: structs/fields/generics/method-chains all resolve (**234/235** corpus programs
