@@ -3781,7 +3781,20 @@ fn check_report(src: string, path: string) -> bool {
 }
 
 
-fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
+// check_diags runs the checker over a SINGLE source file and RETURNS its diagnostics (each a rendered
+// "file:line:col: error: msg" — the M1–M3 form), instead of printing them. This is the language server's
+// data path (selfhost/lsp.ig parses each string into an LSP Diagnostic); the returned [string] crosses the
+// module boundary + is indexed there, which the self-hosted C-emit now element-types (OFI-226). Single-module
+// + import-lenient, exactly like check_report — cross-module resolution is the later SemanticIndex work.
+fn check_diags(src: string, path: string) -> [string] {
+    return run_checker(ps.parse(src), path)
+}
+
+
+// run_checker builds a fresh Checker over `decls`, runs the three passes, and returns the collected
+// diagnostics field. Shared by check_decls (verdict / printing) and check_diags (the LSP data path) so the
+// giant Checker construction lives in ONE place.
+fn run_checker(decls: [ps.Decl], path: string) -> [string] {
     var fns: [string] = []
     var structs: [string] = []
     var enums: [string] = ["Option", "Result"]                    // always-in-scope prelude enums
@@ -3835,8 +3848,24 @@ fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies
+    return c.diags.clone()               // an INDEPENDENT copy — `c` (and its `diags` backing) is dropped at return
+}
+
+
+// check_decls is the verdict/printing wrapper over run_checker (the compile drivers' path). With `report` it
+// prints each rendered diagnostic — iterating the returned [string] (element-typed via OFI-226), byte-identical
+// to the former Checker.report loop. Returns whether any diagnostic was raised.
+fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
+    let ds = run_checker(decls, path)
     if report {
-        return c.report()                // print each `file:line: error: msg`, return whether any were raised
+        var i = 0
+        loop {
+            if i >= ds.len() {
+                break
+            }
+            println(ds[i])
+            i = i + 1
+        }
     }
-    return c.diags.len() > 0
+    return ds.len() > 0
 }

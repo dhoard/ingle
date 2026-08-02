@@ -78,10 +78,10 @@ fn _is_finite(r: float) -> bool {
 
 
 
-// Parser is a recursive-descent cursor over the source's code points. Each `value`-level method
+// JsonParser is a recursive-descent cursor over the source's code points. Each `value`-level method
 // consumes exactly one grammar production and advances `pos`; the first error is latched in `err`
 // (subsequent calls become no-ops returning Null) so a malformed document fails cleanly, never hangs.
-struct Parser {
+struct JsonParser {
     cs: [string]
     pos: int
     err: string
@@ -479,7 +479,7 @@ struct Parser {
 
 // parse turns JSON text into a Json tree, or an Err with a message + position on malformed input.
 fn parse(text: string) -> Result<Json, string> {
-    var p = Parser { cs: text.chars(), pos: 0, err: "", depth: 0 }
+    var p = JsonParser { cs: text.chars(), pos: 0, err: "", depth: 0 }
     let v = p.value()
     p.skip_ws()
     if p.err != "" {

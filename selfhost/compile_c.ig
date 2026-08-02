@@ -13,6 +13,7 @@ import "cgen_c" as cc
 import "lexer" as lex
 import "checker" as ck
 import "std/proc" as proc
+import "lsp" as lsp
 
 
 fn last_slash(s: string) -> int {
@@ -444,6 +445,13 @@ fn needs_frozen_host(argv: [string]) -> bool {
 
 fn main() -> int {
     let argv = args()
+
+    // `--lsp-self`: the in-process self-hosted language server (selfhost/lsp.ig — the v1.1 LSP port, Phase 1:
+    // transport + live diagnostics). A DEV flag: the shipping `--lsp` still routes to the frozen stage-0 host
+    // below until the port reaches parity, so this can't regress the editor experience. (OFI-224 G6.)
+    if argv.len() > 0 && argv[0] == "--lsp-self" {
+        return lsp.run()
+    }
 
     // FROZEN-HOST routing: anything the self-hosted compiler doesn't implement (--lsp, --doctor, the
     // introspection --emit modes, --run-bytecode, …) is served by the frozen stage-0 frontend — exec it with

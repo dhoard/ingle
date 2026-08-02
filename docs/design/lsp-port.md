@@ -94,6 +94,26 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   `.method()` on it resolves (the same plumbing the deferred expression-precise positions + the SemanticIndex
   need). Everything downstream — transport, `std/json`, the index, the providers — unblocks once it lands.
   This is a real compiler campaign of its own; **next: scope the return-typing work (size + approach).**
+- **2026-08-02 — PHASE 1 DONE: the transport + live diagnostics, served in-process by `inglec --lsp-self`.**
+  `selfhost/lsp.ig` (~330 lines): a Content-Length-framed stdio loop (the M1a `read_stdin`/`flush` natives),
+  `initialize`/`shutdown`/`exit`, a full-sync document store, and didOpen/didChange/didClose →
+  `textDocument/publishDiagnostics` off the self-hosted checker's positioned (M1–M3) diagnostics. Messages are
+  parsed + built with **std/json**. Wired as a `--lsp-self` DEV branch in the dispatcher (`compile_c.ig`) BEFORE
+  the frozen-host routing, so the shipping `--lsp` still goes to stage-0 until parity — no editor regression.
+  Verified end-to-end (`tests/run-lsp-self.sh`, `make test-lsp-self`): initialize→capabilities, a type-error
+  doc → one 0-based Diagnostic at the right range/severity/source, didChange clears then re-raises, didClose
+  clears, an unknown request → `result:null`, a malformed JSON frame is tolerated, `exit`→clean. New checker
+  entry point `check_diags(src, path) -> [string]` (the returned `[string]` is indexed cross-module in lsp.ig —
+  the OFI-226 fix in action, and its FIRST use in the compiler's own source: the reproduction fixed point now
+  exercises it, `make verify` all-9-green). THREE compiler gaps surfaced + handled: **OFI-226** (fixed — the
+  return-element typing that unblocked the diag path); **OFI-227** (a cross-module same-named struct collision —
+  std/json's `Parser` vs parser.ig's — worked around by renaming json's internal `Parser`→`JsonParser`);
+  **OFI-228** (`return c.diags` of an owned field of a dropped local corrupts it — worked around with `.clone()`).
+  KNOWN Phase-1 limitations (documented, not silent): only CHECK diagnostics (the self-hosted parser
+  best-effort-recovers rather than positioning SYNTAX errors — a follow-on); single-module (imports are lenient,
+  no cross-file resolution — the Phase-3 SemanticIndex); utf-8 position encoding only (byte columns pass through;
+  utf-16 negotiation deferred); a minimal 1-column diagnostic range (real token spans deferred). **NEXT = Phase 2:
+  the cheap providers (documentSymbol, codeAction, global completion, signatureHelp) over today's AST.**
 - **2026-08-01 — RE-SCOPE CORRECTED: the Phase-1b "wall" was largely a false alarm (scoped via a 5-agent
   read-only recon + hands-on verification against stage-0).** The return-typing frontier had already MOVED far
   past the Phase-1b framing: structs/fields/generics/method-chains all resolve (**234/235** corpus programs

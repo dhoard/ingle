@@ -188,7 +188,7 @@ DEPS    := $(OBJECTS:.o=.d)
 GEN_BIN := build/gen_editor_assets
 GRAMMAR := editors/vscode/syntaxes/ember.tmLanguage.json
 
-.PHONY: all test test-update test-lsp doctor help release stage0 frontend asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
+.PHONY: all test test-update test-lsp test-lsp-self doctor help release stage0 frontend asan asan-par asan-trace install install-vscode build-zed install-zed parallel mn tsan-mn asan-mn mn-stress mn-graphics mn-net-graphics graphics web wasm wasm-hydrate net net-graphics db test-db test-quog test-quog-native quog install-quog test-graphics test-web test-net test-parallel kernel test-kernel selfhost bootstrap bootstrap-refresh inglec-self compile_c-self inglec-emberc test-compile-c-self runner test-runner crucible ceilings ledger opcheck verify docs string-diff bench parbench gen-editor-assets check-editor-sync clean
 
 # OFI-224 G4 (B4) — THE FLIP: `inglec` IS the self-hosted compiler. The default build produces the
 # self-hosted dispatcher (build/compile_c-self, copied to build/inglec) plus the three sibling binaries it
@@ -300,6 +300,11 @@ test-update: all
 # the dependency-free `make test`). Builds the compiler first.
 test-lsp: all
 	@tests/run-lsp.sh
+
+# Self-hosted LSP (inglec --lsp-self) Phase-1 regression — transport + diagnostics served in-process by the
+# self-hosted compiler (selfhost/lsp.ig), distinct from test-lsp (the frozen C host). Builds the compiler first.
+test-lsp-self: all
+	@tests/run-lsp-self.sh
 
 # Optimized C FRONTEND binary (build/inglec-release). Post-cutover (B4) this is NO LONGER the shipped
 # compiler — `make install` ships the self-hosted dispatcher; the shipped -O2 frontend is `make stage0`.
