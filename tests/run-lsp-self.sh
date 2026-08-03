@@ -87,6 +87,8 @@ msgs = [
     p2req(28, "textDocument/semanticTokens/full", {}),
     # hover on the field `.x` in `    return p.x` (line 20, char 13)
     p2req(29, "textDocument/hover", {"position":{"line":20,"character":13}}),
+    # hover on the `add` call (line 16 `    let r = add(1, 2)` — `add` at char 12): full signature + declared-at-line
+    p2req(30, "textDocument/hover", {"position":{"line":16,"character":12}}),
     {"jsonrpc":"2.0","method":"exit"},
 ]
 # A malformed JSON frame after initialize must be tolerated (the server keeps going).
@@ -201,6 +203,11 @@ check(caps.get("semanticTokensProvider") and isinstance(st, list) and len(st) >=
 fh = by_id.get(29, {}).get("result", {})
 fhval = fh.get("contents", {}).get("value", "") if fh else ""
 check("x: int" in fhval, f"hover on a field `.x` → its type (got {fhval!r})")
+
+ah = by_id.get(30, {}).get("result", {})
+ahval = ah.get("contents", {}).get("value", "") if ah else ""
+check("fn add(a: int, b: int) -> int" in ahval and "declared at line 12" in ahval,
+      f"hover on `add` → full signature + declared-at-line (got {ahval!r})")
 
 if fails:
     print(f"lsp-self: {fails} check(s) FAILED")

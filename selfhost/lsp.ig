@@ -166,9 +166,18 @@ struct Server {
         if body == "" {
             body = "?"
         }
+        if hit.kind == si.SK_FUNCTION {
+            let sig = fn_sig_by_name(self.texts[di], hovered_name(self.texts[di], ln, ch))
+            if sig != "" {
+                body = sig                                 // the full "fn name(params) -> Ret", not just "fn name"
+            }
+        }
         var md = "```ingle\n" + body + "\n```"
         if hit.doc != "" {
             md = md + "\n\n" + hit.doc
+        }
+        if hit.def_line > 0 {
+            md = md + "\n\n*declared at line {hit.def_line}*"   // where it's defined (fns/methods; locals need binding positions)
         }
         let contents = json.obj([json.member("kind", json.str("markdown")), json.member("value", json.str(md))])
         return json.obj([json.member("contents", contents)])
@@ -982,6 +991,7 @@ fn member_hover(text: string, line0: int, char0: int) -> json.Json {
     }
     let decls = ps.parse(text)
     var detail = ""
+    var mdefline = 0
     var di = 0
     loop {
         if di >= decls.len() {
@@ -1007,6 +1017,7 @@ fn member_hover(text: string, line0: int, char0: int) -> json.Json {
                         }
                         if methods[mi].name == mname {
                             detail = fn_sig(methods[mi])
+                            mdefline = methods[mi].line
                         }
                         mi = mi + 1
                     }
@@ -1020,8 +1031,49 @@ fn member_hover(text: string, line0: int, char0: int) -> json.Json {
     if detail == "" {
         return json.null_value()
     }
-    let contents = json.obj([json.member("kind", json.str("markdown")), json.member("value", json.str("```ingle\n" + detail + "\n```"))])
+    var md = "```ingle\n" + detail + "\n```"
+    if mdefline > 0 {
+        md = md + "\n\n*declared at line {mdefline}*"
+    }
+    let contents = json.obj([json.member("kind", json.str("markdown")), json.member("value", json.str(md))])
     return json.obj([json.member("contents", contents)])
+}
+
+
+// hovered_name returns the identifier text under the cursor (or "").
+fn hovered_name(text: string, line0: int, char0: int) -> string {
+    let toks = lx.lex(text)
+    let ai = tok_at(toks, line0 + 1, char0 + 1)
+    if ai < 0 {
+        return ""
+    }
+    return toks[ai].text
+}
+
+
+// fn_sig_by_name returns the full "fn name(params) -> Ret" signature of a top-level function, or "".
+fn fn_sig_by_name(text: string, name: string) -> string {
+    if name == "" {
+        return ""
+    }
+    let decls = ps.parse(text)
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.name == name {
+                    return fn_sig(f)
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return ""
 }
 
 
