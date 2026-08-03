@@ -89,6 +89,8 @@ msgs = [
     p2req(29, "textDocument/hover", {"position":{"line":20,"character":13}}),
     # hover on the `add` call (line 16 `    let r = add(1, 2)` — `add` at char 12): full signature + declared-at-line
     p2req(30, "textDocument/hover", {"position":{"line":16,"character":12}}),
+    # go-to-definition on the local `r` USE in `return r` (line 17, char 11) → its `let r` binding (line 16)
+    p2req(31, "textDocument/definition", {"position":{"line":17,"character":11}}),
     {"jsonrpc":"2.0","method":"exit"},
 ]
 # A malformed JSON frame after initialize must be tolerated (the server keeps going).
@@ -208,6 +210,10 @@ ah = by_id.get(30, {}).get("result", {})
 ahval = ah.get("contents", {}).get("value", "") if ah else ""
 check("fn add(a: int, b: int) -> int" in ahval and "declared at line 12" in ahval,
       f"hover on `add` → full signature + declared-at-line (got {ahval!r})")
+
+ldf = by_id.get(31, {}).get("result", {})
+check(isinstance(ldf, dict) and ldf.get("range", {}).get("start", {}).get("line") == 16,
+      f"go-to-definition on a local `r` → its `let r` binding @ line 16 (got {ldf})")
 
 if fails:
     print(f"lsp-self: {fails} check(s) FAILED")

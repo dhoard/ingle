@@ -409,7 +409,7 @@ struct Checker {
     // declare also enforces no-redeclaration-in-the-same-scope: a binding whose name already exists at the
     // current depth is an error (stage-0 treats a function's params and its body top level as one scope;
     // nested blocks open deeper scopes where shadowing IS allowed). `_` is the discard name, never a redecl.
-    fn declare(mut self, name: string, ty: int, is_var: bool, owned: bool, mvparam: bool) {
+    fn declare(mut self, name: string, ty: int, is_var: bool, owned: bool, mvparam: bool, dl: int, dc: int) {
         if name != "_" {
             var i = self.locals.len() - 1
             loop {
@@ -426,7 +426,7 @@ struct Checker {
                 i = i - 1
             }
         }
-        self.locals.append(Local{ name: name, depth: self.scope_depth, ty: ty, is_var: is_var, owned: owned, mvparam: mvparam, def_line: 0, def_col: 0 })
+        self.locals.append(Local{ name: name, depth: self.scope_depth, ty: ty, is_var: is_var, owned: owned, mvparam: mvparam, def_line: dl, def_col: dc })
         self.local_moved.append(false)
         self.local_frozen.append(false)
         // an OWNED Ptr local is an OPEN obligation (consumed=false); everything else has none (true).
@@ -1648,7 +1648,7 @@ struct Checker {
                 self.self_is_var = f.params[p].qual != 0    // `mut self` / `move self` receiver is mutable
             } else {
                 // a `mut`/`move` parameter is a mutable binding; a plain (borrow) parameter is not.
-                self.declare(f.params[p].name, self.param_type(f.params[p]), f.params[p].qual != 0, f.params[p].qual == 2, f.params[p].qual == 2)
+                self.declare(f.params[p].name, self.param_type(f.params[p]), f.params[p].qual != 0, f.params[p].qual == 2, f.params[p].qual == 2, f.params[p].nline, f.params[p].ncol)
                 // A parameter typed as an UNBOUNDED generic type-param provides no methods — mark it so a
                 // method call on it is rejected (a bounded `T: Ord` keeps its interface methods, so isn't marked).
                 if is_unbounded_tparam(f.generics, f.params[p]) {
@@ -1826,7 +1826,7 @@ struct Checker {
     // SLoop/SBlock have no line of their own; their nested statements set cur_line as they are checked.
     fn stmt_line(self, s: ps.Stmt) -> int {
         match s {
-            case SLet(_, _, _, value) { return value.line }
+            case SLet(_, _, _, value, _, _) { return value.line }
             case SReturn(_, line) { return line }
             case SExpr(expr) { return expr.line }
             case SAssign(target, _) { return target.line }
@@ -1846,7 +1846,7 @@ struct Checker {
     // stmt_col mirrors stmt_line for the column (0 for the keyword-only forms, which have no column of their own).
     fn stmt_col(self, s: ps.Stmt) -> int {
         match s {
-            case SLet(_, _, _, value) { return value.col }
+            case SLet(_, _, _, value, _, _) { return value.col }
             case SReturn(_, _) { return 0 }
             case SExpr(expr) { return expr.col }
             case SAssign(target, _) { return target.col }
@@ -1870,7 +1870,7 @@ struct Checker {
             self.cur_col = self.stmt_col(s)
         }
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, nline, ncol) {
                 let vt = self.check_expr(value.value, value.line, value.col)  // initialiser checked BEFORE the binding is in scope
                 self.consume_move(value.value, value.line)   // `let q = p` moves an owned move-type p
                 // OFI-199: an integer LITERAL whose magnitude exceeds i64 is stored as a negative EInt.v (a u64
@@ -1935,7 +1935,7 @@ struct Checker {
                         self.error("binding annotation does not match the value's type")
                     }
                     self.check_variant_payload(ty[0], value.value)   // Option<int> = Some("s") → payload mismatch
-                    self.declare(name, bt, is_var, true, false)     // an annotated binding carries its declared type
+                    self.declare(name, bt, is_var, true, false, nline, ncol)     // an annotated binding carries its declared type
                 } else {
                     // No annotation → the initialiser must be self-inferring. stage-0 threads an EXPECTED type
                     // down (`let c: Channel<T> = …`); without one, two forms have no inferable type: a bare
@@ -1964,7 +1964,7 @@ struct Checker {
                         case _ {
                         }
                     }
-                    self.declare(name, vt, is_var, true, false)     // ...otherwise infer it from the initialiser
+                    self.declare(name, vt, is_var, true, false, nline, ncol)     // ...otherwise infer it from the initialiser
                 }
             }
             case SReturn(value, line) {
@@ -2106,9 +2106,9 @@ struct Checker {
                 self.scope_depth = self.scope_depth + 1
                 self.loop_depth = self.loop_depth + 1
                 let saved = self.locals.len()
-                self.declare(vname, TY_INFER, false, false, false)        // a for-loop binding is an immutable borrow
+                self.declare(vname, TY_INFER, false, false, false, 0, 0)        // a for-loop binding is an immutable borrow
                 if index_var != "" {
-                    self.declare(index_var, TY_INFER, false, false, false)
+                    self.declare(index_var, TY_INFER, false, false, false, 0, 0)
                 }
                 let pre = clone_bools(self.local_moved)
                 let prec = clone_bools(self.local_consumed)
@@ -2410,16 +2410,16 @@ struct Checker {
                                 if self.is_move_type(ift) {
                                     self.error("a nested enum pattern can only bind scalar/string payloads for now (bind the payload and use a nested `match`)")
                                 }
-                                self.declare(cases[ci].pattern.binding_pats[bi].bindings[ij], TY_INFER, false, false, false)
+                                self.declare(cases[ci].pattern.binding_pats[bi].bindings[ij], TY_INFER, false, false, false, 0, 0)
                                 ij = ij + 1
                             }
                         } else {
-                            self.declare(cases[ci].pattern.bindings[bi], TY_INFER, false, false, false)   // a match binding is a borrow
+                            self.declare(cases[ci].pattern.bindings[bi], TY_INFER, false, false, false, 0, 0)   // a match binding is a borrow
                         }
                         bi = bi + 1
                     }
                     if is_bind {
-                        self.declare(cases[ci].pattern.variant, st, false, false, false)   // scalar value binding (borrow)
+                        self.declare(cases[ci].pattern.variant, st, false, false, false, 0, 0)   // scalar value binding (borrow)
                     }
                     if cases[ci].guard.len() > 0 {
                         // Checked in the arm scope, AFTER bindings, so the guard can read them.
@@ -3594,7 +3594,7 @@ fn stmts_use_self_field(body: [ps.Stmt], field: string) -> bool {
 
 fn stmt_uses_self_field(s: ps.Stmt, field: string) -> bool {
     match s {
-        case SLet(iv, n, ty, v) {
+        case SLet(iv, n, ty, v, _, _) {
             return expr_uses_self_field(v.value, field)
         }
         case SReturn(v, line) {

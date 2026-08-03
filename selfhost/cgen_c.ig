@@ -2249,7 +2249,7 @@ struct InstColl {
 
     fn walk_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(v, n, ty, value) {
+            case SLet(v, n, ty, value, _, _) {
                 self.walk_expr(value.value)
             }
             case SReturn(value, line) {
@@ -9704,7 +9704,7 @@ struct CgcGen {
                     }
                 }
             }
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 // The binding's C variable number is taken BEFORE the initialiser (so a `let` is vN and the
                 // initialiser's retain temps follow as v(N+1)…). A scalar binding lowers to a typed C scalar
                 // unboxed from the Value (`int64_t vN = (int64_t)AS_INT(<rhs>)`); a string binding is an
@@ -11865,7 +11865,7 @@ struct CgcFv {
 
     fn walk_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 self.walk_expr(value.value)
                 self.bound.append(name)
             }
@@ -11976,7 +11976,7 @@ fn cgc_lifted_params(caps: [string], own: [ps.Param]) -> [ps.Param] {
         if i >= caps.len() {
             break
         }
-        out.append(ps.Param { qual: 0, is_self: false, name: caps[i], ty: [] })
+        out.append(ps.Param { qual: 0, is_self: false, name: caps[i], ty: [], nline: 0, ncol: 0 })
         i = i + 1
     }
     var p = 0
@@ -11984,7 +11984,7 @@ fn cgc_lifted_params(caps: [string], own: [ps.Param]) -> [ps.Param] {
         if p >= own.len() {
             break
         }
-        out.append(ps.Param { qual: own[p].qual, is_self: false, name: own[p].name, ty: [] })
+        out.append(ps.Param { qual: own[p].qual, is_self: false, name: own[p].name, ty: [], nline: own[p].nline, ncol: own[p].ncol })
         p = p + 1
     }
     return out
@@ -12078,7 +12078,7 @@ struct LamColl {
 
     fn cl_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 self.cl_expr(value.value)
             }
             case SReturn(value, line) {

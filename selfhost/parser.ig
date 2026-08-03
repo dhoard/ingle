@@ -76,11 +76,13 @@ struct Param {
     is_self: bool
     name: string
     ty: [Ty]                                        // [] when self or inferred
+    nline: int                                      // the param NAME's source line/col (SemanticIndex go-to-def
+    ncol: int                                       // on a parameter use; 0 for `self` / synthetic)
 }
 
 
 enum Stmt {
-    SLet(is_var: bool, name: string, ty: [Ty], value: Box<Expr>)
+    SLet(is_var: bool, name: string, ty: [Ty], value: Box<Expr>, nline: int, ncol: int)   // nline/ncol = the binding NAME's position (SemanticIndex go-to-def; NOT printed by ast_print)
     SReturn(value: [Box<Expr>], line: int)           // boxed value carries its line; `line` = the keyword's (bare return)
     SExpr(expr: Box<Expr>)
     SAssign(target: Box<Expr>, value: Box<Expr>)
@@ -412,7 +414,7 @@ fn p_block(b: [Stmt], depth: int) {
 fn p_stmt(s: Stmt, depth: int) {
     let pad = ind(depth)
     match s {
-        case SLet(is_var, name, ty, value) {
+        case SLet(is_var, name, ty, value, _, _) {
             var head = "{pad}Let {name}"
             if is_var {
                 head = "{pad}Var {name}"
@@ -1470,12 +1472,13 @@ struct Parser {
             }
             if self.at(TAG_SELF) {
                 let _ = self.advance()
-                params.append(Param{ qual: qual, is_self: true, name: "", ty: [] })
+                params.append(Param{ qual: qual, is_self: true, name: "", ty: [], nline: 0, ncol: 0 })
             } else {
-                let pname = self.advance().text
+                let ptok = self.advance()
+                let pname = ptok.text
                 let _ = self.expect(TAG_COLON)
                 let pty = self.parse_type()
-                params.append(Param{ qual: qual, is_self: false, name: pname, ty: [pty] })
+                params.append(Param{ qual: qual, is_self: false, name: pname, ty: [pty], nline: ptok.line, ncol: ptok.col })
             }
             if self.at(TAG_COMMA) {
                 let _ = self.advance()
@@ -1744,7 +1747,8 @@ struct Parser {
 
     fn parse_let(mut self, is_var: bool) -> Stmt {
         let _ = self.advance()                      // let|var
-        let name = self.advance().text
+        let ntok = self.advance()                   // the binding name — keep its position for go-to-def
+        let name = ntok.text
         var ty: [Ty] = []
         if self.at(TAG_COLON) {
             let _ = self.advance()
@@ -1754,7 +1758,7 @@ struct Parser {
         let vstart = self.peek().line
         let vcol = self.peek().col
         let value = self.parse_expr()
-        return SLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart, col: vcol })
+        return SLet(is_var, name, ty, Box<Expr>{ value: value, line: vstart, col: vcol }, ntok.line, ntok.col)
     }
 
 
@@ -2258,13 +2262,14 @@ struct Parser {
             if self.at(TAG_PIPE) || self.is_eof() {
                 break
             }
-            let pname = self.advance().text
+            let ptok = self.advance()
+            let pname = ptok.text
             var pty: [Ty] = []
             if self.at(TAG_COLON) {
                 let _ = self.advance()
                 pty.append(self.parse_type())
             }
-            params.append(Param{ qual: 0, is_self: false, name: pname, ty: pty })
+            params.append(Param{ qual: 0, is_self: false, name: pname, ty: pty, nline: ptok.line, ncol: ptok.col })
             if self.at(TAG_COMMA) {
                 let _ = self.advance()
             } else {

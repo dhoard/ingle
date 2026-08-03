@@ -1933,7 +1933,7 @@ struct InstColl {
 
     fn walk_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(v, n, ty, value) {
+            case SLet(v, n, ty, value, _, _) {
                 self.walk_expr(value.value)
             }
             case SReturn(value, line) {
@@ -3551,7 +3551,7 @@ struct FnInstColl {
 
     fn walk_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(v, n, ty, value) {
+            case SLet(v, n, ty, value, _, _) {
                 // A RETURN-type-inferred generic call — `let x: Option<int> = none_of()` — has no value arg
                 // to key off, so its instance is registered from the annotation's type-arg (pre-order, before
                 // the value's own nested calls), exactly where stage-0's inference monomorphizes it.
@@ -11279,7 +11279,7 @@ struct Chunk {
 
     fn gen_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 // Record a concrete-element ARRAY let's element key (`let nums = [1,2,3,4]` -> "int") so a
                 // generic free-fn call keys `nums` by element (map<[int]>) — the gen-pass twin of the pre-pass
                 // selems, using the SAME inference so the two keys agree. A PARAM never reaches here, so an
@@ -13103,7 +13103,7 @@ struct FvCtx {
 
     fn walk_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 self.walk_expr(value.value)
                 self.bound.append(name)
             }
@@ -13237,7 +13237,7 @@ fn annotate_ptype_params(params: [ps.Param], ptys: [string]) -> [ps.Param] {
                 k = k + 1
             }
         }
-        out.append(ps.Param { qual: params[i].qual, is_self: params[i].is_self, name: params[i].name, ty: nty })
+        out.append(ps.Param { qual: params[i].qual, is_self: params[i].is_self, name: params[i].name, ty: nty, nline: params[i].nline, ncol: params[i].ncol })
         i = i + 1
     }
     return out
@@ -13264,7 +13264,7 @@ fn annotate_str_params(params: [ps.Param], strs: [string]) -> [ps.Param] {
                 k = k + 1
             }
         }
-        out.append(ps.Param { qual: params[i].qual, is_self: params[i].is_self, name: params[i].name, ty: nty })
+        out.append(ps.Param { qual: params[i].qual, is_self: params[i].is_self, name: params[i].name, ty: nty, nline: params[i].nline, ncol: params[i].ncol })
         i = i + 1
     }
     return out
@@ -13409,7 +13409,7 @@ struct StrInfer {
 
     fn scan_stmt(mut self, s: ps.Stmt) {
         match s {
-            case SLet(is_var, name, ty, value) {
+            case SLet(is_var, name, ty, value, _, _) {
                 self.scan_expr(value.value)
             }
             case SReturn(value, line) {

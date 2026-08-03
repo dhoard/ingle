@@ -151,6 +151,20 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   adding a struct field slipped past `make` (its emit path is UNCHECKED — cgen_c_dump trusts input) but `make
   selfhost`'s checked `--emit=c` differential caught the missed `Local{}` construction site ("every struct field
   must be set exactly once") — gate struct changes on `make selfhost`, not `make`.
+- **2026-08-03 — PHASE 3.3: VARIABLE go-to-definition + "declared at line" (Karl's #1 ask).** Go-to-def + the
+  hover provenance now cover LOCALS and PARAMETERS, not just fns/methods — you jump from any use of `x` or a
+  param back to where it was bound, and hover shows its declaration line. Closed the one A-gap for bindings: the
+  parser now KEEPS the binding-NAME token position (`SLet` gained `nline/ncol`; `Param` gained `nline/ncol`),
+  `declare(...)` gained `dl/dc` params → stored on `Local.def_line/def_col` → the index records it as each use's
+  def-site. Bounded ripple: SLet (an enum variant) = 16 sites (the ignored arms bind `, _, _`; only the checker's
+  declare-site binds the real `nline/ncol`); Param (a struct) = 5 construction sites incl. synthesized `ps.Param {}`
+  in codegen/cgen_c (monomorphization / closure lifting) — those were the trap, caught by `make selfhost`'s checked
+  `--emit=c` differential ("every struct field must be set exactly once"), NOT by `make`. Verified: go-to-def on a
+  local `sum` → its `let sum`; on a param `a` → `fn add(a: …)`; hover → `*declared at line N*`. **NO reseed** —
+  positions are diagnostic-only (codegen/cgen_c ignore them via `_`), so the emit + bytecode are byte-identical
+  (make selfhost 1824/0, 54/54 M4a, reproduction + bootstrap green). Gated: run-lsp-self.sh (22 checks). Still
+  deferred: for-loop / match-pattern binding positions (pass 0,0 today); type-name hover/go-to-def; references/
+  rename + cross-file; inlayHint; prover.
 - **2026-08-03 — PHASE 3.2: semantic tokens + field/method hover (the same-file wins; references/rename DELIBERATELY
   SKIPPED).** Karl's honest cost/benefit call: references/rename is the largest remaining piece (a cross-module
   checker retrofit + a NEW dir-walk runtime native + workspace walk) for LOW value in an LLM-first language (an
