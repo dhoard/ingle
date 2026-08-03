@@ -12,6 +12,7 @@
 // mutation (OFI-161).
 
 import "parser" as ps
+import "semindex" as si
 
 
 // SemType is a plain int (stage-0 check.c): equality is `==`. Kept POSITIVE (Ingle top-level constants
@@ -180,6 +181,8 @@ struct Local {
     is_var: bool               // true for `var`/`mut`/`move`; false for `let` and borrowed bindings
     owned: bool                // owns its value (a local, or a `move` param) vs borrows it (a plain param)
     mvparam: bool              // a `move`-qualified parameter — movable by the qualifier regardless of type
+    def_line: int              // the binding NAME's source line (0 = unknown — the parser doesn't yet position
+    def_col: int               // param / let-binding names, so go-to-def on a local is a later slice). SemanticIndex only.
 }
 
 
@@ -260,6 +263,21 @@ struct Checker {
     cur_line: int              // source line of the stmt/expr currently being checked (0 = unknown)
     cur_col: int               // source column of it (M2; 0 = unknown → rendered line-only)
     cur_file: string           // path of the module being checked, for the diagnostic's `file:` prefix
+    fn_dl: [int]               // per free-fn (parallel to fn_names): the `fn` keyword's line/col — the DEF SITE a
+    fn_dc: [int]               // reference records for go-to-definition / hover provenance (SemanticIndex)
+    idx_on: bool               // is the SemanticIndex being collected this run? (the LSP index path; batch = false)
+    idx_line: [int]            // the SemanticIndex, as parallel arrays (OFI-061: no array-of-structs mutation) —
+    idx_col: [int]             // one slot per recorded identifier occurrence, keyed by its 1-based [col,end_col) span
+    idx_end: [int]
+    idx_kind: [int]            // an si.SK_* kind
+    idx_type: [string]         // rendered type
+    idx_detail: [string]       // one-line hover signature
+    idx_container: [string]    // owning module/type, or ""
+    idx_doc: [string]          // doc, or ""
+    idx_dl: [int]              // definition line (0 = unknown)
+    idx_dc: [int]              // definition col (0 = unknown)
+    idx_dfile: [string]        // definition file ("" = same file)
+    idx_rfile: [string]        // the file this occurrence is in (cross-file / own-file filter)
 
 
     // error records a diagnostic at the position currently being checked (self.cur_file/line/col, set as the
@@ -295,6 +313,98 @@ struct Checker {
     }
 
 
+    // ---- SemanticIndex recording (the LSP index path; a no-op unless idx_on) ------------------------------
+    // sem_rec appends one resolved identifier occurrence to the parallel index arrays. line/col is the
+    // occurrence's 1-based start; it spans `namelen` bytes. Only records when idx_on and the position is real.
+    fn sem_rec(mut self, line: int, col: int, namelen: int, kind: int, tystr: string, detail: string, cont: string, doc: string, dl: int, dc: int) {
+        if self.idx_on == false || line <= 0 || col <= 0 {
+            return
+        }
+        self.idx_line.append(line)
+        self.idx_col.append(col)
+        self.idx_end.append(col + namelen)
+        self.idx_kind.append(kind)
+        self.idx_type.append(tystr)
+        self.idx_detail.append(detail)
+        self.idx_container.append(cont)
+        self.idx_doc.append(doc)
+        self.idx_dl.append(dl)
+        self.idx_dc.append(dc)
+        self.idx_dfile.append("")
+        self.idx_rfile.append(self.cur_file)
+    }
+
+
+    // sem_type_name renders a SemType band as a source-level type string for hover/detail (a best-effort inverse
+    // of annotation_type): primitives by name, STRUCT/ENUM/NEWTYPE bands via the name tables, TY_INFER = "?".
+    fn sem_type_name(self, t: int) -> string {
+        if t == TY_INT {
+            return "int"
+        }
+        if t == TY_FLOAT {
+            return "float"
+        }
+        if t == TY_BOOL {
+            return "bool"
+        }
+        if t == TY_STRING {
+            return "string"
+        }
+        if t == TY_UNIT {
+            return "()"
+        }
+        if t == TY_PTR {
+            return "Ptr"
+        }
+        if t == TY_ARRAY {
+            return "[]"
+        }
+        if t == TY_I8 {
+            return "i8"
+        }
+        if t == TY_I16 {
+            return "i16"
+        }
+        if t == TY_I32 {
+            return "i32"
+        }
+        if t == TY_U8 {
+            return "u8"
+        }
+        if t == TY_U16 {
+            return "u16"
+        }
+        if t == TY_U32 {
+            return "u32"
+        }
+        if t == TY_U64 {
+            return "u64"
+        }
+        if t == TY_F32 {
+            return "f32"
+        }
+        if t >= NEWTYPE_BASE {
+            let i = t - NEWTYPE_BASE
+            if i >= 0 && i < self.newtypes.len() {
+                return self.newtypes[i]
+            }
+        }
+        if t >= ENUM_BASE {
+            let i = t - ENUM_BASE
+            if i >= 0 && i < self.enums.len() {
+                return self.enums[i]
+            }
+        }
+        if t >= STRUCT_BASE {
+            let i = t - STRUCT_BASE
+            if i >= 0 && i < self.structs.len() {
+                return self.structs[i]
+            }
+        }
+        return "?"
+    }
+
+
     // ---- scope handling: a flat locals array + a depth, with append/truncate (stage-0 check.c) --------
     // declare also enforces no-redeclaration-in-the-same-scope: a binding whose name already exists at the
     // current depth is an error (stage-0 treats a function's params and its body top level as one scope;
@@ -316,7 +426,7 @@ struct Checker {
                 i = i - 1
             }
         }
-        self.locals.append(Local{ name: name, depth: self.scope_depth, ty: ty, is_var: is_var, owned: owned, mvparam: mvparam })
+        self.locals.append(Local{ name: name, depth: self.scope_depth, ty: ty, is_var: is_var, owned: owned, mvparam: mvparam, def_line: 0, def_col: 0 })
         self.local_moved.append(false)
         self.local_frozen.append(false)
         // an OWNED Ptr local is an OPEN obligation (consumed=false); everything else has none (true).
@@ -715,6 +825,8 @@ struct Checker {
                     }
                     self.fns.append(f.name)
                     self.fn_names.append(f.name)
+                    self.fn_dl.append(f.line)
+                    self.fn_dc.append(f.col)
                     self.fn_extern.append(false)
                     var pc = 0
                     var pp = 0
@@ -808,6 +920,8 @@ struct Checker {
                         // call site gets arity/arg checks AND the move-arg consume — so `fopen` types a Ptr open
                         // and `fclose(move f: Ptr)` consumes it, for free.
                         self.fn_names.append(fns[e].name)
+                        self.fn_dl.append(fns[e].line)
+                        self.fn_dc.append(fns[e].col)
                         self.fn_extern.append(true)
                         var ec = 0
                         var ep = 0
@@ -1603,7 +1717,7 @@ struct Checker {
             if i >= n {
                 break
             }
-            kept.append(Local{ name: self.locals[i].name, depth: self.locals[i].depth, ty: self.locals[i].ty, is_var: self.locals[i].is_var, owned: self.locals[i].owned, mvparam: self.locals[i].mvparam })
+            kept.append(Local{ name: self.locals[i].name, depth: self.locals[i].depth, ty: self.locals[i].ty, is_var: self.locals[i].is_var, owned: self.locals[i].owned, mvparam: self.locals[i].mvparam, def_line: self.locals[i].def_line, def_col: self.locals[i].def_col })
             keptm.append(self.local_moved[i])           // a move on an OUTER local persists past an inner scope
             keptf.append(self.local_frozen[i])          // ...as does a freeze by a live slice
             keptc.append(self.local_consumed[i])
@@ -2465,10 +2579,19 @@ struct Checker {
                     if slot >= 0 && self.local_moved[slot] {
                         self.error("use of '{name}' after it was moved")
                     }
-                    return self.local_type(name)
+                    let lt = self.local_type(name)
+                    if slot >= 0 && self.idx_on {
+                        var kw = "let "
+                        if self.locals[slot].is_var {
+                            kw = "var "
+                        }
+                        self.sem_rec(eline, ecol, name.len(), si.SK_LOCAL, self.sem_type_name(lt), "{kw}{name}: {self.sem_type_name(lt)}", "", "", self.locals[slot].def_line, self.locals[slot].def_col)
+                    }
+                    return lt
                 }
                 let ve = self.variant_enum(name)     // a bare user-enum variant carries its enum type
                 if ve >= 0 {
+                    self.sem_rec(eline, ecol, name.len(), si.SK_VARIANT, self.sem_type_name(ve), name, self.sem_type_name(ve), "", 0, 0)
                     return ve
                 }
                 // OFI-168: a foreign (extern "c") function has no first-class value — it is not a closure, has
@@ -2477,6 +2600,9 @@ struct Checker {
                 let efi = self.fn_index_of(name)
                 if efi >= 0 && self.fn_extern[efi] {
                     self.error("a foreign (extern \"c\") function cannot be used as a function value; call it directly")
+                }
+                if efi >= 0 && efi < self.fn_dl.len() {
+                    self.sem_rec(eline, ecol, name.len(), si.SK_FUNCTION, "", "fn {name}", "", "", self.fn_dl[efi], self.fn_dc[efi])
                 }
                 return TY_INFER                      // function / global / prelude variant / struct name
             }
@@ -2576,6 +2702,9 @@ struct Checker {
                         // guard) — otherwise a bound violation slips through once common names became builtins.
                         if self.resolve_local(name) == false && (is_builtin(name) == false || self.fn_index_of(name) >= 0) {
                             let fi = self.fn_index_of(name)
+                            if self.idx_on && fi >= 0 && fi < self.fn_dl.len() {
+                                self.sem_rec(callee.line, callee.col, name.len(), si.SK_FUNCTION, "", "fn {name}", "", "", self.fn_dl[fi], self.fn_dc[fi])
+                            }
                             // OFI-167: a DIRECT extern (an `extern "c"` fn NOT in the hosted FFI registry) has no
                             // bytecode-VM binding — it is native-only (`--emit=c`). CALLING one in the default
                             // (VM) profile is rejected (a scalar-only direct extern that is never called still
@@ -3798,7 +3927,7 @@ fn check_diags(src: string, path: string) -> [string] {
 // run_checker builds a fresh Checker over `decls`, runs the three passes, and returns the collected
 // diagnostics field. Shared by check_decls (verdict / printing) and check_diags (the LSP data path) so the
 // giant Checker construction lives in ONE place.
-fn run_checker(decls: [ps.Decl], path: string) -> [string] {
+fn build_run(decls: [ps.Decl], path: string, idx_on: bool) -> Checker {
     var fns: [string] = []
     var structs: [string] = []
     var enums: [string] = ["Option", "Result"]                    // always-in-scope prelude enums
@@ -3848,11 +3977,26 @@ fn run_checker(decls: [ps.Decl], path: string) -> [string] {
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies
-    return c.diags.clone()               // an INDEPENDENT copy — `c` (and its `diags` backing) is dropped at return
+    return c
+}
+
+
+// run_checker builds + runs the checker (index OFF) and returns the diagnostics — the verdict/print path.
+fn run_checker(decls: [ps.Decl], path: string) -> [string] {
+    let c = build_run(decls, path, false)
+    return c.diags.clone()               // an INDEPENDENT copy — `c` (and its arrays) is dropped at return
+}
+
+
+// check_index builds + runs the checker with the SemanticIndex ON and returns it — the LSP's hover/definition/
+// semantic-tokens data path. Single-module (imports lenient), like check_diags; cross-file is a later slice.
+fn check_index(src: string, path: string) -> si.SemIndex {
+    let c = build_run(ps.parse(src), path, true)
+    return si.SemIndex{ e_line: c.idx_line.clone(), e_col: c.idx_col.clone(), e_end: c.idx_end.clone(), e_kind: c.idx_kind.clone(), e_type: c.idx_type.clone(), e_detail: c.idx_detail.clone(), e_container: c.idx_container.clone(), e_doc: c.idx_doc.clone(), e_def_line: c.idx_dl.clone(), e_def_col: c.idx_dc.clone(), e_def_file: c.idx_dfile.clone(), e_ref_file: c.idx_rfile.clone() }
 }
 
 

@@ -133,6 +133,27 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   SemanticIndex); no builtins/snippets in completion. **NEXT = Phase 3: the SemanticIndex** — per-node positions +
   definition sites + recorders, the foundation for hover / go-to-definition / member completion / references /
   rename (the big one; needs the deferred expression-precise positions + cross-module resolution).
+- **2026-08-03 — PHASE 3.0 DONE: the SemanticIndex foundation + hover + same-file go-to-definition.** The full
+  Phase-3 campaign was ratified (Karl: "go the whole way"); a 5-agent recon sized it (~1,400–1,900 Ingle LOC over
+  A positions / B def-sites / C recorders / D cross-module) and — crucially — found prerequisite **A was ALREADY
+  DONE**: commit `51b1701` had threaded each expression's `(eline, ecol)` through `check_expr` for exactly this.
+  So 3.0 is: **`selfhost/semindex.ig`** — the position-keyed store as PARALLEL ARRAYS (OFI-061: no array-of-struct
+  mutation) with an innermost-covering-span `lookup` returning a `SemHit` BY VALUE (SK_LOCAL..SK_MODULE kinds),
+  mirroring include/semindex.h. **Checker recorders**: index fields + `idx_on` flag + `sem_rec` + a `sem_type_name`
+  (SemType-band → source string) renderer; `Local` gained `def_line/def_col`, free fns gained `fn_dl/fn_dc` (the
+  `fn` keyword position). Recording wired into the `check_expr` EIdent arm (locals → SK_LOCAL with inferred type,
+  bare fn/variant refs) + the ECall callee (fn calls → SK_FUNCTION with def-site). `run_checker` refactored to
+  share `build_run(decls, path, idx_on) -> Checker`; new `check_index(src, path) -> si.SemIndex` (index-on, returns
+  the cloned arrays — OFI-228). **lsp.ig**: `hover` (markdown card of the type/signature at the cursor) +
+  `definition` (jump to `def_line/col`, same-file); capabilities advertise both. VERIFIED: hover on a local shows
+  its inferred type (`let sum: int`), go-to-def on a call jumps to the fn. Gated: `run-lsp-self.sh` +2 (15 total),
+  `make verify` all-9-green, selfhost 1824/0, reproduction fixed point + bootstrap intact, NO reseed. GOTCHA banked:
+  adding a struct field slipped past `make` (its emit path is UNCHECKED — cgen_c_dump trusts input) but `make
+  selfhost`'s checked `--emit=c` differential caught the missed `Local{}` construction site ("every struct field
+  must be set exactly once") — gate struct changes on `make selfhost`, not `make`. **NEXT within Phase 3: widen
+  the recorders (fields/methods/types/params) → richer hover + more go-to-def; then semanticTokens (full coverage
+  + delta-encode); member completion (receiver-type-at-position); references/rename (cross-module + a dir-walk
+  native); inlayHint/prover last.**
 - **2026-08-02 — PHASE 3 SCOPED (5-agent read-only recon) + Karl ratified the FULL campaign ("go the whole way").**
   The C SemanticIndex (`include/semindex.h` SemEntry {line,col,end_col, kind, type, detail, container, doc, value,
   byte_offset/size, def_file/line/col, ref_file}; flat array; innermost-covering-span lookup; ~10 recorders wired

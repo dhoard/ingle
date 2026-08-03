@@ -76,6 +76,9 @@ msgs = [
     p2req(22, "textDocument/completion", {"position":{"line":3,"character":20}}),   # member: right after "self." on the return line
     p2req(23, "textDocument/signatureHelp", {"position":{"line":16,"character":19}}), # inside add(1, |2)
     p2req(24, "textDocument/codeAction", {"range":{"start":{"line":16,"character":4},"end":{"line":16,"character":4}},"context":{"diagnostics":[]}}),
+    # Phase 3: hover on a USE of the local `r` (line 17 `    return r` — `r` at char 11), definition of the `add` call (char 12)
+    p2req(25, "textDocument/hover", {"position":{"line":17,"character":11}}),
+    p2req(26, "textDocument/definition", {"position":{"line":16,"character":12}}),
     {"jsonrpc":"2.0","method":"exit"},
 ]
 # A malformed JSON frame after initialize must be tolerated (the server keeps going).
@@ -169,8 +172,17 @@ check(len(ca) == 2 and any("requires" in t for t in titles) and any("ensures" in
       and all(a.get("kind") == "refactor.rewrite" and "edit" in a for a in ca),
       "codeAction → two contract scaffolds (refactor.rewrite edits)")
 
+# ---- Phase 3 (SemanticIndex) ----------------------------------------------------------------------
+hov = by_id.get(25, {}).get("result", {})
+hval = hov.get("contents", {}).get("value", "") if hov else ""
+check("let r" in hval and "int" in hval, f"hover on a local `r` → its inferred type (got {hval!r})")
+
+dfn = by_id.get(26, {}).get("result", {})
+check(isinstance(dfn, dict) and dfn.get("range", {}).get("start", {}).get("line") == 11,
+      f"go-to-definition on the `add` call → fn add @ line 11 (got {dfn})")
+
 if fails:
     print(f"lsp-self: {fails} check(s) FAILED")
     sys.exit(1)
-print("lsp-self: all Phase-1 + Phase-2 checks passed (transport, diagnostics, symbols, completion, signatureHelp, codeAction)")
+print("lsp-self: all Phase-1/2/3 checks passed (transport, diagnostics, symbols, completion, signatureHelp, codeAction, hover, definition)")
 PY

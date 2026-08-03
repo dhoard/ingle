@@ -14,6 +14,7 @@ import "std/string" as str
 import "checker" as ck
 import "parser" as ps
 import "lexer" as lx
+import "semindex" as si
 
 
 // A parsed diagnostic: the checker renders each as "doc:line:col: error: msg"; parse_diag splits it back.
@@ -146,6 +147,58 @@ struct Server {
     }
 
 
+    // hover_for builds the SemanticIndex for the doc, looks up the identifier at the cursor, and renders a
+    // markdown hover card (a fenced signature/type + doc). null when nothing resolves at the position.
+    fn hover_for(self, uri: string, ln: int, ch: int) -> json.Json {
+        let di = self.find(uri)
+        if di < 0 {
+            return json.null_value()
+        }
+        let sidx = ck.check_index(self.texts[di], "doc")
+        let hit = sidx.lookup(ln + 1, ch + 1)
+        if hit.found == false {
+            return json.null_value()
+        }
+        var body = hit.detail
+        if body == "" {
+            body = hit.type_str
+        }
+        if body == "" {
+            body = "?"
+        }
+        var md = "```ingle\n" + body + "\n```"
+        if hit.doc != "" {
+            md = md + "\n\n" + hit.doc
+        }
+        let contents = json.obj([json.member("kind", json.str("markdown")), json.member("value", json.str(md))])
+        return json.obj([json.member("contents", contents)])
+    }
+
+
+    // def_for returns the definition Location for the symbol at the cursor (same-file only for now: the index is
+    // single-module, so def_file is ""). null when there's no known definition site.
+    fn def_for(self, uri: string, ln: int, ch: int) -> json.Json {
+        let di = self.find(uri)
+        if di < 0 {
+            return json.null_value()
+        }
+        let sidx = ck.check_index(self.texts[di], "doc")
+        let hit = sidx.lookup(ln + 1, ch + 1)
+        if hit.found == false || hit.def_line <= 0 {
+            return json.null_value()
+        }
+        var dl = hit.def_line - 1
+        if dl < 0 {
+            dl = 0
+        }
+        var dc = hit.def_col - 1
+        if dc < 0 {
+            dc = 0
+        }
+        return json.obj([json.member("uri", json.str(uri)), json.member("range", lsp_range(dl, dc, dl, dc + 1))])
+    }
+
+
     // handle dispatches one decoded message body by its `method`.
     fn handle(mut self, body: string) {
         match json.parse(body) {
@@ -214,6 +267,18 @@ struct Server {
                         let rng = json.get(params, "range")
                         self.respond(id, self.codeaction_for(uri, json.as_int(json.get(json.get(rng, "start"), "line"))))
                     }
+                } else if method == "textDocument/hover" {
+                    if has_id {
+                        let uri = json.as_str(json.get(json.get(params, "textDocument"), "uri"))
+                        let pos = json.get(params, "position")
+                        self.respond(id, self.hover_for(uri, json.as_int(json.get(pos, "line")), json.as_int(json.get(pos, "character"))))
+                    }
+                } else if method == "textDocument/definition" {
+                    if has_id {
+                        let uri = json.as_str(json.get(json.get(params, "textDocument"), "uri"))
+                        let pos = json.get(params, "position")
+                        self.respond(id, self.def_for(uri, json.as_int(json.get(pos, "line")), json.as_int(json.get(pos, "character"))))
+                    }
                 } else {
                     if has_id {
                         self.respond(id, json.null_value())   // unknown request → empty result (client won't hang)
@@ -233,7 +298,7 @@ struct Server {
 fn capabilities() -> json.Json {
     let compl = json.obj([json.member("triggerCharacters", json.arr([json.str(".")]))])
     let sighelp = json.obj([json.member("triggerCharacters", json.arr([json.str("("), json.str(",")]))])
-    let caps = json.obj([json.member("positionEncoding", json.str("utf-8")), json.member("textDocumentSync", json.num(1)), json.member("documentSymbolProvider", json.boolean(true)), json.member("completionProvider", compl), json.member("signatureHelpProvider", sighelp), json.member("codeActionProvider", json.boolean(true))])
+    let caps = json.obj([json.member("positionEncoding", json.str("utf-8")), json.member("textDocumentSync", json.num(1)), json.member("documentSymbolProvider", json.boolean(true)), json.member("completionProvider", compl), json.member("signatureHelpProvider", sighelp), json.member("codeActionProvider", json.boolean(true)), json.member("hoverProvider", json.boolean(true)), json.member("definitionProvider", json.boolean(true))])
     let info = json.obj([json.member("name", json.str("inglec-lsp")), json.member("version", json.str("0.3.42"))])
     return json.obj([json.member("capabilities", caps), json.member("serverInfo", info)])
 }
