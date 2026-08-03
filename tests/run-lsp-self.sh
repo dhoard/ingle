@@ -84,6 +84,9 @@ msgs = [
     p2req(26, "textDocument/definition", {"position":{"line":16,"character":12}}),
     # member completion at `p.|` in `    return p.x` (line 20, char 13 = right after the dot)
     p2req(27, "textDocument/completion", {"position":{"line":20,"character":13}}),
+    p2req(28, "textDocument/semanticTokens/full", {}),
+    # hover on the field `.x` in `    return p.x` (line 20, char 13)
+    p2req(29, "textDocument/hover", {"position":{"line":20,"character":13}}),
     {"jsonrpc":"2.0","method":"exit"},
 ]
 # A malformed JSON frame after initialize must be tolerated (the server keeps going).
@@ -190,6 +193,14 @@ mem = by_id.get(27, {}).get("result", {}).get("items", [])
 mlabels = {it["label"]: it["kind"] for it in mem}
 check(mlabels.get("x") == 5 and mlabels.get("scale") == 2 and len(mem) == 2,
       f"member completion `p.` → Point's field x (5) + method scale (2) (got {sorted(mlabels)})")
+
+st = by_id.get(28, {}).get("result", {}).get("data", [])
+check(caps.get("semanticTokensProvider") and isinstance(st, list) and len(st) >= 5 and len(st) % 5 == 0,
+      f"semanticTokens/full → a delta-encoded 5-tuple stream ({len(st)} ints)")
+
+fh = by_id.get(29, {}).get("result", {})
+fhval = fh.get("contents", {}).get("value", "") if fh else ""
+check("x: int" in fhval, f"hover on a field `.x` → its type (got {fhval!r})")
 
 if fails:
     print(f"lsp-self: {fails} check(s) FAILED")

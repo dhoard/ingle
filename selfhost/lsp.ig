@@ -157,7 +157,7 @@ struct Server {
         let sidx = ck.check_index(self.texts[di], "doc")
         let hit = sidx.lookup(ln + 1, ch + 1)
         if hit.found == false {
-            return json.null_value()
+            return member_hover(self.texts[di], ln, ch)   // a `.field`/`.method` — reconstruct from receiver type + AST
         }
         var body = hit.detail
         if body == "" {
@@ -196,6 +196,16 @@ struct Server {
             dc = 0
         }
         return json.obj([json.member("uri", json.str(uri)), json.member("range", lsp_range(dl, dc, dl, dc + 1))])
+    }
+
+
+    fn semtokens_for(self, uri: string) -> json.Json {
+        let di = self.find(uri)
+        if di < 0 {
+            var e: [json.Json] = []
+            return json.obj([json.member("data", json.arr(e))])
+        }
+        return semantic_tokens(self.texts[di])
     }
 
 
@@ -279,6 +289,11 @@ struct Server {
                         let pos = json.get(params, "position")
                         self.respond(id, self.def_for(uri, json.as_int(json.get(pos, "line")), json.as_int(json.get(pos, "character"))))
                     }
+                } else if method == "textDocument/semanticTokens/full" {
+                    if has_id {
+                        let uri = json.as_str(json.get(json.get(params, "textDocument"), "uri"))
+                        self.respond(id, self.semtokens_for(uri))
+                    }
                 } else {
                     if has_id {
                         self.respond(id, json.null_value())   // unknown request → empty result (client won't hang)
@@ -298,7 +313,10 @@ struct Server {
 fn capabilities() -> json.Json {
     let compl = json.obj([json.member("triggerCharacters", json.arr([json.str(".")]))])
     let sighelp = json.obj([json.member("triggerCharacters", json.arr([json.str("("), json.str(",")]))])
-    let caps = json.obj([json.member("positionEncoding", json.str("utf-8")), json.member("textDocumentSync", json.num(1)), json.member("documentSymbolProvider", json.boolean(true)), json.member("completionProvider", compl), json.member("signatureHelpProvider", sighelp), json.member("codeActionProvider", json.boolean(true)), json.member("hoverProvider", json.boolean(true)), json.member("definitionProvider", json.boolean(true))])
+    let toktypes = json.arr([json.str("namespace"), json.str("type"), json.str("parameter"), json.str("variable"), json.str("property"), json.str("enumMember"), json.str("function"), json.str("method")])
+    let tokmods = json.arr([json.str("declaration"), json.str("readonly"), json.str("defaultLibrary")])
+    let semtok = json.obj([json.member("legend", json.obj([json.member("tokenTypes", toktypes), json.member("tokenModifiers", tokmods)])), json.member("full", json.boolean(true))])
+    let caps = json.obj([json.member("positionEncoding", json.str("utf-8")), json.member("textDocumentSync", json.num(1)), json.member("documentSymbolProvider", json.boolean(true)), json.member("completionProvider", compl), json.member("signatureHelpProvider", sighelp), json.member("codeActionProvider", json.boolean(true)), json.member("hoverProvider", json.boolean(true)), json.member("definitionProvider", json.boolean(true)), json.member("semanticTokensProvider", semtok)])
     let info = json.obj([json.member("name", json.str("inglec-lsp")), json.member("version", json.str("0.3.42"))])
     return json.obj([json.member("capabilities", caps), json.member("serverInfo", info)])
 }
@@ -916,6 +934,213 @@ fn code_actions(text: string, uri: string, start_line0: int) -> json.Json {
     actions.append(contract_action(uri, "Add a `requires` precondition", "requires true", brace_line, brace_col))
     actions.append(contract_action(uri, "Add an `ensures` postcondition", "ensures result == result", brace_line, brace_col))
     return json.arr(actions)
+}
+
+
+// tok_at returns the index of the token whose span COVERS the 1-based (line1, col1), or -1.
+fn tok_at(toks: [lx.Token], line1: int, col1: int) -> int {
+    var i = 0
+    loop {
+        if i >= toks.len() {
+            break
+        }
+        if toks[i].line == line1 && toks[i].col <= col1 && col1 < toks[i].col + toks[i].text.len() {
+            return i
+        }
+        i = i + 1
+    }
+    return 0 - 1
+}
+
+
+// member_hover reconstructs hover for a `receiver.member` at the cursor WITHOUT the checker recording field
+// names (the parser discards their position): it finds the `.member` token, resolves the receiver's type via
+// the index, and reads the member's type/signature from the AST struct. Returns a hover object, or null.
+fn member_hover(text: string, line0: int, char0: int) -> json.Json {
+    let toks = lx.lex(text)
+    let ai = tok_at(toks, line0 + 1, char0 + 1)
+    if ai < 2 {
+        return json.null_value()
+    }
+    if lx.kind_name(toks[ai].kind) != "IDENT" || lx.kind_name(toks[ai - 1].kind) != "DOT" {
+        return json.null_value()
+    }
+    let rk = lx.kind_name(toks[ai - 2].kind)
+    if rk != "IDENT" && rk != "SELF" {
+        return json.null_value()
+    }
+    let mname = toks[ai].text
+    let sidx = ck.check_index(text, "doc")
+    let rhit = sidx.lookup(toks[ai - 2].line, toks[ai - 2].col)
+    var tname = rhit.type_str
+    let lt = str.index_of(tname, "<")
+    if lt >= 0 {
+        tname = str.substring(tname, 0, lt)
+    }
+    if rhit.found == false || tname == "" || tname == "?" {
+        return json.null_value()
+    }
+    let decls = ps.parse(text)
+    var detail = ""
+    var di = 0
+    loop {
+        if di >= decls.len() {
+            break
+        }
+        match decls[di] {
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                if name == tname {
+                    var fi = 0
+                    loop {
+                        if fi >= fields.len() {
+                            break
+                        }
+                        if fields[fi].name == mname {
+                            detail = "{mname}: {ps.ty_str(fields[fi].ty)}"
+                        }
+                        fi = fi + 1
+                    }
+                    var mi = 0
+                    loop {
+                        if mi >= methods.len() {
+                            break
+                        }
+                        if methods[mi].name == mname {
+                            detail = fn_sig(methods[mi])
+                        }
+                        mi = mi + 1
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        di = di + 1
+    }
+    if detail == "" {
+        return json.null_value()
+    }
+    let contents = json.obj([json.member("kind", json.str("markdown")), json.member("value", json.str("```ingle\n" + detail + "\n```"))])
+    return json.obj([json.member("contents", contents)])
+}
+
+
+// sem_token_type maps an si.SK_* kind to its LSP semantic-token TYPE index (the capabilities legend order:
+// namespace/type/parameter/variable/property/enumMember/function/method), or -1 to skip.
+fn sem_token_type(kind: int) -> int {
+    if kind == si.SK_MODULE {
+        return 0
+    }
+    if kind == si.SK_TYPE {
+        return 1
+    }
+    if kind == si.SK_PARAM {
+        return 2
+    }
+    if kind == si.SK_LOCAL {
+        return 3
+    }
+    if kind == si.SK_FIELD {
+        return 4
+    }
+    if kind == si.SK_VARIANT {
+        return 5
+    }
+    if kind == si.SK_FUNCTION {
+        return 6
+    }
+    if kind == si.SK_METHOD {
+        return 7
+    }
+    return 0 - 1
+}
+
+
+// semantic_tokens builds the SemanticIndex, classifies each occurrence by kind, sorts by (line, col), and
+// delta-encodes the LSP token stream ({data:[deltaLine, deltaChar, length, tokenType, tokenModifiers]*}, 0-based).
+fn semantic_tokens(text: string) -> json.Json {
+    let sidx = ck.check_index(text, "doc")
+    var tl: [int] = []
+    var tc: [int] = []
+    var tlen: [int] = []
+    var tt: [int] = []
+    var i = 0
+    loop {
+        if i >= sidx.count() {
+            break
+        }
+        let h = sidx.entry(i)
+        let ty = sem_token_type(h.kind)
+        if ty >= 0 && h.line > 0 && h.col > 0 {
+            tl.append(h.line - 1)
+            tc.append(h.col - 1)
+            tlen.append(h.end_col - h.col)
+            tt.append(ty)
+        }
+        i = i + 1
+    }
+    let n = tl.len()
+    var a = 0                                          // selection sort by (line, col) — the index is in walk order
+    loop {
+        if a >= n {
+            break
+        }
+        var mn = a
+        var b = a + 1
+        loop {
+            if b >= n {
+                break
+            }
+            if tl[b] < tl[mn] || (tl[b] == tl[mn] && tc[b] < tc[mn]) {
+                mn = b
+            }
+            b = b + 1
+        }
+        if mn != a {
+            let s0 = tl[a]
+            tl[a] = tl[mn]
+            tl[mn] = s0
+            let s1 = tc[a]
+            tc[a] = tc[mn]
+            tc[mn] = s1
+            let s2 = tlen[a]
+            tlen[a] = tlen[mn]
+            tlen[mn] = s2
+            let s3 = tt[a]
+            tt[a] = tt[mn]
+            tt[mn] = s3
+        }
+        a = a + 1
+    }
+    var data: [json.Json] = []
+    var prevl = 0
+    var prevc = 0
+    var emitted = false
+    var k = 0
+    loop {
+        if k >= n {
+            break
+        }
+        if emitted && tl[k] == prevl && tc[k] == prevc {
+            k = k + 1                                  // skip an exact-position duplicate (sorted → adjacent)
+            continue
+        }
+        var dl = tl[k] - prevl
+        var dc = tc[k]
+        if emitted && dl == 0 {
+            dc = tc[k] - prevc
+        }
+        data.append(json.num(dl))
+        data.append(json.num(dc))
+        data.append(json.num(tlen[k]))
+        data.append(json.num(tt[k]))
+        data.append(json.num(0))
+        prevl = tl[k]
+        prevc = tc[k]
+        emitted = true
+        k = k + 1
+    }
+    return json.obj([json.member("data", json.arr(data))])
 }
 
 

@@ -151,6 +151,25 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   adding a struct field slipped past `make` (its emit path is UNCHECKED — cgen_c_dump trusts input) but `make
   selfhost`'s checked `--emit=c` differential caught the missed `Local{}` construction site ("every struct field
   must be set exactly once") — gate struct changes on `make selfhost`, not `make`.
+- **2026-08-03 — PHASE 3.2: semantic tokens + field/method hover (the same-file wins; references/rename DELIBERATELY
+  SKIPPED).** Karl's honest cost/benefit call: references/rename is the largest remaining piece (a cross-module
+  checker retrofit + a NEW dir-walk runtime native + workspace walk) for LOW value in an LLM-first language (an
+  agent edits directly, doesn't use find-refs/rename); the daily value is already shipped. So we did the cheap
+  wins instead. **semanticTokens/full**: a whole-index walk in lsp.ig — classify each occurrence by kind
+  (`sem_token_type`: SK_*→the legend namespace/type/parameter/variable/property/enumMember/function/method),
+  selection-sort by (line,col) (the index is in walk order), skip exact-position dupes, delta-encode the 5-int
+  tuples; legend advertised in `initialize`. Highlights locals/fns/variants today (more as recorders widen).
+  **field/method hover**: the parser discards the `.field` name token's position (the one A-gap), so the checker
+  can't RECORD field accesses — instead `member_hover` reconstructs on demand (the hover fallback when the index
+  misses): `tok_at` the cursor → a `.member` ident → resolve the receiver's type via the index → read the member's
+  type/signature from the AST struct. So **hover now covers locals, functions, fields, AND methods.** Verified:
+  `p.x` hover → `x: int`; semanticTokens → a valid delta stream. Gated: run-lsp-self.sh (19 checks), `make verify`
+  all-9-green, selfhost 1824/0, reproduction fixed point intact, NO reseed (lsp.ig-only). **Honestly DEFERRED (all
+  need the discarded field-name / absent type-name / absent struct-enum-decl positions — the A-gap — or the
+  cross-module D subsystem): type-name hover/go-to-def; field/local go-to-def (methods/fns work); references +
+  rename + cross-file navigation; inlayHint; the prover verdicts.** Phase 3 stands at "same-file essentials
+  complete": diagnostics + symbols + completion(global+member) + signatureHelp + codeAction + hover(local/fn/
+  field/method) + go-to-def(fn/method) + semantic tokens.
 - **2026-08-03 — PHASE 3.1: MEMBER COMPLETION (the daily-driver trio complete).** `receiver.|` now completes off
   the SemanticIndex: `member_completion` (lsp.ig) finds the receiver identifier before the dot, looks up its
   resolved TYPE in the index (`check_index` → `SemHit.type_str`, generics stripped), then lists that struct's
