@@ -133,6 +133,23 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   SemanticIndex); no builtins/snippets in completion. **NEXT = Phase 3: the SemanticIndex** — per-node positions +
   definition sites + recorders, the foundation for hover / go-to-definition / member completion / references /
   rename (the big one; needs the deferred expression-precise positions + cross-module resolution).
+- **2026-08-02 — PHASE 3 SCOPED (5-agent read-only recon) + Karl ratified the FULL campaign ("go the whole way").**
+  The C SemanticIndex (`include/semindex.h` SemEntry {line,col,end_col, kind, type, detail, container, doc, value,
+  byte_offset/size, def_file/line/col, ref_file}; flat array; innermost-covering-span lookup; ~10 recorders wired
+  into ~30–57 check.c sites; built over the MERGED multi-module program so it's inherently workspace-wide). Sizing:
+  ~1,400–1,900 Ingle LOC + invasive parser/checker + a cross-module subsystem + a new directory-walk runtime native.
+  KEY enabler found: positions via **option (b) — make `check_expr` take `Box<Expr>`** (~35 checker-only edits, NO
+  emit-path ripple) instead of adding position fields to the Expr enum (468 match-arm ripple across codegen/cgen_c).
+  Field-name precision from capturing the discarded EGet `.name` token position (a side table, not the enum ripple).
+  Def-sites: Tier-A fn/method/interface positions are already in the AST (FnDecl.line/col); Tier-B struct/enum/field/
+  variant/global need parser name-token capture; `Local` needs def_line/col. `local_slot(name)` already resolves a
+  local use → its exact def index (discarded today) — the ready-made use→def arrow. Cross-module (D) is a genuine
+  new subsystem: retrofit the checker to run over `compile_c.load_modules`'s merged decls (thread current_module) +
+  a workspace `.ig` walk (new runtime native). **EXECUTION ORDER (gate green + commit each): 3.0** index struct +
+  SemType→string renderer + positions (option b) + def-sites + recorders → hover + same-file definition; **3.1**
+  semanticTokens (full recorder wiring + sort + delta-encode); **3.2** member completion (receiver-type-at-position;
+  members from existing sf_*/sm_*/ev_* tables); **3.3** cross-module (D) → references + rename; **3.4** inlayHint +
+  the prover port (greenfield, last). Recon detail: the 5 reports are archived in the session; this is the plan.
 - **2026-08-01 — RE-SCOPE CORRECTED: the Phase-1b "wall" was largely a false alarm (scoped via a 5-agent
   read-only recon + hands-on verification against stage-0).** The return-typing frontier had already MOVED far
   past the Phase-1b framing: structs/fields/generics/method-chains all resolve (**234/235** corpus programs

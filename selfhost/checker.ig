@@ -1188,7 +1188,7 @@ struct Checker {
                     } else if is_const_literal(value.value) == false {
                         self.error("a top-level constant must be a literal value (int, float, bool, or string)")
                     }
-                    let vt = self.check_expr(value.value)
+                    let vt = self.check_expr(value.value, value.line, value.col)
                     if ty.len() > 0 {
                         let bt = self.annotation_type(ty[0])
                         if assignable(vt, bt, is_int_literal(value.value), is_float_literal(value.value)) == false {
@@ -1439,7 +1439,7 @@ struct Checker {
                                 }
                                 if pidx >= 0 && pidx < targs.len() && cargs.len() == 1 {
                                     let want = self.annotation_type(targs[pidx])
-                                    let got = self.check_expr(cargs[0])
+                                    let got = self.check_expr(cargs[0], 0, 0)
                                     if assignable(got, want, is_int_literal(cargs[0]), is_float_literal(cargs[0])) == false {
                                         self.error("the variant payload's type does not match the annotation's type argument")
                                     }
@@ -1757,7 +1757,7 @@ struct Checker {
         }
         match s {
             case SLet(is_var, name, ty, value) {
-                let vt = self.check_expr(value.value)  // initialiser checked BEFORE the binding is in scope
+                let vt = self.check_expr(value.value, value.line, value.col)  // initialiser checked BEFORE the binding is in scope
                 self.consume_move(value.value, value.line)   // `let q = p` moves an owned move-type p
                 // OFI-199: an integer LITERAL whose magnitude exceeds i64 is stored as a negative EInt.v (a u64
                 // reinterpreted signed). It is valid ONLY in a u64 context — a `u64` suffix (kind 7) or a `u64`
@@ -1855,7 +1855,7 @@ struct Checker {
             }
             case SReturn(value, line) {
                 if value.len() > 0 {
-                    let vt = self.check_expr(value[0].value)
+                    let vt = self.check_expr(value[0].value, value[0].line, value[0].col)
                     if self.current_return == TY_UNIT {
                         self.error("cannot return a value from a function with no declared return type")
                     } else if self.current_return != TY_ERROR && self.current_return != TY_INFER {
@@ -1882,7 +1882,7 @@ struct Checker {
                 self.report_unconsumed_ptrs(0)                // every owned Ptr still open on this exit path leaks
             }
             case SExpr(expr) {
-                let vt = self.check_expr(expr.value)
+                let vt = self.check_expr(expr.value, expr.line, expr.col)
                 // OFI-049: a Ptr-returning CALL whose result is discarded (a bare statement) leaks the handle
                 // — nothing can ever close it.
                 match expr.value {
@@ -1896,7 +1896,7 @@ struct Checker {
                 }
             }
             case SAssign(target, value) {
-                let vt = self.check_expr(value.value)
+                let vt = self.check_expr(value.value, value.line, value.col)
                 self.consume_move(value.value, value.line)   // the RHS is consumed into the target (an owner)
                 match target.value {
                     case EIdent(name) {
@@ -1926,26 +1926,26 @@ struct Checker {
                         }
                     }
                     case EGet(object, fname) {
-                        self.check_expr(target.value)
+                        self.check_expr(target.value, target.line, target.col)
                         self.check_immutable_root(target.value, true)
                         if self.mutation_through_rc(target.value) {
                             self.error("cannot assign through a field or element of an 'rc' value; an rc struct is deeply immutable and shared")
                         }
                     }
                     case EIndex(object, index) {
-                        self.check_expr(target.value)
+                        self.check_expr(target.value, target.line, target.col)
                         self.check_immutable_root(target.value, false)
                         if self.mutation_through_rc(target.value) {
                             self.error("cannot assign through a field or element of an 'rc' value; an rc struct is deeply immutable and shared")
                         }
                     }
                     case _ {
-                        self.check_expr(target.value)
+                        self.check_expr(target.value, target.line, target.col)
                     }
                 }
             }
             case SIf(cond, then_blk, els) {
-                let ct = self.check_expr(cond.value)
+                let ct = self.check_expr(cond.value, cond.line, cond.col)
                 if ct != TY_INFER && ct != TY_ERROR && ct != TY_BOOL {
                     self.error("'if' condition must be a bool")
                 }
@@ -1983,7 +1983,7 @@ struct Checker {
                 }
             }
             case SFor(vname, index_var, iter, body) {
-                let itty = self.check_expr(iter.value)
+                let itty = self.check_expr(iter.value, iter.line, iter.col)
                 // A newtype is a distinct nominal type, not its base — it is NOT iterable (`for x in userId`
                 // is an error; unwrap first). Arrays/slices/strings/ranges and unmodelled (TY_INFER) stay fine.
                 if itty >= NEWTYPE_BASE {
@@ -2067,7 +2067,7 @@ struct Checker {
                 }
             }
             case SMatch(value, cases) {
-                let st = self.check_expr(value.value)
+                let st = self.check_expr(value.value, value.line, value.col)
                 // Exhaustiveness/variant checks fire ONLY when the subject is a known plain user enum.
                 // A generic/imported/Option/Result subject is TY_INFER → `known` false → fully lenient.
                 var known = false
@@ -2191,7 +2191,7 @@ struct Checker {
                                 has_wild = true
                             }
                         } else if cases[ci].pattern.kind == 2 {
-                            let lt = self.check_expr(cases[ci].pattern.lit[0])
+                            let lt = self.check_expr(cases[ci].pattern.lit[0], 0, 0)
                             var compat = false
                             if st == TY_BOOL {
                                 compat = lt == TY_BOOL
@@ -2226,7 +2226,7 @@ struct Checker {
                                 if cases[ci].pattern.alts[oa].kind != 2 {
                                     self.error("an or-pattern on a scalar/string value may only combine literals")
                                 } else {
-                                    let lt = self.check_expr(cases[ci].pattern.alts[oa].lit[0])
+                                    let lt = self.check_expr(cases[ci].pattern.alts[oa].lit[0], 0, 0)
                                     var compat = false
                                     if st == TY_BOOL {
                                         compat = lt == TY_BOOL
@@ -2309,7 +2309,7 @@ struct Checker {
                     }
                     if cases[ci].guard.len() > 0 {
                         // Checked in the arm scope, AFTER bindings, so the guard can read them.
-                        let gt = self.check_expr(cases[ci].guard[0])
+                        let gt = self.check_expr(cases[ci].guard[0], 0, 0)
                         if gt != TY_ERROR && gt != TY_BOOL {
                             self.error("a match guard must be a `bool`")
                         }
@@ -2386,7 +2386,7 @@ struct Checker {
                     case _ {
                     }
                 }
-                self.check_expr(call.value)
+                self.check_expr(call.value, call.line, call.col)
             }
             case SNursery(body, _) {
                 self.nursery_depth = self.nursery_depth + 1
@@ -2404,7 +2404,11 @@ struct Checker {
     // best effort: anything not yet modelled (calls, fields, generics, user types) is TY_INFER, and every
     // type check is gated on its operands being concretely known — so an unmodelled corner produces no
     // diagnostic rather than a wrong one.
-    fn check_expr(mut self, e: ps.Expr) -> int {
+    fn check_expr(mut self, e: ps.Expr, eline: int, ecol: int) -> int {
+        // eline/ecol are the expression's own source position (from the Box that wrapped it), threaded so the
+        // SemanticIndex recorders can key a use at its position. Diagnostics still use cur_line/cur_col (stmt
+        // granularity); this is a SEPARATE, index-only position. A bare sub-expr (a call arg, a pattern literal)
+        // is passed (0,0) for now — those get positions from arg-boxing / a side table in a later slice.
         match e {
             case EInt(v, _) {
                 return TY_INT
@@ -2432,7 +2436,7 @@ struct Checker {
                             case _ {
                             }
                         }
-                        let pt = self.check_expr(parts[i].hole[0])
+                        let pt = self.check_expr(parts[i].hole[0], 0, 0)
                         // OFI-139: an interpolation hole must be directly showable (numeric / bool / string)
                         // OR provide the Show contract (`fn show(self) -> string`, a struct method). A concrete
                         // struct-without-show / enum / array / Ptr can't render. Newtypes are TY_INFER here →
@@ -2478,11 +2482,11 @@ struct Checker {
             }
             case EUnary(op, operand) {
                 // `!x` -> bool, `-x` -> the operand's numeric type; in both the result type IS the operand's.
-                return self.check_expr(operand.value)
+                return self.check_expr(operand.value, operand.line, operand.col)
             }
             case EBinary(op, l, r) {
-                var lt = self.check_expr(l.value)
-                var rt = self.check_expr(r.value)
+                var lt = self.check_expr(l.value, l.line, l.col)
+                var rt = self.check_expr(r.value, r.line, r.col)
                 let cls = ps.binop_class(op)
                 if cls == 3 || cls == 4 {
                     return TY_BOOL                    // comparison / logical (operands not flagged: lenient)
@@ -2531,7 +2535,7 @@ struct Checker {
                     if i >= args.len() {
                         break
                     }
-                    argtypes.append(self.check_expr(args[i]))
+                    argtypes.append(self.check_expr(args[i], 0, 0))
                     i = i + 1
                 }
                 match callee.value {
@@ -2653,7 +2657,7 @@ struct Checker {
                     case EGet(object, mname) {
                         // D2: a method call `recv.m(args)` — only when the receiver is a known plain struct;
                         // a builtin/array/string/INFER receiver (mr < 0 or non-struct) stays lenient.
-                        let recv = self.check_expr(object.value)
+                        let recv = self.check_expr(object.value, object.line, object.col)
                         // A method call on an UNBOUNDED generic type-param binding has no method to dispatch
                         // to — even `.clone()` (check.c:4073). A bounded `T: Ord` keeps its interface methods.
                         match object.value {
@@ -2736,7 +2740,7 @@ struct Checker {
                         }
                     }
                     case EGet(object, mname) {
-                        let r = self.check_expr(object.value)
+                        let r = self.check_expr(object.value, object.line, object.col)
                         if r >= STRUCT_BASE && r < ENUM_BASE {
                             let mr = self.method_row(r - STRUCT_BASE, mname)
                             if mr >= 0 {
@@ -2750,7 +2754,7 @@ struct Checker {
                 return TY_INFER
             }
             case EGet(object, name) {
-                let ot = self.check_expr(object.value)   // `name` is a field/method, not a variable
+                let ot = self.check_expr(object.value, object.line, object.col)   // `name` is a field/method, not a variable
                 // a CONCRETE non-struct value (a primitive or an enum) has no fields; an INFER/aliased/struct
                 // object stays lenient.
                 if self.is_fieldless_concrete(ot) {
@@ -2759,8 +2763,8 @@ struct Checker {
                 return TY_INFER
             }
             case EIndex(object, index) {
-                self.check_expr(object.value)
-                self.check_expr(index.value)
+                self.check_expr(object.value, object.line, object.col)
+                self.check_expr(index.value, index.line, index.col)
                 return TY_INFER
             }
             case EArray(elems, lines) {
@@ -2774,7 +2778,7 @@ struct Checker {
                     if i >= elems.len() {
                         break
                     }
-                    let et = self.check_expr(elems[i])
+                    let et = self.check_expr(elems[i], 0, 0)
                     let cls = scalar_class(et)
                     if cls != 0 {
                         if ec == 0 {
@@ -2799,7 +2803,7 @@ struct Checker {
                         if i >= fields.len() {
                             break
                         }
-                        self.check_expr(fields[i].value)
+                        self.check_expr(fields[i].value, fields[i].line, 0)
                         i = i + 1
                     }
                     return TY_INFER
@@ -2842,7 +2846,7 @@ struct Checker {
                     if i >= fields.len() {
                         break
                     }
-                    let vt = self.check_expr(fields[i].value)
+                    let vt = self.check_expr(fields[i].value, fields[i].line, 0)
                     let row = self.field_row(si, fields[i].name)
                     if row < 0 {
                         self.error("no such field on this struct")
@@ -2887,7 +2891,7 @@ struct Checker {
                 return STRUCT_BASE + si
             }
             case ETry(operand) {
-                let ot = self.check_expr(operand.value)
+                let ot = self.check_expr(operand.value, operand.line, operand.col)
                 // `?` unwraps a Result/Option (both lenient TY_INFER here). A CONCRETE operand type can't be
                 // one, so it is an error; an unmodelled (TY_INFER) operand stays lenient.
                 if ot != TY_INFER && ot != TY_ERROR {
@@ -2901,8 +2905,8 @@ struct Checker {
                 return TY_INFER
             }
             case ERange(lo, hi) {
-                self.check_expr(lo.value)
-                self.check_expr(hi.value)
+                self.check_expr(lo.value, lo.line, lo.col)
+                self.check_expr(hi.value, hi.line, hi.col)
                 return TY_INFER
             }
             case ELambda(params, body) {
@@ -2931,10 +2935,10 @@ struct Checker {
                 // a method-call RECEIVER (`recv.m(...)`): validate the receiver only — the method itself is
                 // resolved by the ECall handler. Do NOT route through the bare-EGet field-access check (a
                 // method on a string/array is not a struct field).
-                self.check_expr(object.value)
+                self.check_expr(object.value, object.line, object.col)
             }
             case _ {
-                self.check_expr(callee)
+                self.check_expr(callee, 0, 0)
             }
         }
     }
