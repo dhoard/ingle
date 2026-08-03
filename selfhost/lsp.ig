@@ -616,12 +616,90 @@ fn member_context(text: string, line0: int, char0: int) -> bool {
 }
 
 
+// member_completion completes `receiver.|` — it looks up the receiver identifier's resolved TYPE in the
+// SemanticIndex, then lists that struct's fields (kind 5) + methods (kind 2), or that enum's variants (kind 20),
+// from the AST. A complex/unresolved receiver yields empty items (a later slice handles chained receivers).
+fn member_completion(text: string, line0: int, char0: int) -> json.Json {
+    var items: [json.Json] = []
+    let toks = lx.lex(text)
+    let bi = tok_before(toks, line0 + 1, char0 + 1)
+    var dotidx = 0 - 1
+    if bi >= 0 && lx.kind_name(toks[bi].kind) == "DOT" {
+        dotidx = bi
+    } else if bi >= 1 && lx.kind_name(toks[bi - 1].kind) == "DOT" {
+        dotidx = bi - 1
+    }
+    if dotidx < 1 {
+        return json.obj([json.member("isIncomplete", json.boolean(false)), json.member("items", json.arr(items))])
+    }
+    let rk = lx.kind_name(toks[dotidx - 1].kind)
+    if rk != "IDENT" && rk != "SELF" {
+        return json.obj([json.member("isIncomplete", json.boolean(false)), json.member("items", json.arr(items))])
+    }
+    let sidx = ck.check_index(text, "doc")
+    let hit = sidx.lookup(toks[dotidx - 1].line, toks[dotidx - 1].col)
+    var tname = hit.type_str
+    let lt = str.index_of(tname, "<")
+    if lt >= 0 {
+        tname = str.substring(tname, 0, lt)
+    }
+    if hit.found == false || tname == "" || tname == "?" {
+        return json.obj([json.member("isIncomplete", json.boolean(false)), json.member("items", json.arr(items))])
+    }
+    let decls = ps.parse(text)
+    var di = 0
+    loop {
+        if di >= decls.len() {
+            break
+        }
+        match decls[di] {
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                if name == tname {
+                    var fi = 0
+                    loop {
+                        if fi >= fields.len() {
+                            break
+                        }
+                        items.append(compl_item(fields[fi].name, 5, "{fields[fi].name}: {ps.ty_str(fields[fi].ty)}"))
+                        fi = fi + 1
+                    }
+                    var mi = 0
+                    loop {
+                        if mi >= methods.len() {
+                            break
+                        }
+                        items.append(compl_item(methods[mi].name, 2, fn_sig(methods[mi])))
+                        mi = mi + 1
+                    }
+                }
+            }
+            case DEnum(name, generics, impls, variants) {
+                if name == tname {
+                    var vi = 0
+                    loop {
+                        if vi >= variants.len() {
+                            break
+                        }
+                        items.append(compl_item(variants[vi].name, 20, "{tname}.{variants[vi].name}"))
+                        vi = vi + 1
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        di = di + 1
+    }
+    return json.obj([json.member("isIncomplete", json.boolean(false)), json.member("items", json.arr(items))])
+}
+
+
 // completion returns the global completion list ({isIncomplete:false, items:[…]}) — top-level decls + keywords
-// — unless the cursor is in a member position, where it returns empty items (deferred to the SemanticIndex phase).
+// — or, in a `receiver.|` member position, the receiver type's members (via member_completion).
 fn completion(text: string, line0: int, char0: int) -> json.Json {
     var items: [json.Json] = []
     if member_context(text, line0, char0) {
-        return json.obj([json.member("isIncomplete", json.boolean(false)), json.member("items", json.arr(items))])
+        return member_completion(text, line0, char0)
     }
     let decls = ps.parse(text)
     var i = 0

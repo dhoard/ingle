@@ -150,10 +150,16 @@ Full parity ≈ **3,000–3,700 Ingle lines + the 465-line prover** (vs `lsp.c` 
   `make verify` all-9-green, selfhost 1824/0, reproduction fixed point + bootstrap intact, NO reseed. GOTCHA banked:
   adding a struct field slipped past `make` (its emit path is UNCHECKED — cgen_c_dump trusts input) but `make
   selfhost`'s checked `--emit=c` differential caught the missed `Local{}` construction site ("every struct field
-  must be set exactly once") — gate struct changes on `make selfhost`, not `make`. **NEXT within Phase 3: widen
-  the recorders (fields/methods/types/params) → richer hover + more go-to-def; then semanticTokens (full coverage
-  + delta-encode); member completion (receiver-type-at-position); references/rename (cross-module + a dir-walk
-  native); inlayHint/prover last.**
+  must be set exactly once") — gate struct changes on `make selfhost`, not `make`.
+- **2026-08-03 — PHASE 3.1: MEMBER COMPLETION (the daily-driver trio complete).** `receiver.|` now completes off
+  the SemanticIndex: `member_completion` (lsp.ig) finds the receiver identifier before the dot, looks up its
+  resolved TYPE in the index (`check_index` → `SemHit.type_str`, generics stripped), then lists that struct's
+  fields (kind 5) + methods (kind 2), or that enum's variants (kind 20), from the AST. The `member_context` branch
+  of `completion` (which Phase 2 stubbed to empty) now routes here. Verified `p.|` → `x: int`, method `mag`. Gated
+  (run-lsp-self.sh, `make selfhost` 1824/0). So **hover + go-to-definition + member completion all work.** Limits:
+  simple ident/self receiver only (chained/call-result later); the receiver must be a recorded local. **NEXT within
+  Phase 3: widen recorders (fields/methods/types/params → richer hover + more go-to-def); semanticTokens (full
+  coverage + delta-encode); references/rename (cross-module + a dir-walk native); inlayHint/prover last.**
 - **2026-08-02 — PHASE 3 SCOPED (5-agent read-only recon) + Karl ratified the FULL campaign ("go the whole way").**
   The C SemanticIndex (`include/semindex.h` SemEntry {line,col,end_col, kind, type, detail, container, doc, value,
   byte_offset/size, def_file/line/col, ref_file}; flat array; innermost-covering-span lookup; ~10 recorders wired
