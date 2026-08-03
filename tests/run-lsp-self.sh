@@ -59,6 +59,13 @@ P2 = ('struct Point {\n'
       '}\n'
       'fn use_point(p: Point) -> int {\n'
       '    return p.x\n'
+      '}\n'
+      'fn sumall(xs: [int]) -> int {\n'
+      '    var t = 0\n'
+      '    for it in xs {\n'
+      '        t = t + it\n'
+      '    }\n'
+      '    return t\n'
       '}\n')
 P2URI = "file:///tmp/ingle_lsp_self_p2.ig"
 def p2open(): return {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":P2URI,"text":P2}}}
@@ -91,6 +98,8 @@ msgs = [
     p2req(30, "textDocument/hover", {"position":{"line":16,"character":12}}),
     # go-to-definition on the local `r` USE in `return r` (line 17, char 11) → its `let r` binding (line 16)
     p2req(31, "textDocument/definition", {"position":{"line":17,"character":11}}),
+    # go-to-definition on the for-loop var `it` USE in `t = t + it` (line 25, char 16) → `for it` binding (line 24)
+    p2req(32, "textDocument/definition", {"position":{"line":25,"character":16}}),
     {"jsonrpc":"2.0","method":"exit"},
 ]
 # A malformed JSON frame after initialize must be tolerated (the server keeps going).
@@ -214,6 +223,10 @@ check("fn add(a: int, b: int) -> int" in ahval and "declared at line 12" in ahva
 ldf = by_id.get(31, {}).get("result", {})
 check(isinstance(ldf, dict) and ldf.get("range", {}).get("start", {}).get("line") == 16,
       f"go-to-definition on a local `r` → its `let r` binding @ line 16 (got {ldf})")
+
+fvd = by_id.get(32, {}).get("result", {})
+check(isinstance(fvd, dict) and fvd.get("range", {}).get("start", {}).get("line") == 24,
+      f"go-to-definition on a for-loop var `it` → its `for it` binding @ line 24 (got {fvd})")
 
 if fails:
     print(f"lsp-self: {fails} check(s) FAILED")

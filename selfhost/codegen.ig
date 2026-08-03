@@ -1967,7 +1967,7 @@ struct InstColl {
             case SLoop(body) {
                 self.walk_body(body)
             }
-            case SFor(vn, iv, iter, body) {
+            case SFor(vn, iv, iter, body, _, _) {
                 self.walk_expr(iter.value)
                 self.walk_body(body)
             }
@@ -3656,7 +3656,7 @@ struct FnInstColl {
             case SLoop(body) {
                 self.walk_body(body)
             }
-            case SFor(vn, iv, iter, body) {
+            case SFor(vn, iv, iter, body, _, _) {
                 self.walk_expr(iter.value)
                 self.walk_body(body)
             }
@@ -12303,7 +12303,7 @@ struct Chunk {
                 }
                 self.pop_loop_ctx(base)
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 // Two fused forms (FOR_RANGE / FOR_ARRAY), each carrying its own exit offset. The loop slots
                 // (index + bounds + the borrowed element) are declared before the fused op; the op pre-
                 // increments the index (initialised to lo-1 / -1) so `continue` (a back-edge to the op) steps.
@@ -13124,7 +13124,7 @@ struct FvCtx {
                 self.walk_block(then_blk)
                 self.walk_block(els)
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 self.walk_expr(iter.value)
                 let saved = clone_strs(self.bound)
                 self.bound.append(vname)
@@ -13428,7 +13428,7 @@ struct StrInfer {
                 self.scan_block(then_blk)
                 self.scan_block(els)
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 self.scan_block(body)
             }
             case SLoop(body) {

@@ -87,7 +87,7 @@ enum Stmt {
     SExpr(expr: Box<Expr>)
     SAssign(target: Box<Expr>, value: Box<Expr>)
     SIf(cond: Box<Expr>, then_blk: [Stmt], els: [Stmt])   // els: [] none, [SBlock]/[SIf] otherwise
-    SFor(vname: string, index_var: string, iter: Box<Expr>, body: [Stmt])   // index_var "" unless `for (i, x)`
+    SFor(vname: string, index_var: string, iter: Box<Expr>, body: [Stmt], nline: int, ncol: int)   // index_var "" unless `for (i, x)`; nline/ncol = the loop-var NAME position (go-to-def; not printed)
     SLoop(body: [Stmt])
     SBreak(line: int)                                // line: the keyword's line (codegen attributes the JUMP)
     SContinue(line: int)
@@ -455,7 +455,7 @@ fn p_stmt(s: Stmt, depth: int) {
                 p_stmt(els[0], depth + 2)
             }
         }
-        case SFor(vname, index_var, iter, body) {
+        case SFor(vname, index_var, iter, body, _, _) {
             println("{pad}For {vname}")
             println("{ind(depth + 1)}iter:")
             p_expr(iter.value, depth + 2)
@@ -1799,23 +1799,31 @@ struct Parser {
         let _ = self.advance()                      // for
         var var_name = ""
         var idx_var = ""
+        var vnl = 0
+        var vnc = 0
         if self.at(TAG_LPAREN) {
             // for (i, x) in ... — index + element; ast_print shows only the element, but the checker
             // needs the index name in scope, so we keep it (printer ignores it).
             let _ = self.advance()
             idx_var = self.advance().text           // index name
             let _ = self.expect(TAG_COMMA)
-            var_name = self.advance().text          // element name
+            let vtok = self.advance()               // element name (keep its position for go-to-def)
+            var_name = vtok.text
+            vnl = vtok.line
+            vnc = vtok.col
             let _ = self.expect(TAG_RPAREN)
         } else {
-            var_name = self.advance().text
+            let vtok = self.advance()
+            var_name = vtok.text
+            vnl = vtok.line
+            vnc = vtok.col
         }
         let _ = self.advance()                      // in
         let istart = self.peek().line
         let icol = self.peek().col
         let iter = self.parse_cond()
         let body = self.parse_block()
-        return SFor(var_name, idx_var, Box<Expr>{ value: iter, line: istart, col: icol }, body)
+        return SFor(var_name, idx_var, Box<Expr>{ value: iter, line: istart, col: icol }, body, vnl, vnc)
     }
 
 

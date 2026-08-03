@@ -316,7 +316,7 @@ fn stmt_concurrent(s: ps.Stmt) -> bool {
         case SIf(cond, then_blk, els) {
             return block_concurrent(then_blk) || block_concurrent(els)
         }
-        case SFor(vname, index_var, iter, body) {
+        case SFor(vname, index_var, iter, body, _, _) {
             return block_concurrent(body)
         }
         case SLoop(body) {
@@ -2283,7 +2283,7 @@ struct InstColl {
             case SLoop(body) {
                 self.walk_body(body)
             }
-            case SFor(vn, iv, iter, body) {
+            case SFor(vn, iv, iter, body, _, _) {
                 self.walk_expr(iter.value)
                 self.walk_body(body)
             }
@@ -9931,7 +9931,7 @@ struct CgcGen {
                 self.indent = self.indent - 1
                 println("{self.ind()}\}")
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 // Both forms wrap in a `{ }` block. Range `for i in lo..hi`: declare lo/hi as int64_t `t`
                 // temps, loop the index `t`, bind the loop var as a fresh Value each pass. Array `for x in
                 // xs`: evaluate the array once into a `v`, loop over `em_array_len`, bind each element via
@@ -11886,7 +11886,7 @@ struct CgcFv {
                 self.walk_block(then_blk)
                 self.walk_block(els)
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 self.walk_expr(iter.value)
                 let saved = clone_strs(self.bound)
                 self.bound.append(vname)
@@ -12098,7 +12098,7 @@ struct LamColl {
                 self.cl_block(then_blk)
                 self.cl_block(els)
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, _, _) {
                 self.cl_expr(iter.value)
                 self.cl_block(body)
             }

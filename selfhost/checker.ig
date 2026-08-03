@@ -1831,7 +1831,7 @@ struct Checker {
             case SExpr(expr) { return expr.line }
             case SAssign(target, _) { return target.line }
             case SIf(cond, _, _) { return cond.line }
-            case SFor(_, _, iter, _) { return iter.line }
+            case SFor(_, _, iter, _, _, _) { return iter.line }
             case SLoop(_) { return 0 }
             case SBreak(line) { return line }
             case SContinue(line) { return line }
@@ -1851,7 +1851,7 @@ struct Checker {
             case SExpr(expr) { return expr.col }
             case SAssign(target, _) { return target.col }
             case SIf(cond, _, _) { return cond.col }
-            case SFor(_, _, iter, _) { return iter.col }
+            case SFor(_, _, iter, _, _, _) { return iter.col }
             case SLoop(_) { return 0 }
             case SBreak(_) { return 0 }
             case SContinue(_) { return 0 }
@@ -2096,7 +2096,7 @@ struct Checker {
                     }
                 }
             }
-            case SFor(vname, index_var, iter, body) {
+            case SFor(vname, index_var, iter, body, nline, ncol) {
                 let itty = self.check_expr(iter.value, iter.line, iter.col)
                 // A newtype is a distinct nominal type, not its base — it is NOT iterable (`for x in userId`
                 // is an error; unwrap first). Arrays/slices/strings/ranges and unmodelled (TY_INFER) stay fine.
@@ -2106,7 +2106,7 @@ struct Checker {
                 self.scope_depth = self.scope_depth + 1
                 self.loop_depth = self.loop_depth + 1
                 let saved = self.locals.len()
-                self.declare(vname, TY_INFER, false, false, false, 0, 0)        // a for-loop binding is an immutable borrow
+                self.declare(vname, TY_INFER, false, false, false, nline, ncol)        // a for-loop binding is an immutable borrow
                 if index_var != "" {
                     self.declare(index_var, TY_INFER, false, false, false, 0, 0)
                 }
@@ -3612,7 +3612,7 @@ fn stmt_uses_self_field(s: ps.Stmt, field: string) -> bool {
         case SIf(cond, then_blk, els) {
             return expr_uses_self_field(cond.value, field) || stmts_use_self_field(then_blk, field) || stmts_use_self_field(els, field)
         }
-        case SFor(vn, iv, iter, body) {
+        case SFor(vn, iv, iter, body, _, _) {
             return expr_uses_self_field(iter.value, field) || stmts_use_self_field(body, field)
         }
         case SLoop(body) {
