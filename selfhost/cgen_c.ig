@@ -422,6 +422,8 @@ struct FnResolve {
     fn_ret_elem_str: [bool]    // per-em_fn: does it return `[string]`? — so `let ns = f(); ns[i].len()` tracks the
                                // element as a boxed string. Carried HERE (not an emit_fn_body param) because the
                                // frozen stage-0 host caps functions at 32 params and emit_fn_body is already at 32. (OFI-173)
+    ext_kinds: [string]        // per declared extern (parallel to build_extern_names): its C-boundary kinds, "<ret>:<params>"
+                               // with v void / f float / p Ptr / i integer-or-bool — drives a DIRECT extern call (OFI-232)
 }
 
 
@@ -676,6 +678,137 @@ fn build_fn_ret_kinds(decls: [ps.Decl]) -> [int] {
 // build_extern_names lists every `extern "c"` fn name (the hosted-registry + direct externs a program
 // DECLARES), so a call site can resolve the extern's declared signature — cgen_c has no body for these,
 // so they are absent from build_fn_names; this is their parallel side table. OFI-218 P6 FFI.
+// ---- Direct externs (OFI-167 native direct-extern, ported for OFI-232) ----
+// A direct extern is an `extern "c"` fn NOT in the hosted FFI registry: native code calls the C symbol itself
+// (libm's tanhf, a kernel MMIO helper). Its boundary is scalar-or-Ptr (the checker enforces it), so each type
+// maps to one fixed C type — the forward declaration matches the C definition exactly (no UB).
+
+// direct_ctype is a direct-extern param/return's C type ("" for a type the boundary does not admit).
+fn direct_ctype(t: ps.Ty) -> string {
+    let k = ty_scalar_kind(t)
+    if k >= 0 {
+        return scalar_ctype(k)
+    }
+    match t {
+        case TyName(qual, name) {
+            if qual == "" && name == "bool" {
+                return "int"                     // an Ingle bool crosses as a 0/1 int (stage-0's convention)
+            }
+            if qual == "" && name == "Ptr" {
+                return "void *"
+            }
+        }
+        case _ {
+        }
+    }
+    return ""
+}
+
+
+// direct_kind is the boundary kind letter of a direct-extern type: f float, p Ptr, i integer/bool.
+fn direct_kind(t: ps.Ty) -> string {
+    let k = ty_scalar_kind(t)
+    if k == 8 || k == 9 {
+        return "f"
+    }
+    if direct_ctype(t) == "void *" {
+        return "p"
+    }
+    return "i"
+}
+
+
+// build_extern_kinds: per declared extern (parallel to build_extern_names), "<ret>:<params>" boundary kinds.
+fn build_extern_kinds(decls: [ps.Decl]) -> [string] {
+    var out: [string] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DExtern(abi, fns) {
+                var e = 0
+                loop {
+                    if e >= fns.len() {
+                        break
+                    }
+                    var code = "v"
+                    if fns[e].ret.len() > 0 {
+                        code = direct_kind(fns[e].ret[0])
+                    }
+                    code = code + ":"
+                    var p = 0
+                    loop {
+                        if p >= fns[e].params.len() {
+                            break
+                        }
+                        code = code + direct_kind(fns[e].params[p].ty[0])
+                        p = p + 1
+                    }
+                    out.append(code)
+                    e = e + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
+// emit_direct_extern_protos forward-declares each DIRECT extern with its exact C signature (a prototype is
+// required under -Werror, and matching the definition keeps the ABI well-defined). Registry externs go
+// through em_ffi and need none.
+fn emit_direct_extern_protos(decls: [ps.Decl]) {
+    let profile = ffi_band_profile(build_extern_names(decls))
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DExtern(abi, fns) {
+                var e = 0
+                loop {
+                    if e >= fns.len() {
+                        break
+                    }
+                    if cgc_cextern_index(fns[e].name, profile) < 0 {
+                        var ret = "void"
+                        if fns[e].ret.len() > 0 {
+                            ret = direct_ctype(fns[e].ret[0])
+                        }
+                        var ps_ = ""
+                        var p = 0
+                        loop {
+                            if p >= fns[e].params.len() {
+                                break
+                            }
+                            if p > 0 {
+                                ps_ = ps_ + ", "
+                            }
+                            ps_ = ps_ + direct_ctype(fns[e].params[p].ty[0])
+                            p = p + 1
+                        }
+                        if ps_ == "" {
+                            ps_ = "void"
+                        }
+                        println("extern {ret} {fns[e].name}({ps_});")
+                    }
+                    e = e + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+}
+
+
 fn build_extern_names(decls: [ps.Decl]) -> [string] {
     var out: [string] = []
     var i = 0
@@ -7512,6 +7645,127 @@ struct CgcGen {
     }
 
 
+    // emit_direct_call lowers a DIRECT extern call: each argument unboxed to the C scalar/Ptr the prototype
+    // takes, the C result re-boxed into a Value (a void extern yields INT_VAL(0)), so the call is still a Value
+    // expression. Mirrors stage-0's emit_direct_extern_call (OFI-167). Arguments are emitted in source order.
+    fn emit_direct_call(mut self, name: string, args: [ps.Expr]) -> string {
+        let ei = self.extern_index(name)
+        let code = self.res.ext_kinds[ei]
+        let rk = byte_slice(code, 0, 1)
+        var cargs = ""
+        var i = 0
+        loop {
+            if i >= args.len() {
+                break
+            }
+            if i > 0 {
+                cargs = cargs + ", "
+            }
+            var pk = "i"
+            if 2 + i < code.len() {
+                pk = byte_slice(code, 2 + i, 3 + i)
+            }
+            let a = self.emit_expr(args[i])
+            if pk == "f" {
+                cargs = cargs + "AS_FLOAT({a})"
+            } else if pk == "p" {
+                cargs = cargs + "(void *)(intptr_t)AS_INT({a})"
+            } else {
+                cargs = cargs + "AS_INT({a})"
+            }
+            i = i + 1
+        }
+        let call = "{name}({cargs})"
+        if rk == "v" {
+            return "({call}, INT_VAL(0))"
+        }
+        if rk == "f" {
+            return "FLOAT_VAL((double){call})"
+        }
+        if rk == "p" {
+            return "INT_VAL((int64_t)(intptr_t){call})"
+        }
+        return "INT_VAL((int64_t){call})"
+    }
+
+
+    // writeback_place reports whether `object` is a place a pointer-receiver method cannot take `&` of: an
+    // INLINE value-struct field of a BOXED parent, or an element of an inline value-struct array (OFI-233).
+    fn writeback_place(self, object: ps.Expr) -> bool {
+        match object {
+            case EGet(parent, fname) {
+                let psid = self.struct_sid_any(parent.value)
+                let vsid = self.struct_sid_any(object)
+                return psid >= 0 && self.st.is_value(psid) == false && vsid >= 0 && self.st.is_value(vsid)
+            }
+            case EIndex(arr, index) {
+                let esid = self.array_elem_struct_of(arr.value)
+                return esid >= 0 && self.st.is_value(esid) && is_slice_expr(object) == false
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
+    // emit_writeback_call (OFI-233): a `mut self` value method called on a writeback_place runs on an em_s
+    // COPY that is written back after the call — copy-in/copy-out, which for a value type IS in-place
+    // mutation (`self.lp.tick(x)` advances the parent's own filter state). em_inline_get/put move the packed
+    // bytes without allocating, so this is realtime-safe. Returns "" when `object` is not such a place.
+    fn emit_writeback_call(mut self, object: ps.Expr, fi: int, args: [ps.Expr], rtype: string) -> string {
+        if self.writeback_place(object) == false {
+            return ""
+        }
+        let vsid = self.struct_sid_any(object)
+        var getp = ""
+        var putp = ""
+        var pre = ""
+        match object {
+            case EGet(parent, fname) {
+                let psid = self.struct_sid_any(parent.value)
+                let fidx = self.st.field_index(psid, fname)
+                let pv = self.fresh_var()
+                pre = "Value v{pv} = {self.emit_expr(parent.value)}; "
+                getp = "em_inline_get(&g_em, v{pv}, {fidx}, "
+                putp = "em_inline_put(&g_em, v{pv}, {fidx}, "
+            }
+            case EIndex(arr, index) {
+                let av = self.fresh_var()
+                let iv = self.fresh_var()
+                pre = "Value v{av} = {self.emit_expr(arr.value)}; Value v{iv} = {self.emit_expr(index.value)}; "
+                getp = "em_inline_elem_get(&g_em, v{av}, v{iv}, "
+                putp = "em_inline_elem_put(&g_em, v{av}, v{iv}, "
+            }
+            case _ {
+            }
+        }
+        var esid = vsid
+        if esid < 0 {
+            match object {
+                case EIndex(arr2, index2) {
+                    esid = self.array_elem_struct_of(arr2.value)
+                }
+                case _ {
+                }
+            }
+        }
+        let tv = self.fresh_var()
+        let rv = self.fresh_var()
+        var call = "em_fn_{fi}(&v{tv}"
+        var i = 0
+        loop {
+            if i >= args.len() {
+                break
+            }
+            call = call + ", " + self.emit_call_arg_gen(args[i], fi, i)
+            i = i + 1
+        }
+        call = call + ")"
+        return "(\{ {pre}em_s{esid} v{tv}; {getp}(Value*)&v{tv}); {rtype} v{rv} = {call}; {putp}(const Value*)&v{tv}); v{rv}; \})"
+    }
+
+
     fn emit_call(mut self, callee: ps.Expr, args: [ps.Expr], arg_names: [string]) -> string {
         match callee {
             case EIdent(name) {
@@ -7630,6 +7884,10 @@ struct CgcGen {
                 // a user fn: dispatch through em_ffi + the in-tree registry (cextern.c), like the VM's CALL_C.
                 if self.fn_index(name) < 0 && cgc_cextern_index(name, ffi_band_profile(self.extern_names)) >= 0 {
                     return self.emit_ffi_call(name, args)
+                }
+                // a DIRECT extern (declared, not in the registry): a native call to the C symbol (OFI-167/232)
+                if self.fn_index(name) < 0 && self.extern_index(name) >= 0 {
+                    return self.emit_direct_call(name, args)
                 }
                 // Resolve the free-fn slot: a name shared across merged modules resolves to THIS module's
                 // definition first (`_is_digit` in the caller's own module, not another's same-named fn — matching
@@ -7835,6 +8093,29 @@ struct CgcGen {
                             case EIdent(rn) {
                             }
                             case _ {
+                                if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
+                                    // a `mut self` VALUE method on a non-ident receiver must mutate the receiver's
+                                    // own storage, never a temp copy (OFI-233): a field/element of a boxed parent
+                                    // goes copy-in/copy-out; an addressable em_s place (`v.f0`, `a0->f1`) passes &.
+                                    var wrt = "Value"
+                                    if self.fn_ret_struct[fi] >= 0 && self.st.is_value(self.fn_ret_struct[fi]) {
+                                        wrt = "em_s{self.fn_ret_struct[fi]}"
+                                    }
+                                    let wb = self.emit_writeback_call(object.value, fi, args, wrt)
+                                    if wb != "" {
+                                        return wb
+                                    }
+                                    var ps2 = "em_fn_{fi}(&(" + self.emit_expr(object.value) + ")"
+                                    var aj = 0
+                                    loop {
+                                        if aj >= args.len() {
+                                            break
+                                        }
+                                        ps2 = ps2 + ", " + self.emit_call_arg_gen(args[aj], fi, aj)
+                                        aj = aj + 1
+                                    }
+                                    return ps2 + ")"
+                                }
                                 let recv_vs = self.struct_sid_of(object.value)   // value-struct receiver → em_s, else Value
                                 let ret_vs = self.fn_ret_struct[fi]              // value-struct return → em_s, else Value
                                 let tv = self.fresh_var()
@@ -7881,6 +8162,9 @@ struct CgcGen {
                             }
                             mt = mt + 1
                         }
+                        if mtemp && fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] && self.writeback_place(object.value) {
+                            mtemp = false                       // the write-back path stages its own receiver (OFI-233)
+                        }
                         if mtemp {
                             let rid = self.fresh_var()          // result id, taken BEFORE the arg ids (OFI-166)
                             var argids: [int] = []
@@ -7924,6 +8208,16 @@ struct CgcGen {
                                 k = k + 1
                             }
                             return s + "c{rid}; \})"
+                        }
+                        if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
+                            var wrtype = "Value"
+                            if fi < self.fn_ret_struct.len() && self.fn_ret_struct[fi] >= 0 && self.st.is_value(self.fn_ret_struct[fi]) {
+                                wrtype = "em_s{self.fn_ret_struct[fi]}"
+                            }
+                            let wb = self.emit_writeback_call(object.value, fi, args, wrtype)
+                            if wb != "" {
+                                return wb                            // a field/element of a boxed parent — copy-in/copy-out (OFI-233)
+                            }
                         }
                         var selfarg = self.emit_expr(object.value)   // self (em_s value / boxed Value)
                         if fi < self.res.mut_self_value.len() && self.res.mut_self_value[fi] {
@@ -9457,7 +9751,6 @@ struct CgcGen {
                 if self.lookup_refc(name) {
                     return 0                  // a refcounted (string / enum) PAYLOAD binding element → boxed
                 }
-                return 4
             }
             case EFloat(v) {
                 return 10
@@ -9466,9 +9759,15 @@ struct CgcGen {
                 return 11
             }
             case _ {
-                return 4
             }
         }
+        // a known-width scalar element (`f32(x)`, an f32 local, a u8 call result …) packs at ITS width — an
+        // i64 default here stored an f32's bits as an integer (OFI-234). Unknown forms stay i64 (stage-0's rule).
+        let sk = self.scalar_kind_of(e)
+        if sk >= 0 {
+            return scalar_kind_to_aek(sk)
+        }
+        return 4
     }
 
 
@@ -12564,7 +12863,7 @@ fn emit_program_mode(decls: [ps.Decl], decl_mods: [string], imp_alias: [string],
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
     let stab = build_struct_tab(decls)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab), fn_ret_elem_str: build_fn_ret_elem_str(decls) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab), fn_ret_elem_str: build_fn_ret_elem_str(decls), ext_kinds: build_extern_kinds(decls) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index
@@ -12600,6 +12899,7 @@ fn emit_program_mode(decls: [ps.Decl], decl_mods: [string], imp_alias: [string],
     } else {
         println("static EmberRt g_em;")
     }
+    emit_direct_extern_protos(decls)
     println("")
     // forward declarations, in em_fn_N order
     var fwd = 0

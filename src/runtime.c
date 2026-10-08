@@ -1226,6 +1226,49 @@ void em_unbox_struct(EmberRt *ctx, int sid, Value boxed, Value *out, int n) {
 
 
 
+// em_inline_get / em_inline_put (OFI-233): read a boxed parent's INLINE value-struct field straight from
+// its packed bytes into em_s leaves, and pack them back — no heap copy either way (em_enum_field +
+// em_box_struct would allocate twice, which a realtime `self.lp.tick(x)` must not).
+void em_inline_get(EmberRt *ctx, Value parent, int field, Value *out) {
+    ObjStruct *s = AS_STRUCT(parent);
+    int k, idx = 0;
+    unsigned char *p = field_loc(ctx, s, field, &k);
+    unbox_flatten_struct(ctx, field_inline_sid(ctx, s, field), p, out, &idx);
+}
+
+void em_inline_put(EmberRt *ctx, Value parent, int field, const Value *in) {
+    ObjStruct *s = AS_STRUCT(parent);
+    int k, idx = 0;
+    unsigned char *p = field_loc(ctx, s, field, &k);
+    box_pack_struct(ctx, field_inline_sid(ctx, s, field), p, in, &idx);
+}
+
+// The same for element `i` of an inline-struct array (AEK_INLINE_STRUCT), bounds-checked like em_index.
+void em_inline_elem_get(EmberRt *ctx, Value arr, Value idxv, Value *out) {
+    ObjArray *a = AS_ARRAY(arr);
+    int64_t i = AS_INT(idxv);
+    if (i < 0 || (size_t)i >= a->length) {
+        em_panic("array index out of bounds");
+    }
+    int idx = 0;
+    unbox_flatten_struct(ctx, a->elem_struct_id, (unsigned char *)a->data + (size_t)i * a->elem_size, out, &idx);
+}
+
+void em_inline_elem_put(EmberRt *ctx, Value arr, Value idxv, const Value *in) {
+    ObjArray *a = AS_ARRAY(arr);
+    int64_t i = AS_INT(idxv);
+    if (i < 0 || (size_t)i >= a->length) {
+        em_panic("array index out of bounds");
+    }
+    int idx = 0;
+    box_pack_struct(ctx, a->elem_struct_id, (unsigned char *)a->data + (size_t)i * a->elem_size, in, &idx);
+}
+
+
+
+
+
+
 // em_struct CONSTRUCTS a heap struct value — the boxed representation a non-all-scalar struct
 // (one with a string/array/enum field, e.g. a Config or a Map/Set) uses, mirroring the VM's
 // OP_NEW_STRUCT. Like em_enum it MOVES each field in (no retain), packing it per the struct's

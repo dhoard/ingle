@@ -122,7 +122,7 @@ if [ -f "$LEXSRC" ]; then
     fi
     lpass=0
     lfail=0
-    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' | sort); do
+    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' -not -path 'tests/ship/*' -not -path 'tests/lib/*' | sort); do
         oracle=$(cd "$ROOT" && "$BIN" --emit=tokens "$src" 2>/dev/null)
         if [ -n "$lexbin" ]; then
             actual=$(cd "$ROOT" && "$lexbin" "$src" 2>/dev/null | sed '/^=> 0$/d')
@@ -168,7 +168,7 @@ if [ -f "$PARSESRC" ]; then
     ppass=0
     pfail=0
     pskip=0
-    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' | sort); do
+    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' -not -path 'tests/ship/*' -not -path 'tests/lib/*' | sort); do
         # Skip files the reference parser rejects (malformed / error-recovery tests).
         if ! (cd "$ROOT" && "$BIN" --emit=ast "$src" >/dev/null 2>&1); then
             pskip=$((pskip + 1))
@@ -223,7 +223,7 @@ if [ -f "$CHECKSRC" ]; then
     cmatch=0
     cmiss=0
     cfalse=0
-    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' | grep -vE 'tests/(net|db)/|std/(http|sqlite|sse)|tests/lexer/errors' | sort); do
+    for src in $(cd "$ROOT" && find examples tests std selfhost -name '*.ig' -not -path 'tests/ship/*' -not -path 'tests/lib/*' | grep -vE 'tests/(net|db)/|std/(http|sqlite|sse)|tests/lexer/errors' | sort); do
         if (cd "$ROOT" && "$BIN" --emit=bytecode "$src" >/dev/null 2>&1); then
             oracle="ACCEPT"
         else

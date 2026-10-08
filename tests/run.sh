@@ -121,6 +121,11 @@ for dir in "$ROOT"/tests/*/; do
     # compiler-shaped programs), not a golden comparison. Driven separately by tests/run-selfhost.sh
     # (`make selfhost`); see docs/design/self-hosting.md.
     [ "$stage" = "selfhost" ] && continue
+    # The ship / lib stages are the SHIPPING self-hosted compiler's own suites (golden behaviour on both
+    # backends; C-host library builds) — driven by tests/run-ship.sh / tests/run-lib.sh in `make test`, and
+    # kept off this stage-0-locked runner because they exercise behaviour stage-0 gets wrong (OFI-233).
+    [ "$stage" = "ship" ] && continue
+    [ "$stage" = "lib" ] && continue
     ext=$(golden_ext "$stage")
     emit=$(emit_flag "$stage")
     extra=$(extra_flags "$stage")

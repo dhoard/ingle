@@ -266,6 +266,7 @@ struct Checker {
     fn_dl: [int]               // per free-fn (parallel to fn_names): the `fn` keyword's line/col — the DEF SITE a
     fn_dc: [int]               // reference records for go-to-definition / hover provenance (SemanticIndex)
     idx_on: bool               // is the SemanticIndex being collected this run? (the LSP index path; batch = false)
+    native: bool               // checking for a NATIVE build (-o / --emit=c / --emit=lib): direct externs are callable (OFI-232)
     idx_line: [int]            // the SemanticIndex, as parallel arrays (OFI-061: no array-of-structs mutation) —
     idx_col: [int]             // one slot per recorded identifier occurrence, keyed by its 1-based [col,end_col) span
     idx_end: [int]
@@ -2750,7 +2751,7 @@ struct Checker {
                             // bytecode-VM binding — it is native-only (`--emit=c`). CALLING one in the default
                             // (VM) profile is rejected (a scalar-only direct extern that is never called still
                             // passes). Mirrors src/codegen.c's extern_direct call reject.
-                            if fi >= 0 && self.fn_extern[fi] && is_ffi_registry(name) == false {
+                            if fi >= 0 && self.fn_extern[fi] && is_ffi_registry(name) == false && self.native == false {
                                 self.error("extern \"c\" function '{name}' is not in the hosted FFI registry, so it has no bytecode-VM binding; build native with `inglec --emit=c` / `-o`")
                             }
                             if fi >= 0 {
@@ -3931,7 +3932,7 @@ fn assignable(actual: int, expected: int, a_is_int_lit: bool, a_is_float_lit: bo
 // check returns the accept/reject verdict ONLY (no output), for verdict-parity callers (check_dump). `path`
 // names the file for the diagnostic prefix (only used on the printing path, check_report).
 fn check(src: string, path: string) -> bool {
-    if check_decls(ps.parse(src), path, false) {
+    if check_decls(ps.parse(src), path, false, false) {
         return true
     }
     // A malformed argument list (OFI-140: a duplicate named argument, or positional and named mixed) is a
@@ -3944,7 +3945,20 @@ fn check(src: string, path: string) -> bool {
 // compile drivers. The [string] diagnostics never cross a module or a function-return into a driver:
 // check_decls's `report` flag prints them from the checker's own field (see Checker.report / OFI-173).
 fn check_report(src: string, path: string) -> bool {
-    if check_decls(ps.parse(src), path, true) {
+    return check_report_profile(src, path, false)
+}
+
+
+// check_report_native is check_report for a NATIVE build (-o / --emit=c / --emit=lib): a direct `extern "c"`
+// fn (one not in the hosted FFI registry) is callable, because the emitted C calls it directly (OFI-167) —
+// only the bytecode VM has no binding for it. (OFI-232: the shipping compiler used the VM rule for -o too.)
+fn check_report_native(src: string, path: string) -> bool {
+    return check_report_profile(src, path, true)
+}
+
+
+fn check_report_profile(src: string, path: string, native: bool) -> bool {
+    if check_decls(ps.parse(src), path, true, native) {
         return true
     }
     if ps.parse_bad_call(src) {
@@ -3961,14 +3975,14 @@ fn check_report(src: string, path: string) -> bool {
 // module boundary + is indexed there, which the self-hosted C-emit now element-types (OFI-226). Single-module
 // + import-lenient, exactly like check_report — cross-module resolution is the later SemanticIndex work.
 fn check_diags(src: string, path: string) -> [string] {
-    return run_checker(ps.parse(src), path)
+    return run_checker(ps.parse(src), path, false)
 }
 
 
 // run_checker builds a fresh Checker over `decls`, runs the three passes, and returns the collected
 // diagnostics field. Shared by check_decls (verdict / printing) and check_diags (the LSP data path) so the
 // giant Checker construction lives in ONE place.
-fn build_run(decls: [ps.Decl], path: string, idx_on: bool) -> Checker {
+fn build_run(decls: [ps.Decl], path: string, idx_on: bool, native: bool) -> Checker {
     var fns: [string] = []
     var structs: [string] = []
     var enums: [string] = ["Option", "Result"]                    // always-in-scope prelude enums
@@ -4018,7 +4032,7 @@ fn build_run(decls: [ps.Decl], path: string, idx_on: bool) -> Checker {
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, native: native, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies
@@ -4027,8 +4041,8 @@ fn build_run(decls: [ps.Decl], path: string, idx_on: bool) -> Checker {
 
 
 // run_checker builds + runs the checker (index OFF) and returns the diagnostics — the verdict/print path.
-fn run_checker(decls: [ps.Decl], path: string) -> [string] {
-    let c = build_run(decls, path, false)
+fn run_checker(decls: [ps.Decl], path: string, native: bool) -> [string] {
+    let c = build_run(decls, path, false, native)
     return c.diags.clone()               // an INDEPENDENT copy — `c` (and its arrays) is dropped at return
 }
 
@@ -4036,7 +4050,7 @@ fn run_checker(decls: [ps.Decl], path: string) -> [string] {
 // check_index builds + runs the checker with the SemanticIndex ON and returns it — the LSP's hover/definition/
 // semantic-tokens data path. Single-module (imports lenient), like check_diags; cross-file is a later slice.
 fn check_index(src: string, path: string) -> si.SemIndex {
-    let c = build_run(ps.parse(src), path, true)
+    let c = build_run(ps.parse(src), path, true, false)
     return si.SemIndex{ e_line: c.idx_line.clone(), e_col: c.idx_col.clone(), e_end: c.idx_end.clone(), e_kind: c.idx_kind.clone(), e_type: c.idx_type.clone(), e_detail: c.idx_detail.clone(), e_container: c.idx_container.clone(), e_doc: c.idx_doc.clone(), e_def_line: c.idx_dl.clone(), e_def_col: c.idx_dc.clone(), e_def_file: c.idx_dfile.clone(), e_ref_file: c.idx_rfile.clone() }
 }
 
@@ -4044,8 +4058,8 @@ fn check_index(src: string, path: string) -> si.SemIndex {
 // check_decls is the verdict/printing wrapper over run_checker (the compile drivers' path). With `report` it
 // prints each rendered diagnostic — iterating the returned [string] (element-typed via OFI-226), byte-identical
 // to the former Checker.report loop. Returns whether any diagnostic was raised.
-fn check_decls(decls: [ps.Decl], path: string, report: bool) -> bool {
-    let ds = run_checker(decls, path)
+fn check_decls(decls: [ps.Decl], path: string, report: bool, native: bool) -> bool {
+    let ds = run_checker(decls, path, native)
     if report {
         var i = 0
         loop {

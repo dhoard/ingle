@@ -1771,6 +1771,73 @@ int main(void) { return gain_sample(0.5f, -6.0f) > 0.25f; }
   modifiers — everywhere else they are ordinary names, so `let export = 3` still compiles.
 - In a normal program (`-o` / `--emit=run`) an `export "c"` function is just a function you can call.
 
+### `realtime` functions — proven allocation-free [runs: checked on every path]
+
+Audio callbacks (and interrupt handlers, and game loops) must never allocate, free, lock, block or do I/O:
+any of those can stall for an unbounded time. Mark such a function **`realtime`** and the compiler
+**proves** it — rejecting the program otherwise, with the offending construct named:
+
+```ember
+extern "c" {
+    realtime fn tanhf(x: f32) -> f32        // a C function you vouch for
+}
+
+struct Biquad {
+    b0: f32
+    b1: f32
+    b2: f32
+    a1: f32
+    a2: f32
+    z1: f32
+    z2: f32
+
+    realtime fn tick(mut self, x: f32) -> f32 {
+        let y = self.b0 * x + self.z1
+        self.z1 = self.b1 * x - self.a1 * y + self.z2
+        self.z2 = self.b2 * x - self.a2 * y
+        return y
+    }
+}
+
+struct Channel {
+    lp: Biquad
+    drive: f32
+    scratch: [f32]
+
+    realtime fn process(mut self, mut buf: [f32]) {
+        for i in 0..buf.len() {
+            buf[i] = tanhf(self.lp.tick(buf[i]) * self.drive)
+        }
+    }
+}
+```
+
+It is an **allow-list** — a realtime body may use only:
+
+- numbers, bools and `Ptr`s: literals, locals, arithmetic, comparisons, logic;
+- reads of parameters and struct fields of any type, `.len()`, and indexing an **array of numbers**;
+- assignment to a number local, a number field, or an element of a number array;
+- `if`, `loop`, `break`, `continue`, `return`, `match`, and `for` over a range or an array of numbers;
+- calls to other `realtime` functions and methods, `extern "c" { realtime fn … }`, numeric conversions
+  (`f32(x)`, `int(x)` …), and the allocation-free builtins `abs floor ceil round sqrt pow min max to_int
+  to_float float_bits wrapping_add/sub/mul len assert panic`.
+
+Everything else is rejected: building a string, array, struct or enum value (`"…"`, `[…]`, `S{…}`,
+`Some(x)`), a closure, `?`, slicing, binding a non-number local, assigning a non-number field, `print`,
+`spawn`/`nursery`/channels, and calling anything not `realtime`. Because it is an allow-list, a new
+language feature is refused in realtime code until it is deliberately admitted. The check covers every
+module, so a library's realtime functions are checked too, and calling them from realtime code is allowed.
+
+`realtime` (like `export`) is a *contextual* modifier: it goes directly before `fn`, at the top level, on a
+struct method, or inside an `extern "c" { }` block; anywhere else `realtime` is an ordinary name.
+
+**Why it matters beyond speed.** Realtime code never touches the runtime's heap, so an audio thread
+running it cannot race with a UI thread that does — the guarantee is also what makes a plugin's
+two-thread structure safe.
+
+> **Nested state works as you'd expect.** Calling a `mut self` method on a struct stored inside another
+> struct — `self.lp.tick(x)`, `self.filters[i].tick(x)` — updates that inner struct in place (OFI-233).
+
 ---
 
 ## Ownership — [runs: mutation + move/borrow safety; lifetime inference designed]

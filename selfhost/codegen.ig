@@ -2857,6 +2857,27 @@ fn build_wit_info(decls: [ps.Decl]) -> WitInfo {
                 // the method compiles once over the erased K and a store inside takes its OWN reference. ALSO run
                 // for an INTERFACE-IMPL struct: its methods take a Self-typed struct param BOXED (the witness
                 // convention), so the arg is boxed like an erased one ('1' -> gen_one_arg_e boxes a value struct).
+                // OFI-233: mark every `mut self` method with a "Struct.method#mutself" row (an exact-key side table
+                // the "Struct.method" erasure lookups never match) — so a mut-self call on a receiver that reads as
+                // a COPY (an inline struct field / inline-array element) writes the copy back (method_is_mut_self).
+                var msi = 0
+                loop {
+                    if msi >= methods.len() {
+                        break
+                    }
+                    var msp = 0
+                    loop {
+                        if msp >= methods[msi].params.len() {
+                            break
+                        }
+                        if methods[msi].params[msp].is_self && methods[msi].params[msp].qual == 1 {
+                            mpe_key.append("{name}.{methods[msi].name}#mutself")
+                            mpe_flags.append("")
+                        }
+                        msp = msp + 1
+                    }
+                    msi = msi + 1
+                }
                 if generics.len() > 0 || impls.len() > 0 {
                     var mmi = 0
                     loop {
@@ -7729,7 +7750,27 @@ struct Chunk {
                     let gen_recv2 = self.recv_struct_is_generic(tk)
                     let plan = self.plan_erased_mask(args, erase, gen_recv2)
                     self.cur_line = line
-                    if self.is_owning_temp_obj(object) {
+                    if self.is_owning_temp_obj(object) && self.method_is_mut_self(self.st_names[tk], mname) && self.writeback_place(object) {
+                        // OFI-233: a `mut self` method on a receiver that reads as a COPY — run it on the copy,
+                        // then write the copy back through its place (else the mutation is silently lost).
+                        let saved = self.locals.len()
+                        self.gen_expr(object, line)                     // [.. C]
+                        let scratch = self.locals.len()
+                        self.declare_binding("", 1, tk, false, false, true, false)
+                        self.emit(OP_PICK)
+                        self.emit_idx(0)                                // [.. C, C]
+                        let n = self.gen_call_args_e(args, line, erase)
+                        self.emit(OP_CALL)
+                        self.emit_idx(midx)
+                        self.emit_idx(1 + n)                            // [.. C, R]
+                        let rsid = self.call_result_box_sid(midx)
+                        if rsid >= 0 {
+                            self.emit(OP_BOX_STRUCT)
+                            self.emit_idx(rsid)
+                        }
+                        self.gen_mut_self_writeback(object, scratch, line)   // [.. R]
+                        self.truncate_to(saved)
+                    } else if self.is_owning_temp_obj(object) {
                         match object {
                             case EStructLit(sty, sfields) {
                                 // a struct-LITERAL receiver (`Point{..}.show()`) must be BOXED (NEW_STRUCT) so the
@@ -8270,6 +8311,41 @@ struct Chunk {
     // method_param_erasure returns the per-explicit-param erasure mask for a generic-struct method
     // (`Map.set` -> "11": both `key: K` and `val: V` are erased borrows), or "" for a non-generic-struct
     // method / unknown callee (every param incref'd as before).
+    // method_is_mut_self reports whether `struct_name.mname` takes `mut self` (the OFI-233 "#mutself" rows).
+    fn method_is_mut_self(self, struct_name: string, mname: string) -> bool {
+        return cg_index_of(self.mpe_key, "{struct_name}.{mname}#mutself") >= 0
+    }
+
+
+    // gen_mut_self_writeback (OFI-233) finishes a `mut self` call whose receiver read as a COPY: the stack is
+    // [.. C, R] with C (the mutated receiver copy) in local slot `scratch` and R the call's result. Write C back
+    // through its place — SET_INDEX for an inline-array element, gen_nested_store for an inline struct field
+    // (both CONSUME C: the bytes move in and its shell is reclaimed) — then move R into C's slot without
+    // releasing anything (SET_LOCAL + POP), leaving [.. R]. Copy-in/copy-out, i.e. in-place for a value type.
+    fn gen_mut_self_writeback(mut self, object: ps.Expr, scratch: int, line: int) {
+        let rslot = self.locals.len()
+        self.declare_binding("", 1, 0 - 1, false, false, false, false)     // R, so write-back temps sit above it
+        match object {
+            case EIndex(arr, idx) {
+                self.gen_expr(arr.value, line)
+                self.gen_expr(idx.value, line)
+                self.emit(OP_GET_LOCAL)
+                self.emit_idx(scratch)
+                self.emit(OP_SET_INDEX)
+            }
+            case _ {
+                self.gen_nested_store(object, scratch, object, line)
+            }
+        }
+        self.emit(OP_GET_LOCAL)
+        self.emit_idx(rslot)
+        self.emit(OP_SET_LOCAL)
+        self.emit_idx(scratch)                   // C's slot := R (no release — C was consumed by the store)
+        self.emit(OP_POP)                        // drop the GET_LOCAL copy
+        self.emit(OP_POP)                        // drop R's own slot -> [.. R] (R now lives in C's old slot)
+    }
+
+
     fn method_param_erasure(self, struct_name: string, mname: string) -> string {
         let ix = cg_index_of(self.mpe_key, "{struct_name}.{mname}")
         if ix >= 0 {
@@ -8776,9 +8852,21 @@ struct Chunk {
                 return 11
             }
             case _ {
-                return 4
             }
         }
+        // a known-width scalar element (an f32 local, `u8(x)` …) packs at ITS width, not as an i64 (OFI-234):
+        // num-kind 0 i64, 1-3 i8..i32, 4-7 u8..u64, 8 f32, 9 f64 -> AEK_I64 4, I8..I32 1-3, U8..U64 5-8, F32 9, F64 10.
+        let k = self.scalar_kind_of(e)
+        if k == 0 {
+            return 4
+        }
+        if k >= 1 && k <= 3 {
+            return k
+        }
+        if k >= 4 && k <= 9 {
+            return k + 1
+        }
+        return 4
     }
 
 
@@ -9545,6 +9633,26 @@ struct Chunk {
     }
 
 
+    // writeback_place reports whether `object` is a place that reads as a COPY a mut-self call must write back:
+    // an inline value-struct FIELD (`self.lp`, `p.a.b`) or an element of a value-struct array (`fs[i]`). (OFI-233)
+    fn writeback_place(self, object: ps.Expr) -> bool {
+        match object {
+            case EGet(inner, ifield) {
+                let isid = self.expr_type_kind(inner.value)
+                let fsid = self.field_type_kind(isid, ifield)
+                return fsid >= 0 && self.struct_all_scalar(fsid)
+            }
+            case EIndex(arr, idx) {
+                let ec = self.index_elem_code(object)
+                return ec >= 0 && ec < self.st_kinds.len() && self.st_kinds[ec] == 0
+            }
+            case _ {
+                return false
+            }
+        }
+    }
+
+
     // gen_nested_store lowers `target = value` where target is `EGet(object, leaf)` and `object` reads as a
     // transient COPY — a nested INLINE struct field (`self.x.y`) or an INLINE-struct array element
     // (`arr[i].leaf`). A plain SET_FIELD would mutate the copy and lose it, so materialise `object` into a
@@ -10003,6 +10111,17 @@ struct Chunk {
                     case EIdent(name) {
                         if wrapping_opcode(name) >= 0 && args.len() > 0 {
                             return self.render_kind_of(args[0])
+                        }
+                        // a numeric conversion `f32(x)` / `u8(x)` / `to_float(i)` yields that width — so a `let x =
+                        // f32(0.75)` binding is an f32 local (renders as a float; packs as f32 in a literal). (OFI-234)
+                        if args.len() == 1 && cg_index_of(self.fn_names, name) < 0 {
+                            let ck = scalar_kind_of_typename(name)
+                            if (ck > 0 && ck < 10) || name == "int" || name == "i64" {
+                                return ck                // only a real numeric type name (an unknown name maps to 0 too)
+                            }
+                            if name == "to_float" {
+                                return 9
+                            }
                         }
                         if cextern_index(name) >= 0 && cg_index_of(self.fn_names, name) < 0 {
                             let ek = self.extern_ret_kind(name)

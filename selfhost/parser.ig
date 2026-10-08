@@ -1691,7 +1691,10 @@ struct Parser {
             if self.at(TAG_RBRACE) || self.is_eof() {
                 break
             }
-            fns.append(self.parse_fn(false))
+            let ert = self.eat_realtime()            // `extern "c" { realtime fn tanhf(…) }` — a C fn vouched realtime
+            var ef = self.parse_fn(false)
+            ef.is_realtime = ert
+            fns.append(ef)
         }
         let _ = self.expect(TAG_RBRACE)
         return DExtern(abi, fns)

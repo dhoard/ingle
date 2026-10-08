@@ -278,6 +278,7 @@ build:
 test: all check-editor-sync
 	@tests/run.sh
 	@tests/run-lib.sh
+	@tests/run-ship.sh
 	@tests/run-doctor.sh
 
 # Build the editor-asset generator. Depends on vocab.def so adding a word reflows the grammar.

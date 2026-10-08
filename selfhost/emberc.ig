@@ -24,6 +24,7 @@ import "parser" as ps
 import "checker" as ck
 import "codegen" as cg
 import "serialize" as sz
+import "realtime" as rtc
 
 
 // Loaded is the merged program plus, parallel to it, the source module each declaration came from — so a
@@ -35,6 +36,7 @@ struct Loaded {
     imp_from: [int]
     imp_alias: [string]
     imp_to: [int]               // each decl's owning module index (BFS order) — for module-local fn resolution
+    mod_paths: [string]         // each module's path, by BFS index (mod_of indexes it) — for per-module diagnostics
 }
 
 
@@ -169,7 +171,7 @@ fn load_modules(entry: string) -> Loaded {
         }
         qi = qi + 1
     }
-    return Loaded { decls: combined, sources: sources, mod_of: mod_of, imp_from: imp_from, imp_alias: imp_alias, imp_to: imp_to }
+    return Loaded { decls: combined, sources: sources, mod_of: mod_of, imp_from: imp_from, imp_alias: imp_alias, imp_to: imp_to, mod_paths: queue }
 }
 
 
@@ -204,6 +206,24 @@ fn main() -> int {
         //    unified self-hosted compiler emits executable bytecode, not just a disassembly); without one,
         //    print the `--emit=bytecode` disassembly (the differential path, byte-identical to stage 0).
         let loaded = load_modules(entry)
+        // 1b. REALTIME-CHECK the merged program, exactly as the native driver does (selfhost/realtime.ig) — a
+        //     `realtime fn` that could allocate/lock/block is rejected on every path, not just `-o`.
+        var decl_mods: [string] = []
+        var dm = 0
+        loop {
+            if dm >= loaded.decls.len() {
+                break
+            }
+            var mp = entry
+            if dm < loaded.mod_of.len() && loaded.mod_of[dm] >= 0 && loaded.mod_of[dm] < loaded.mod_paths.len() {
+                mp = loaded.mod_paths[loaded.mod_of[dm]]
+            }
+            decl_mods.append(mp)
+            dm = dm + 1
+        }
+        if rtc.check_report(loaded.decls, decl_mods) {
+            exit(65)
+        }
         if argv.len() >= 2 {
             sz.serialize_program(loaded.decls, loaded.mod_of, loaded.sources, loaded.imp_from, loaded.imp_alias, loaded.imp_to, argv[1])
         } else {

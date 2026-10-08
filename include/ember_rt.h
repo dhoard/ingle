@@ -155,6 +155,15 @@ Value          rt_call_closure(EmberRt *ctx, Value clo, int argc, const Value *a
 // in C; em_box_struct packs it into a heap ObjStruct, em_unbox_struct reads it back.
 Value          em_box_struct(EmberRt *ctx, int sid, const Value *fields, int n);
 void           em_unbox_struct(EmberRt *ctx, int sid, Value boxed, Value *out, int n);
+// OFI-233: copy an INLINE value-struct field of a boxed parent (or an element of an inline-struct array)
+// out to its C-side em_s leaves, and back in, WITHOUT allocating — the copy-in/copy-out a `mut self`
+// method call on such a place (`self.lp.tick(x)`, `self.fs[i].tick(x)`) needs so its writes land in the
+// parent. Only all-scalar value structs take this path (a pointer-receiver method's receiver), so there
+// are no references to balance.
+void           em_inline_get(EmberRt *ctx, Value parent, int field, Value *out);
+void           em_inline_put(EmberRt *ctx, Value parent, int field, const Value *in);
+void           em_inline_elem_get(EmberRt *ctx, Value arr, Value idx, Value *out);
+void           em_inline_elem_put(EmberRt *ctx, Value arr, Value idx, const Value *in);
 
 // A non-all-scalar struct (one with a heap field) is BOXED like the VM, not a value-type C
 // struct: em_struct constructs it (moves fields in), em_set_field overwrites a field (dropping

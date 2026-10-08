@@ -14,6 +14,7 @@ import "lexer" as lex
 import "checker" as ck
 import "std/proc" as proc
 import "lsp" as lsp
+import "realtime" as rtc
 
 
 fn last_slash(s: string) -> int {
@@ -516,10 +517,15 @@ fn main() -> int {
     //    verdict → REJECT with exit 65 (stage-0's check-error code), so this compiler accepts/rejects the
     //    same programs stage-0 does. The self-hosted checker is single-module + import-lenient. M1 renders
     //    line-granularity positions (statement line); expression precision + column + the LSP port follow.
-    if ck.check_report(read_file(entry), entry) {
+    if ck.check_report_native(read_file(entry), entry) {
         exit(65)
     }
     let ld = load_modules(entry)
+    // 1b. REALTIME-CHECK the merged program (every module): each `realtime fn` must be proven allocation-,
+    //     lock- and I/O-free (selfhost/realtime.ig, DSP Phase 1). Same rejection code as a type error.
+    if rtc.check_report(ld.decls, ld.decl_mods) {
+        exit(65)
+    }
     if emit_mode == "lib" {
         // --emit=lib (DSP Phase 1): a STATIC LIBRARY for C to link — no `main`; each `export "c" fn` is a C
         // entry point. Without -o, print the library-mode C (like --emit=c). With -o, compile it and bundle it
