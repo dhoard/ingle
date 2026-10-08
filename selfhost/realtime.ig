@@ -135,6 +135,8 @@ struct Rt {
     f_names: [string]
     f_k: [int]
     f_s: [string]
+    scalar_structs: [string]   // structs whose every field is a number/bool or (recursively) such a struct — a
+                               // VALUE type held on the stack by native code, so building/copying one is free
     // per-function state
     env_names: [string]
     env_k: [int]
@@ -311,6 +313,53 @@ struct Rt {
     }
 
 
+    // mark_scalar_structs finds every all-scalar struct (to a fixed point, so nesting resolves in any order).
+    fn mark_scalar_structs(mut self) {
+        loop {
+            var grew = false
+            var si = 0
+            loop {
+                if si >= self.s_names.len() {
+                    break
+                }
+                let sn = self.s_names[si]
+                if has(self.scalar_structs, sn) == false {
+                    var ok = true
+                    var fi = 0
+                    loop {
+                        if fi >= self.f_owner.len() {
+                            break
+                        }
+                        if self.f_owner[fi] == sn {
+                            let fk = self.f_k[fi]
+                            let nested = fk == K_STRUCT && has(self.scalar_structs, self.f_s[fi])
+                            if fk != K_NUM && fk != K_BOOL && nested == false {
+                                ok = false
+                            }
+                        }
+                        fi = fi + 1
+                    }
+                    if ok {
+                        self.scalar_structs.append(sn)
+                        grew = true
+                    }
+                }
+                si = si + 1
+            }
+            if grew == false {
+                break
+            }
+        }
+    }
+
+
+    // value_ok: a value realtime code may bind, assign, build or return — a number/bool/Ptr, or an all-scalar
+    // struct (a stack value in native code).
+    fn value_ok(self, t: RtTy) -> bool {
+        return is_scalar_k(t.k) || (t.k == K_STRUCT && has(self.scalar_structs, t.s))
+    }
+
+
     fn add_fn(mut self, f: ps.FnDecl) {
         let rc = self.ret_class(f)
         self.fn_names.append(f.name)
@@ -412,7 +461,7 @@ struct Rt {
                 if f.params[p].ty.len() > 0 {
                     pc = self.ty_class(f.params[p].ty[0])
                 }
-                if f.params[p].qual == 2 && is_scalar_k(pc.k) == false {
+                if f.params[p].qual == 2 && self.value_ok(pc) == false {
                     self.err("takes '{f.params[p].name}' by 'move' — it would be freed at the end of the call")
                 }
                 self.declare(f.params[p].name, pc)
@@ -420,8 +469,8 @@ struct Rt {
             p = p + 1
         }
         let rc = self.ret_class(f)
-        if is_scalar_k(rc.k) == false && rc.k != K_UNIT {
-            self.err("returns a value that is not a number, bool or Ptr — building it would allocate")
+        if self.value_ok(rc) == false && rc.k != K_UNIT {
+            self.err("returns a value that is not a number, bool, Ptr or all-number struct — building it would allocate")
         }
         self.block(f.body)
     }
@@ -448,8 +497,8 @@ struct Rt {
                 if ty.len() > 0 {
                     t = self.ty_class(ty[0])
                 }
-                if is_scalar_k(t.k) == false {
-                    self.err("binds '{name}' to a value that is not a number, bool or Ptr — copying it may allocate (read or index it in place instead)")
+                if self.value_ok(t) == false {
+                    self.err("binds '{name}' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)")
                 }
                 self.declare(name, t)
             }
@@ -467,8 +516,8 @@ struct Rt {
                 self.at(target.line, target.col)
                 let tt = self.target(target.value)
                 let _ = self.expr(value.value)
-                if is_scalar_k(tt.k) == false {
-                    self.err("assigns to something that is not a number, bool or Ptr — the old value would be freed")
+                if self.value_ok(tt) == false {
+                    self.err("assigns to something that is not a number, bool, Ptr or all-number struct — the old value would be freed")
                 }
             }
             case SIf(cond, then_blk, els) {
@@ -673,7 +722,21 @@ struct Rt {
                 return rt(K_HEAP)
             }
             case EStructLit(ty, fields) {
-                self.err("builds a struct value — that allocates")
+                // an ALL-SCALAR struct is a value on the native stack — building one is free; its field values
+                // must themselves be realtime-clean. Any other struct is a heap object.
+                var fv = 0
+                loop {
+                    if fv >= fields.len() {
+                        break
+                    }
+                    let _ = self.expr(fields[fv].value)
+                    fv = fv + 1
+                }
+                let st = self.ty_class(ty.value)
+                if st.k == K_STRUCT && has(self.scalar_structs, st.s) {
+                    return st
+                }
+                self.err("builds a struct value that is not all numbers — that allocates")
                 return rt(K_HEAP)
             }
             case ETry(operand) {
@@ -803,8 +866,9 @@ fn check_report(decls: [ps.Decl], decl_mods: [string]) -> bool {
     var ek6: [int] = []
     var eb1: [bool] = []
     var eb2: [bool] = []
-    var r = Rt { s_names: es, v_names: [], nt_names: [], nt_k: ek1, aliases: [], g_names: [], g_k: ek2, fn_names: [], fn_rt: eb1, fn_retk: ek3, fn_rets: [], m_owner: [], m_names: [], m_rt: eb2, m_retk: ek4, m_rets: [], f_owner: [], f_names: [], f_k: ek5, f_s: [], env_names: [], env_k: ek6, env_s: [], file: "", fname: "", line: 0, col: 0, diags: [] }
+    var r = Rt { s_names: es, v_names: [], nt_names: [], nt_k: ek1, aliases: [], g_names: [], g_k: ek2, fn_names: [], fn_rt: eb1, fn_retk: ek3, fn_rets: [], m_owner: [], m_names: [], m_rt: eb2, m_retk: ek4, m_rets: [], f_owner: [], f_names: [], f_k: ek5, f_s: [], scalar_structs: [], env_names: [], env_k: ek6, env_s: [], file: "", fname: "", line: 0, col: 0, diags: [] }
     r.build(decls)
+    r.mark_scalar_structs()
     var i = 0
     loop {
         if i >= decls.len() {

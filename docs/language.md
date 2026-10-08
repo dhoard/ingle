@@ -1856,6 +1856,9 @@ struct Channel {
 It is an **allow-list** — a realtime body may use only:
 
 - numbers, bools and `Ptr`s: literals, locals, arithmetic, comparisons, logic;
+- **all-number structs** (every field a number, bool, or — recursively — such a struct, like `Biquad`):
+  building one (`Biquad { … }`), binding it to a local, assigning it, returning it, and calling its
+  `realtime` methods — native code keeps these on the stack;
 - reads of parameters and struct fields of any type, `.len()`, and indexing an **array of numbers**;
 - assignment to a number local, a number field, or an element of a number array;
 - `if`, `loop`, `break`, `continue`, `return`, `match`, and `for` over a range or an array of numbers;
@@ -1863,11 +1866,15 @@ It is an **allow-list** — a realtime body may use only:
   (`f32(x)`, `int(x)` …), and the allocation-free builtins `abs floor ceil round sqrt pow min max to_int
   to_float float_bits wrapping_add/sub/mul len assert panic`.
 
-Everything else is rejected: building a string, array, struct or enum value (`"…"`, `[…]`, `S{…}`,
-`Some(x)`), a closure, `?`, slicing, binding a non-number local, assigning a non-number field, `print`,
+Everything else is rejected: building a string, array, enum or heap struct value (`"…"`, `[…]`, a struct
+with a string/array field, `Some(x)`), a closure, `?`, slicing, binding or assigning anything else, `print`,
 `spawn`/`nursery`/channels, and calling anything not `realtime`. Because it is an allow-list, a new
 language feature is refused in realtime code until it is deliberately admitted. The check covers every
 module, so a library's realtime functions are checked too, and calling them from realtime code is allowed.
+
+The guarantee is about **compiled native code** (`-o`, `--emit=lib`) — the real-time target. The bytecode
+interpreter (`--emit=run`) runs the same programs with the same results, but boxes small structs on its own
+heap; it is a development tool, not an audio thread.
 
 `realtime` (like `export`) is a *contextual* modifier: it goes directly before `fn`, at the top level, on a
 struct method, or inside an `extern "c" { }` block; anywhere else `realtime` is an ordinary name.

@@ -26,6 +26,16 @@ realtime fn bad(x: f32, xs: [f32], names: [string]) -> f32 {
     return h
 }
 
+struct Tagged {
+    tag: string
+    v: f32
+}
+
+realtime fn builds_heap_struct(x: f32) -> f32 {
+    let t = Tagged { tag: "x", v: x }
+    return x
+}
+
 realtime fn returns_string() -> string {
     return "no"
 }

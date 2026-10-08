@@ -1,19 +1,22 @@
 tests/ship/reject/realtime_bad.ig:13:9: error: realtime fn 'S.bad_method' builds a string — that allocates
-tests/ship/reject/realtime_bad.ig:13:9: error: realtime fn 'S.bad_method' assigns to something that is not a number, bool or Ptr — the old value would be freed
+tests/ship/reject/realtime_bad.ig:13:9: error: realtime fn 'S.bad_method' assigns to something that is not a number, bool, Ptr or all-number struct — the old value would be freed
 tests/ship/reject/realtime_bad.ig:18:5: error: realtime fn 'bad' builds a string — that allocates
 tests/ship/reject/realtime_bad.ig:18:5: error: realtime fn 'bad' calls 'println', which is not `realtime`
 tests/ship/reject/realtime_bad.ig:19:13: error: realtime fn 'bad' builds a string — that allocates
 tests/ship/reject/realtime_bad.ig:19:13: error: realtime fn 'bad' builds a string — that allocates
 tests/ship/reject/realtime_bad.ig:19:13: error: realtime fn 'bad' does arithmetic on values it cannot prove are numbers (a string `+` allocates)
 tests/ship/reject/realtime_bad.ig:20:22: error: realtime fn 'bad' builds an array — that allocates
-tests/ship/reject/realtime_bad.ig:20:22: error: realtime fn 'bad' binds 'arr' to a value that is not a number, bool or Ptr — copying it may allocate (read or index it in place instead)
+tests/ship/reject/realtime_bad.ig:20:22: error: realtime fn 'bad' binds 'arr' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)
 tests/ship/reject/realtime_bad.ig:21:5: error: realtime fn 'bad' calls the method 'append', which it cannot prove is `realtime`
 tests/ship/reject/realtime_bad.ig:22:13: error: realtime fn 'bad' calls 'helper', which is not `realtime`
 tests/ship/reject/realtime_bad.ig:23:13: error: realtime fn 'bad' constructs the enum value 'Some(…)' — that allocates
-tests/ship/reject/realtime_bad.ig:23:13: error: realtime fn 'bad' binds 'o' to a value that is not a number, bool or Ptr — copying it may allocate (read or index it in place instead)
+tests/ship/reject/realtime_bad.ig:23:13: error: realtime fn 'bad' binds 'o' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)
 tests/ship/reject/realtime_bad.ig:24:13: error: realtime fn 'bad' indexes an array whose elements are not numbers — reading one copies it
-tests/ship/reject/realtime_bad.ig:24:13: error: realtime fn 'bad' binds 'n' to a value that is not a number, bool or Ptr — copying it may allocate (read or index it in place instead)
+tests/ship/reject/realtime_bad.ig:24:13: error: realtime fn 'bad' binds 'n' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)
 tests/ship/reject/realtime_bad.ig:25:13: error: realtime fn 'bad' slices an array — that allocates a view
-tests/ship/reject/realtime_bad.ig:25:13: error: realtime fn 'bad' binds 'w' to a value that is not a number, bool or Ptr — copying it may allocate (read or index it in place instead)
-tests/ship/reject/realtime_bad.ig:29:10: error: realtime fn 'returns_string' returns a value that is not a number, bool or Ptr — building it would allocate
-tests/ship/reject/realtime_bad.ig:30:12: error: realtime fn 'returns_string' builds a string — that allocates
+tests/ship/reject/realtime_bad.ig:25:13: error: realtime fn 'bad' binds 'w' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)
+tests/ship/reject/realtime_bad.ig:35:13: error: realtime fn 'builds_heap_struct' builds a string — that allocates
+tests/ship/reject/realtime_bad.ig:35:13: error: realtime fn 'builds_heap_struct' builds a struct value that is not all numbers — that allocates
+tests/ship/reject/realtime_bad.ig:35:13: error: realtime fn 'builds_heap_struct' binds 't' to a value that is not a number, bool, Ptr or all-number struct — copying it may allocate (read or index it in place instead)
+tests/ship/reject/realtime_bad.ig:39:10: error: realtime fn 'returns_string' returns a value that is not a number, bool, Ptr or all-number struct — building it would allocate
+tests/ship/reject/realtime_bad.ig:40:12: error: realtime fn 'returns_string' builds a string — that allocates
