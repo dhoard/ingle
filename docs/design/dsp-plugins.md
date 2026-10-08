@@ -88,7 +88,7 @@ measured necessary).
 | Phase | Delivers | Exit test |
 |---|---|---|
 | **0** ✅ | OFI-229 — typed scalar maths at C speed | biquad within 1.2× of C |
-| **1** | `export "c"`, `--emit=lib`, `realtime` checking, `mut Slice<f32>`, maths intrinsics | an Ingle gain + biquad `process()` driven by a C test host; realtime violations rejected |
+| **1** 🔶 | `export "c"` + `--emit=lib` ✅ (`66db37f`), `realtime` checking ✅ (`0e59530`); remaining: `mut Slice<f32>` buffer views, maths intrinsics | an Ingle gain + biquad `process()` driven by a C test host; realtime violations rejected |
 | **2** | `std/plug` core — CLAP in Ingle over a thin C shim: params (kplug's range maths), sample-accurate automation, state, bypass | an Ingle gain/filter plugin passes `clap-validator` and loads in a DAW (host-generic UI); clap-wrapper VST3/AU bundles |
 | **3** | `std/dsp` — the kasm port, kasm as the bit-exact oracle (pffft stays C, via FFI) | kasm's 84 test cases reproduced |
 | **4** | `std/plug` complete — notes/MIDI in+out, timers, VisualFeed/Handoff, blobs, audio files | the kplug demo + synth examples rebuilt in Ingle |
