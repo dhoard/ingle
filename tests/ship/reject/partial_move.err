@@ -1,0 +1,3 @@
+tests/ship/reject/partial_move.ig:20: error: cannot move a value out of a field (partial moves are not supported); pass it by borrow, .clone() it, or restructure
+tests/ship/reject/partial_move.ig:27:14: error: cannot move a value out of a field (partial moves are not supported); pass it by borrow, .clone() it, or restructure
+tests/ship/reject/partial_move.ig:28: error: cannot move a value out of a field (partial moves are not supported); pass it by borrow, .clone() it, or restructure

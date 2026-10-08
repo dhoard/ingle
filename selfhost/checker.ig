@@ -267,6 +267,9 @@ struct Checker {
     fn_dc: [int]               // reference records for go-to-definition / hover provenance (SemanticIndex)
     idx_on: bool               // is the SemanticIndex being collected this run? (the LSP index path; batch = false)
     native: bool               // checking for a NATIVE build (-o / --emit=c / --emit=lib): direct externs are callable (OFI-232)
+    ext_owner: [string]        // OFI-231: the entry module's IMPORTED structs' fields, one row per field, keyed by how the
+    ext_field: [string]        // entry names the struct ("m.P") — so a qualified literal `m.P{…}` is completeness-checked
+    cur_self_si: int           // OFI-236: the struct whose METHOD is being checked (-1 in a free fn) — types `self.f`
     idx_line: [int]            // the SemanticIndex, as parallel arrays (OFI-061: no array-of-structs mutation) —
     idx_col: [int]             // one slot per recorded identifier occurrence, keyed by its 1-based [col,end_col) span
     idx_end: [int]
@@ -522,6 +525,22 @@ struct Checker {
     // param/binding (owned==false), a copy-type value, or a non-identifier expression is NOT a move.
     fn consume_move(mut self, e: ps.Expr, line: int) {
         match e {
+            case EGet(object, fname) {
+                // OFI-236: moving a uniquely-owned value (an array, or a BOXED struct) OUT OF A FIELD is a
+                // partial move — the parent still owns it, so the new owner and the parent would both free it
+                // (a double free). An inline all-scalar struct field reads out as a fresh COPY, so it is fine;
+                // strings/enums are refcounted, so sharing is fine. Mirrors src/check.c consume (OFI-031).
+                let psi = self.place_struct(object.value)
+                if psi >= 0 {
+                    let row = self.field_row(psi, fname)
+                    if row >= 0 {
+                        let ft = self.sf_type[row]
+                        if ft == TY_ARRAY || (ft >= STRUCT_BASE && ft < ENUM_BASE && self.struct_kind[ft - STRUCT_BASE] != 1 && self.struct_all_scalar(ft - STRUCT_BASE) == false) {
+                            self.error("cannot move a value out of a field (partial moves are not supported); pass it by borrow, .clone() it, or restructure")
+                        }
+                    }
+                }
+            }
             case EIdent(name) {
                 let slot = self.local_slot(name)
                 if slot >= 0 {
@@ -538,6 +557,67 @@ struct Checker {
             case _ {
             }
         }
+    }
+
+
+    // place_struct returns the struct index a PLACE expression is known to hold — a struct-typed local/param,
+    // `self` inside a method, or a struct-typed field of such a place — else -1 (unknown stays lenient).
+    fn place_struct(self, e: ps.Expr) -> int {
+        match e {
+            case EIdent(name) {
+                if name == "self" {
+                    return self.cur_self_si
+                }
+                let slot = self.local_slot(name)
+                if slot >= 0 {
+                    let t = self.locals[slot].ty
+                    if t >= STRUCT_BASE && t < ENUM_BASE {
+                        return t - STRUCT_BASE
+                    }
+                }
+                return 0 - 1
+            }
+            case EGet(object, fname) {
+                let psi = self.place_struct(object.value)
+                if psi >= 0 {
+                    let row = self.field_row(psi, fname)
+                    if row >= 0 {
+                        let ft = self.sf_type[row]
+                        if ft >= STRUCT_BASE && ft < ENUM_BASE {
+                            return ft - STRUCT_BASE
+                        }
+                    }
+                }
+                return 0 - 1
+            }
+            case _ {
+                return 0 - 1
+            }
+        }
+    }
+
+
+    // struct_all_scalar reports whether every declared field of struct `si` is a number, a bool, or (recursively)
+    // such a struct — it is stored INLINE, so reading it out of a field yields an independent copy (not a
+    // partial move).
+    fn struct_all_scalar(self, si: int) -> bool {
+        var i = 0
+        loop {
+            if i >= self.sf_owner.len() {
+                break
+            }
+            if self.sf_owner[i] == si {
+                let t = self.sf_type[i]
+                // a nested struct field counts when IT is all-scalar (stored inline, recursively); a struct
+                // can't contain itself by value, so the recursion terminates.
+                let nested_ok = t >= STRUCT_BASE && t < ENUM_BASE && t - STRUCT_BASE != si && self.struct_kind[t - STRUCT_BASE] == 0 && self.struct_all_scalar(t - STRUCT_BASE)
+                if is_numeric(t) == false && t != TY_BOOL && nested_ok == false {
+                    return false
+                }
+            }
+            i = i + 1
+        }
+        return true
     }
 
 
@@ -648,6 +728,9 @@ struct Checker {
             return true
         }
         if t >= STRUCT_BASE && t < ENUM_BASE {
+            if self.struct_kind[t - STRUCT_BASE] == 1 {
+                return false             // an `rc struct` is SHARED (refcounted), never moved — every use aliases it
+            }
             if self.locals[slot].is_var {
                 return true              // a `var`/mutated struct is BOXED
             }
@@ -1285,9 +1368,11 @@ struct Checker {
             match decls[i] {
                 case DFn(f) {
                     self.tparams = gp_names(f.generics)
+                    self.cur_self_si = 0 - 1
                     self.check_fn(f)
                 }
                 case DStruct(name, generics, impls, fields, methods, kind) {
+                    self.cur_self_si = index_of(self.structs, name)
                     var m = 0
                     loop {
                         if m >= methods.len() {
@@ -1297,6 +1382,7 @@ struct Checker {
                         self.check_fn(methods[m])
                         m = m + 1
                     }
+                    self.cur_self_si = 0 - 1
                 }
                 case DLet(is_var, name, ty, value) {
                     var empty: [string] = []
@@ -1377,6 +1463,60 @@ struct Checker {
             case TyFn(params, ret) {
                 return TY_INFER
             }
+        }
+    }
+
+
+    // check_ext_literal checks a qualified literal of an imported struct (key "alias.Struct") against the
+    // driver-supplied field table: every provided field must exist, every declared field set exactly once.
+    // A key the table doesn't know (a single-file check, an aliased generic) stays lenient.
+    fn check_ext_literal(mut self, key: string, fields: [ps.SLitField]) {
+        if contains(self.ext_owner, key) == false {
+            return
+        }
+        var i = 0
+        loop {
+            if i >= fields.len() {
+                break
+            }
+            var known = false
+            var r = 0
+            loop {
+                if r >= self.ext_owner.len() {
+                    break
+                }
+                if self.ext_owner[r] == key && self.ext_field[r] == fields[i].name {
+                    known = true
+                }
+                r = r + 1
+            }
+            if known == false {
+                self.error("no such field on this struct")
+            }
+            i = i + 1
+        }
+        var d = 0
+        loop {
+            if d >= self.ext_owner.len() {
+                break
+            }
+            if self.ext_owner[d] == key {
+                var seen = 0
+                var pi = 0
+                loop {
+                    if pi >= fields.len() {
+                        break
+                    }
+                    if fields[pi].name == self.ext_field[d] {
+                        seen = seen + 1
+                    }
+                    pi = pi + 1
+                }
+                if seen != 1 {
+                    self.error("every struct field must be set exactly once")
+                }
+            }
+            d = d + 1
         }
     }
 
@@ -2977,6 +3117,12 @@ struct Checker {
                         self.check_expr(fields[i].value, fields[i].line, 0)
                         i = i + 1
                     }
+                    // OFI-231: an IMPORTED struct (`m.P{…}`) is still checked for completeness against the
+                    // driver-supplied field table — a missing field would otherwise be left uninitialised.
+                    let q = ty_qual(ty.value)
+                    if si < 0 && q != "" {
+                        self.check_ext_literal("{q}.{name}", fields)
+                    }
                     return TY_INFER
                 }
                 // The construction's explicit `<…>` type arguments (empty for a non-generic struct), resolved
@@ -3018,6 +3164,7 @@ struct Checker {
                         break
                     }
                     let vt = self.check_expr(fields[i].value, fields[i].line, 0)
+                    self.consume_move(fields[i].value, fields[i].line)   // a field value is taken by the new struct (OFI-236)
                     let row = self.field_row(si, fields[i].name)
                     if row < 0 {
                         self.error("no such field on this struct")
@@ -3932,7 +4079,7 @@ fn assignable(actual: int, expected: int, a_is_int_lit: bool, a_is_float_lit: bo
 // check returns the accept/reject verdict ONLY (no output), for verdict-parity callers (check_dump). `path`
 // names the file for the diagnostic prefix (only used on the printing path, check_report).
 fn check(src: string, path: string) -> bool {
-    if check_decls(ps.parse(src), path, false, false) {
+    if check_decls(ps.parse(src), path, false, default_opts()) {
         return true
     }
     // A malformed argument list (OFI-140: a duplicate named argument, or positional and named mixed) is a
@@ -3945,7 +4092,7 @@ fn check(src: string, path: string) -> bool {
 // compile drivers. The [string] diagnostics never cross a module or a function-return into a driver:
 // check_decls's `report` flag prints them from the checker's own field (see Checker.report / OFI-173).
 fn check_report(src: string, path: string) -> bool {
-    return check_report_profile(src, path, false)
+    return check_report_opts(src, path, default_opts())
 }
 
 
@@ -3953,12 +4100,72 @@ fn check_report(src: string, path: string) -> bool {
 // fn (one not in the hosted FFI registry) is callable, because the emitted C calls it directly (OFI-167) —
 // only the bytecode VM has no binding for it. (OFI-232: the shipping compiler used the VM rule for -o too.)
 fn check_report_native(src: string, path: string) -> bool {
-    return check_report_profile(src, path, true)
+    var o = default_opts()
+    o.native = true
+    return check_report_opts(src, path, o)
 }
 
 
-fn check_report_profile(src: string, path: string, native: bool) -> bool {
-    if check_decls(ps.parse(src), path, true, native) {
+// CheckOpts carries what a driver knows beyond the single source file: the build profile (OFI-232) and the
+// imported modules' struct fields (OFI-231 — see Checker.ext_owner). default_opts() is the single-file view.
+struct CheckOpts {
+    native: bool
+    ext_owner: [string]
+    ext_field: [string]
+}
+
+
+fn default_opts() -> CheckOpts {
+    var eo: [string] = []
+    var ef: [string] = []
+    return CheckOpts { native: false, ext_owner: eo, ext_field: ef }
+}
+
+
+// ext_struct_opts builds the OFI-231 imported-struct field table for a merged program: for each import of the
+// ENTRY module (`aliases[k]` resolved to module path `paths[k]` by the driver), every struct declared in that
+// module contributes one row per field, keyed "alias.Struct" — exactly how the entry writes a qualified literal.
+fn ext_struct_opts(decls: [ps.Decl], decl_mods: [string], aliases: [string], paths: [string], native: bool) -> CheckOpts {
+    var o = default_opts()
+    o.native = native
+    var k = 0
+    loop {
+        if k >= aliases.len() {
+            break
+        }
+        var i = 0
+        loop {
+            if i >= decls.len() {
+                break
+            }
+            if i < decl_mods.len() && decl_mods[i] == paths[k] {
+                match decls[i] {
+                    case DStruct(name, generics, impls, fields, methods, kind) {
+                        var f = 0
+                        loop {
+                            if f >= fields.len() {
+                                break
+                            }
+                            o.ext_owner.append("{aliases[k]}.{name}")
+                            o.ext_field.append(fields[f].name)
+                            f = f + 1
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            i = i + 1
+        }
+        k = k + 1
+    }
+    return o
+}
+
+
+// check_report_opts is check_report with a driver-supplied CheckOpts (the compile drivers' full path).
+fn check_report_opts(src: string, path: string, opts: CheckOpts) -> bool {
+    if check_decls(ps.parse(src), path, true, opts) {
         return true
     }
     if ps.parse_bad_call(src) {
@@ -3975,14 +4182,14 @@ fn check_report_profile(src: string, path: string, native: bool) -> bool {
 // module boundary + is indexed there, which the self-hosted C-emit now element-types (OFI-226). Single-module
 // + import-lenient, exactly like check_report — cross-module resolution is the later SemanticIndex work.
 fn check_diags(src: string, path: string) -> [string] {
-    return run_checker(ps.parse(src), path, false)
+    return run_checker(ps.parse(src), path, default_opts())
 }
 
 
 // run_checker builds a fresh Checker over `decls`, runs the three passes, and returns the collected
 // diagnostics field. Shared by check_decls (verdict / printing) and check_diags (the LSP data path) so the
 // giant Checker construction lives in ONE place.
-fn build_run(decls: [ps.Decl], path: string, idx_on: bool, native: bool) -> Checker {
+fn build_run(decls: [ps.Decl], path: string, idx_on: bool, opts: CheckOpts) -> Checker {
     var fns: [string] = []
     var structs: [string] = []
     var enums: [string] = ["Option", "Result"]                    // always-in-scope prelude enums
@@ -4032,7 +4239,7 @@ fn build_run(decls: [ps.Decl], path: string, idx_on: bool, native: bool) -> Chec
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, native: native, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, native: opts.native, ext_owner: opts.ext_owner.clone(), ext_field: opts.ext_field.clone(), cur_self_si: 0 - 1, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies
@@ -4041,8 +4248,8 @@ fn build_run(decls: [ps.Decl], path: string, idx_on: bool, native: bool) -> Chec
 
 
 // run_checker builds + runs the checker (index OFF) and returns the diagnostics — the verdict/print path.
-fn run_checker(decls: [ps.Decl], path: string, native: bool) -> [string] {
-    let c = build_run(decls, path, false, native)
+fn run_checker(decls: [ps.Decl], path: string, opts: CheckOpts) -> [string] {
+    let c = build_run(decls, path, false, opts)
     return c.diags.clone()               // an INDEPENDENT copy — `c` (and its arrays) is dropped at return
 }
 
@@ -4050,7 +4257,7 @@ fn run_checker(decls: [ps.Decl], path: string, native: bool) -> [string] {
 // check_index builds + runs the checker with the SemanticIndex ON and returns it — the LSP's hover/definition/
 // semantic-tokens data path. Single-module (imports lenient), like check_diags; cross-file is a later slice.
 fn check_index(src: string, path: string) -> si.SemIndex {
-    let c = build_run(ps.parse(src), path, true, false)
+    let c = build_run(ps.parse(src), path, true, default_opts())
     return si.SemIndex{ e_line: c.idx_line.clone(), e_col: c.idx_col.clone(), e_end: c.idx_end.clone(), e_kind: c.idx_kind.clone(), e_type: c.idx_type.clone(), e_detail: c.idx_detail.clone(), e_container: c.idx_container.clone(), e_doc: c.idx_doc.clone(), e_def_line: c.idx_dl.clone(), e_def_col: c.idx_dc.clone(), e_def_file: c.idx_dfile.clone(), e_ref_file: c.idx_rfile.clone() }
 }
 
@@ -4058,8 +4265,8 @@ fn check_index(src: string, path: string) -> si.SemIndex {
 // check_decls is the verdict/printing wrapper over run_checker (the compile drivers' path). With `report` it
 // prints each rendered diagnostic — iterating the returned [string] (element-typed via OFI-226), byte-identical
 // to the former Checker.report loop. Returns whether any diagnostic was raised.
-fn check_decls(decls: [ps.Decl], path: string, report: bool, native: bool) -> bool {
-    let ds = run_checker(decls, path, native)
+fn check_decls(decls: [ps.Decl], path: string, report: bool, opts: CheckOpts) -> bool {
+    let ds = run_checker(decls, path, opts)
     if report {
         var i = 0
         loop {

@@ -328,6 +328,52 @@ fn load_modules(entry: string) -> Loaded {
 }
 
 
+// entry_import_aliases / entry_import_paths list the ENTRY module's own imports — alias and resolved module
+// path, in parallel — for the checker's imported-struct table (OFI-231).
+fn entry_import_aliases(decls: [ps.Decl], decl_mods: [string], entry: string) -> [string] {
+    var out: [string] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        if decl_mods[i] == entry {
+            match decls[i] {
+                case DImport(ipath, alias) {
+                    out.append(alias)
+                }
+                case _ {
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
+fn entry_import_paths(decls: [ps.Decl], decl_mods: [string], entry: string) -> [string] {
+    var out: [string] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        if decl_mods[i] == entry {
+            match decls[i] {
+                case DImport(ipath, alias) {
+                    out.append(resolve_import(entry, ipath))
+                }
+                case _ {
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 // dq wraps a path in double quotes for a /bin/sh command line (repo/install paths carry no `"`).
 fn dq(s: string) -> string {
     return "\"" + s + "\""
@@ -517,10 +563,10 @@ fn main() -> int {
     //    verdict → REJECT with exit 65 (stage-0's check-error code), so this compiler accepts/rejects the
     //    same programs stage-0 does. The self-hosted checker is single-module + import-lenient. M1 renders
     //    line-granularity positions (statement line); expression precision + column + the LSP port follow.
-    if ck.check_report_native(read_file(entry), entry) {
+    let ld = load_modules(entry)
+    if ck.check_report_opts(read_file(entry), entry, ck.ext_struct_opts(ld.decls, ld.decl_mods, entry_import_aliases(ld.decls, ld.decl_mods, entry), entry_import_paths(ld.decls, ld.decl_mods, entry), true)) {
         exit(65)
     }
-    let ld = load_modules(entry)
     // 1b. REALTIME-CHECK the merged program (every module): each `realtime fn` must be proven allocation-,
     //     lock- and I/O-free (selfhost/realtime.ig, DSP Phase 1). Same rejection code as a type error.
     if rtc.check_report(ld.decls, ld.decl_mods) {

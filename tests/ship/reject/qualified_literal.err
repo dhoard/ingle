@@ -1,0 +1,3 @@
+tests/ship/reject/qualified_literal.ig:7:19: error: every struct field must be set exactly once
+tests/ship/reject/qualified_literal.ig:8:17: error: no such field on this struct
+tests/ship/reject/qualified_literal.ig:9:17: error: every struct field must be set exactly once

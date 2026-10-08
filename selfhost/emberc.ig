@@ -199,31 +199,52 @@ fn main() -> int {
     // 1. TYPE-CHECK the entry program. check_report prints each `file:line: error: msg` and returns the
     //    verdict → reject with exit 65 (stage-0's check-error code). The checker is import-lenient, so it
     //    accepts every valid program (including this compiler).
-    if ck.check_report(read_file(entry), entry) {
+    // Load every module FIRST (parsing only), so the checker can be given the entry's imported structs
+    // (OFI-231) and the realtime pass the merged program.
+    let loaded = load_modules(entry)
+    var decl_mods: [string] = []
+    var dm = 0
+    loop {
+        if dm >= loaded.decls.len() {
+            break
+        }
+        var mp = entry
+        if dm < loaded.mod_of.len() && loaded.mod_of[dm] >= 0 && loaded.mod_of[dm] < loaded.mod_paths.len() {
+            mp = loaded.mod_paths[loaded.mod_of[dm]]
+        }
+        decl_mods.append(mp)
+        dm = dm + 1
+    }
+    var ealiases: [string] = []
+    var epaths: [string] = []
+    var di = 0
+    loop {
+        if di >= loaded.decls.len() {
+            break
+        }
+        if decl_mods[di] == entry {
+            match loaded.decls[di] {
+                case DImport(ipath, alias) {
+                    ealiases.append(alias)
+                    epaths.append(resolve_import(entry, ipath))
+                }
+                case _ {
+                }
+            }
+        }
+        di = di + 1
+    }
+    if ck.check_report_opts(read_file(entry), entry, ck.ext_struct_opts(loaded.decls, decl_mods, ealiases, epaths, false)) {
         exit(65)
     } else {
-        // 2. CODEGEN every (merged) module. With an output path, write a RUNNABLE `.igb` container (the
-        //    unified self-hosted compiler emits executable bytecode, not just a disassembly); without one,
-        //    print the `--emit=bytecode` disassembly (the differential path, byte-identical to stage 0).
-        let loaded = load_modules(entry)
         // 1b. REALTIME-CHECK the merged program, exactly as the native driver does (selfhost/realtime.ig) — a
         //     `realtime fn` that could allocate/lock/block is rejected on every path, not just `-o`.
-        var decl_mods: [string] = []
-        var dm = 0
-        loop {
-            if dm >= loaded.decls.len() {
-                break
-            }
-            var mp = entry
-            if dm < loaded.mod_of.len() && loaded.mod_of[dm] >= 0 && loaded.mod_of[dm] < loaded.mod_paths.len() {
-                mp = loaded.mod_paths[loaded.mod_of[dm]]
-            }
-            decl_mods.append(mp)
-            dm = dm + 1
-        }
         if rtc.check_report(loaded.decls, decl_mods) {
             exit(65)
         }
+        // 2. CODEGEN every (merged) module. With an output path, write a RUNNABLE `.igb` container (the
+        //    unified self-hosted compiler emits executable bytecode, not just a disassembly); without one,
+        //    print the `--emit=bytecode` disassembly (the differential path, byte-identical to stage 0).
         if argv.len() >= 2 {
             sz.serialize_program(loaded.decls, loaded.mod_of, loaded.sources, loaded.imp_from, loaded.imp_alias, loaded.imp_to, argv[1])
         } else {
