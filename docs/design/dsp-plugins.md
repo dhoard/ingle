@@ -5,7 +5,8 @@ nav_exclude: true
 
 # DSP & audio plugins in Ingle — the plan
 
-> **Status: PROPOSED (2026-10-08), awaiting Karl's sign-off on the five design calls in §4.**
+> **Status: RATIFIED (2026-10-08).** Karl accepted §4 calls 2–5 as recommended and **overruled call 1**:
+> no hybrid phase — kplug and kui are rewritten as dedicated Ingle libraries from the start.
 > Prerequisite OFI-229 (typed scalar maths at C speed) is **DONE**.
 
 ## 1. The goal
@@ -21,7 +22,9 @@ C++ stack:
 
 The C++ stack works and ships, so this is only worth it for what Ingle adds that C++ can't:
 **a compiler-proven realtime guarantee** (§3.4) and contracts + tape on DSP code. Everything is staged
-so that each phase ships a real plugin, and we can stop at any phase with something useful.
+so that each phase ends in something runnable, and the C++ stack serves as the **oracle**, not as code we
+link into: same parameter maths and state bytes as kplug, same DSP output as kasm (bit-exact), same pixels
+as kui (its golden images).
 
 ## 2. Where Ingle stands (measured 2026-10-08)
 
@@ -66,9 +69,11 @@ measured necessary).
 
 ## 4. The five design calls (need Karl's decision)
 
-1. **Order: hybrid first.** *Recommended.* Phase 1 puts Ingle DSP inside the **existing** kplug + kui
-   shell (C++ calls the exported Ingle `process`). A real Ingle-powered plugin early, and it forces
-   §3.1–3.4 to be built properly. Only then decide whether to port kplug/kui.
+1. **Order: Ingle-native from the start** *(Karl's call, overruling the recommended hybrid-first)*.
+   kplug → `std/plug` and kui → a Flare backend are dedicated Ingle libraries; no phase links Ingle DSP
+   into the C++ shell. Cost: the first plugin arrives later. Mitigations: the first plugin is minimal
+   (gain/biquad, host-generic UI); plugins are exercised without kplug by `clap-validator` and a small C
+   test host; kplug/kasm/kui are the behavioural oracles.
 2. **Plugin format: CLAP through a thin C shim**, clap-wrapper for VST3/AU — exactly what kplug does now.
    CLAP is a pure C API, which suits Ingle. (clap-wrapper is C++ *build tooling* — a dependency to sign off.)
 3. **`realtime` syntax:** a function modifier, `realtime fn process(...)`, reading like `pub fn`.
@@ -83,8 +88,8 @@ measured necessary).
 | Phase | Delivers | Exit test |
 |---|---|---|
 | **0** ✅ | OFI-229 — typed scalar maths at C speed | biquad within 1.2× of C |
-| **1** | `export "c"`, `--emit=lib`, `realtime` checking, `mut Slice<f32>`, maths intrinsics | an Ingle gain + biquad `process()` linked into a C test host; realtime violations rejected |
-| **2** | first plugin: Ingle DSP inside kplug/kui (hybrid) | loads in a DAW; output bit-identical to the C++ version |
+| **1** | `export "c"`, `--emit=lib`, `realtime` checking, `mut Slice<f32>`, maths intrinsics | an Ingle gain + biquad `process()` driven by a C test host; realtime violations rejected |
+| **2** | `std/plug` core — CLAP in Ingle over a thin C shim: params (kplug's range maths), sample-accurate automation, state, bypass | an Ingle gain/filter plugin passes `clap-validator` and loads in a DAW (host-generic UI); clap-wrapper VST3/AU bundles |
 | **3** | `std/dsp` — the kasm port, kasm as the bit-exact oracle (pffft stays C, via FFI) | kasm's 84 test cases reproduced |
-| **4** | `std/plug` — CLAP in Ingle over a thin C shim (params, automation, state, notes) | the kplug demo + synth examples rebuilt in Ingle |
-| **5** | Flare CoreGraphics backend + Obscene theme | an Obscene editor rendered within kui's golden-image tolerance |
+| **4** | `std/plug` complete — notes/MIDI in+out, timers, VisualFeed/Handoff, blobs, audio files | the kplug demo + synth examples rebuilt in Ingle |
+| **5** | Flare CoreGraphics backend embedded in the host view + Obscene theme + kui's widgets | an Obscene editor rendered within kui's golden-image tolerance |
