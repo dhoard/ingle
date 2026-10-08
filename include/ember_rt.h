@@ -24,6 +24,14 @@
 #include "value.h"
 #include "program.h"   // StructType (the struct-layout table EmberRt carries)
 
+// Float maths must round after EVERY operation, exactly as the VM does (OFI-229). Once typed scalar
+// arithmetic is emitted as plain C operators, clang's default (-ffp-contract=on) would fuse `a*b + c`
+// into one FMA with a single rounding — a silent VM/native divergence. gcc already defaults to off in
+// ISO C mode (and doesn't know this pragma), so it is clang-only.
+#if defined(__clang__)
+#pragma STDC FP_CONTRACT OFF
+#endif
+
 #include <stdint.h>
 #ifdef EMBER_FREESTANDING
 #include "em_platform.h"   // bare metal: the libc subset the runtime uses, no OS/libc (kernel target)
@@ -509,6 +517,44 @@ static inline Value em_mod(Value a, Value b, int nk) {
     if (nk == 7) r = (int64_t)((uint64_t)x % (uint64_t)y);
     else         r = (x == INT64_MIN && y == -1) ? 0 : x % y;   // INT64_MIN % -1 is UB in C
     return INT_VAL(r);
+}
+
+// Unboxed integer arithmetic (OFI-229): the SAME traps as em_add/em_sub/em_mul/em_div/em_mod above,
+// on raw int64_t operands, for the C backend's typed-scalar fast path (both operand types known at
+// compile time, so no tag dispatch). An int of any width rides in an int64_t (u64 as its bit pattern),
+// exactly as in a Value; `nk` is the result width, as for the boxed helpers.
+#define EM_DEF_IARITH(fn, builtin)                                             \
+    static inline int64_t fn(int64_t a, int64_t b, int nk) {                   \
+        if (nk == 7) {                                                        \
+            uint64_t ur;                                                      \
+            if (builtin((uint64_t)a, (uint64_t)b, &ur)) em_panic("integer overflow"); \
+            return (int64_t)ur;                                               \
+        }                                                                     \
+        int64_t r;                                                            \
+        if (builtin(a, b, &r) || r < EM_NK_MIN[nk] || r > EM_NK_MAX[nk])      \
+            em_panic("integer overflow");                                     \
+        return r;                                                             \
+    }
+EM_DEF_IARITH(em_i_add, __builtin_add_overflow)
+EM_DEF_IARITH(em_i_sub, __builtin_sub_overflow)
+EM_DEF_IARITH(em_i_mul, __builtin_mul_overflow)
+#undef EM_DEF_IARITH
+
+static inline int64_t em_i_div(int64_t x, int64_t y, int nk) {
+    if (nk == 7) {
+        if (y == 0) em_panic("division by zero");
+        return (int64_t)((uint64_t)x / (uint64_t)y);
+    }
+    if (y == 0) em_panic("division by zero");
+    if ((x == INT64_MIN && y == -1) || x / y < EM_NK_MIN[nk] || x / y > EM_NK_MAX[nk])
+        em_panic("integer overflow");
+    return x / y;
+}
+
+static inline int64_t em_i_mod(int64_t x, int64_t y, int nk) {
+    if (y == 0) em_panic("modulo by zero");
+    if (nk == 7) return (int64_t)((uint64_t)x % (uint64_t)y);
+    return (x == INT64_MIN && y == -1) ? 0 : x % y;
 }
 
 static inline Value em_neg(Value a, int nk) {

@@ -7020,6 +7020,18 @@ struct CgcGen {
             let rc = self.emit_expr(r)
             return "INT_VAL((em_truthy({lc}) {c} em_truthy({rc})) ? 1 : 0)"
         }
+        if self.scalar_fast_ok(bid, l, r) {
+            // typed scalars → plain C operators, re-boxed once at the edge (OFI-229).
+            let raw = self.raw_binop(bid, l, r)
+            if bid >= 6 && bid <= 11 {
+                return "INT_VAL({raw} ? 1 : 0)"
+            }
+            let fk = self.binop_float_kind(l, r)
+            if fk == 8 || fk == 9 {
+                return "FLOAT_VAL((double){raw})"
+            }
+            return "INT_VAL({raw})"
+        }
         let cf = binop_cfn(bid)
         let ctx = binop_wants_ctx(bid)
         var opl = ""
@@ -8644,10 +8656,160 @@ struct CgcGen {
                 }
                 return self.lookup_kind(name)
             }
+            case EUnary(op, operand) {
+                // `-x` / `~x` keep their operand's numeric kind (`!x` is a bool → not a tracked scalar).
+                if ps.unop_id(op) == 2 {
+                    return 0 - 1
+                }
+                return self.scalar_kind_of(operand.value)
+            }
             case _ {
                 return 0 - 1
             }
         }
+    }
+
+
+    // ---- The typed-scalar fast path (OFI-229) ----
+    // When BOTH operands of an arithmetic / compare / bitwise op have a scalar kind known at compile time,
+    // the op is lowered straight to C operators on unboxed values instead of an em_add/em_mul/em_lt call on
+    // boxed Values. The results are bit-identical to the boxed helpers: a float op rounds once per
+    // operation (an f32 op done in `float` equals the VM's double-op-then-round to f32, since a double
+    // carries more than 2×24+2 bits; FP contraction is off in ember_rt.h), an int op calls the em_i_*
+    // helpers, which trap exactly as em_add & co. do. It is the difference between ~7× slower than C and
+    // C speed on a numeric hot loop (the biquad in OFI-229).
+
+    // scalar_fast_ok reports whether binop `bid` on `l`/`r` takes the fast path: arithmetic (1-5), ordered
+    // compares (6-9), equality (10-11) or bitwise (14-16), both operands a known scalar, both float or both
+    // int (a mix never type-checks — it stays on the boxed path if one shows up), and no float `%`/bitwise.
+    fn scalar_fast_ok(self, bid: int, l: ps.Expr, r: ps.Expr) -> bool {
+        if (bid < 1 || bid > 11) && (bid < 14 || bid > 16) {
+            return false
+        }
+        if self.is_string_expr(l) || self.is_string_expr(r) {
+            return false
+        }
+        let lk = self.scalar_kind_of(l)
+        let rk = self.scalar_kind_of(r)
+        if lk < 0 || rk < 0 {
+            return false
+        }
+        let lf = lk == 8 || lk == 9
+        let rf = rk == 8 || rk == 9
+        if lf != rf {
+            return false
+        }
+        if lf && (bid == 5 || bid >= 14) {
+            return false
+        }
+        return true
+    }
+
+
+    // raw_scalar renders scalar expression `e` as an UNBOXED C expression in its computation type: `float`
+    // for an f32, `double` for an f64, `int64_t` for any int width (u64 as its bit pattern, as in a Value).
+    // Fast-path binops, unary float minus, float-width conversions, literals and unboxed locals stay raw all
+    // the way down; anything else is emitted boxed and unwrapped (clang folds a box/unbox pair to nothing).
+    fn raw_scalar(mut self, e: ps.Expr) -> string {
+        let k = self.scalar_kind_of(e)
+        match e {
+            case EInt(v, _) {
+                return "((int64_t){v}LL)"
+            }
+            case EFloat(v) {
+                return "({v})"
+            }
+            case EIdent(name) {
+                if self.lookup_cname(name) != "" && self.lookup_unboxed(name) {
+                    let cn = self.lookup_cname(name)
+                    if k == 8 || k == 9 {
+                        return cn
+                    }
+                    return "((int64_t){cn})"
+                }
+            }
+            case EBinary(op, l, r) {
+                let bid = ps.binop_id(op)
+                if (bid <= 5 || (bid >= 14 && bid <= 16)) && self.scalar_fast_ok(bid, l.value, r.value) {
+                    return self.raw_binop(bid, l.value, r.value)
+                }
+            }
+            case EUnary(op, operand) {
+                // float negation never traps, so it lowers to a plain C minus (int `-x` keeps em_neg's trap).
+                if ps.unop_id(op) == 1 && (k == 8 || k == 9) {
+                    return "(-{self.raw_scalar(operand.value)})"
+                }
+            }
+            case ECall(callee, args, _) {
+                // `f32(x)` / `f64(x)` of a float rounds/widens in place — em_conv without the call.
+                match callee.value {
+                    case EIdent(cname) {
+                        let ck = numeric_typename_kind(cname)
+                        if args.len() == 1 && (ck == 8 || ck == 9) {
+                            let ak = self.scalar_kind_of(args[0])
+                            if ak == 8 || ak == 9 {
+                                return "(({scalar_ctype(ck)}){self.raw_scalar(args[0])})"
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
+            }
+            case _ {
+            }
+        }
+        let boxed = self.emit_expr(e)
+        if k == 8 {
+            return "((float)AS_FLOAT({boxed}))"
+        }
+        if k == 9 {
+            return "AS_FLOAT({boxed})"
+        }
+        return "AS_INT({boxed})"
+    }
+
+
+    // raw_operand renders operand `e` (scalar kind `ek`) raw, widened to the op's computation kind `k` — an
+    // f32 operand of an f64 op is promoted to double (exactly what the boxed path's AS_FLOAT does).
+    fn raw_operand(mut self, e: ps.Expr, ek: int, k: int) -> string {
+        let raw = self.raw_scalar(e)
+        if k == 9 && ek == 8 {
+            return "((double){raw})"
+        }
+        return raw
+    }
+
+
+    // raw_binop renders a fast-path binop (scalar_fast_ok) as an unboxed C expression: the op's raw result
+    // for arithmetic/bitwise, a C truth value (0/1) for a compare. Operands are rendered in source order.
+    fn raw_binop(mut self, bid: int, l: ps.Expr, r: ps.Expr) -> string {
+        let k = self.binop_float_kind(l, r)
+        let a = self.raw_operand(l, self.scalar_kind_of(l), k)
+        let b = self.raw_operand(r, self.scalar_kind_of(r), k)
+        let cop = binop_c_operator(bid)
+        if k == 8 || k == 9 {
+            return "({a} {cop} {b})"
+        }
+        if bid == 1 {
+            return "em_i_add({a}, {b}, {k})"
+        }
+        if bid == 2 {
+            return "em_i_sub({a}, {b}, {k})"
+        }
+        if bid == 3 {
+            return "em_i_mul({a}, {b}, {k})"
+        }
+        if bid == 4 {
+            return "em_i_div({a}, {b}, {k})"
+        }
+        if bid == 5 {
+            return "em_i_mod({a}, {b}, {k})"
+        }
+        if k == 7 && bid >= 6 && bid <= 9 {
+            return "((uint64_t){a} {cop} (uint64_t){b})"   // u64 orders unsigned, like em_lt's nk 7
+        }
+        return "({a} {cop} {b})"
     }
 
 
@@ -10630,6 +10792,26 @@ fn binop_cfn(bid: int) -> string {
     if bid == 17 { return "em_shl" }
     if bid == 18 { return "em_shr" }
     return "em_add"
+}
+
+
+// binop_c_operator is the C operator for a typed-scalar fast-path binop (OFI-229).
+fn binop_c_operator(bid: int) -> string {
+    if bid == 1 { return "+" }
+    if bid == 2 { return "-" }
+    if bid == 3 { return "*" }
+    if bid == 4 { return "/" }
+    if bid == 5 { return "%" }
+    if bid == 6 { return "<" }
+    if bid == 7 { return "<=" }
+    if bid == 8 { return ">" }
+    if bid == 9 { return ">=" }
+    if bid == 10 { return "==" }
+    if bid == 11 { return "!=" }
+    if bid == 14 { return "&" }
+    if bid == 15 { return "|" }
+    if bid == 16 { return "^" }
+    return "+"
 }
 
 

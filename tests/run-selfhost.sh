@@ -404,9 +404,11 @@ if [ -f "$EMBERCSRC" ] && [ "$HAVE_CC" -eq 1 ]; then
 fi
 
 # ---- Stage 6: the self-hosted C-EMIT backend (selfhost/cgen_c.ig via cgen_c_dump.ig) ----------------
-# The M5 native backend (AST → C). Each fixture's self-hosted C output must be byte-identical to stage-0
-# `emberc --emit=c`, on BOTH the VM and a native build — the same differential as every other stage. Built
-# incrementally (M5a = int scalars), so the gated set grows as features land.
+# The M5 native backend (AST → C). Each fixture's self-hosted C output is compiled and RUN, and must print
+# exactly what the VM prints. (Until OFI-229 the oracle was byte-identity to stage-0 `--emit=c`; that was the
+# TRANSITIONAL oracle of the OFI-218 §3 / v1-cutover succession, retired the first time the self-hosted
+# C-emit deliberately moved ahead of the frozen stage-0 — the typed-scalar fast path. Behaviour vs the VM is
+# the successor; see docs/architecture.md "Decision: retire stage-0 C-text identity".)
 CCSRC="$ROOT/selfhost/cgen_c_dump.ig"
 if [ -f "$CCSRC" ]; then
     ccbin=""
@@ -418,21 +420,28 @@ if [ -f "$CCSRC" ]; then
         fi
     fi
     ccpass=0; ccfail=0
-    for src in $(cd "$ROOT" && find tests/selfhost/cgen_c -name '*.ig' 2>/dev/null | sort); do
-        oracle=$(cd "$ROOT" && "$BIN" --emit=c "$src" 2>/dev/null)
-        if [ -n "$ccbin" ]; then
-            actual=$(cd "$ROOT" && "$ccbin" "$src" 2>/dev/null | sed '/^=> 0$/d')
-        else
-            actual=$(cd "$ROOT" && "$BIN" --emit=run selfhost/cgen_c_dump.ig "$src" 2>/dev/null | sed '/^=> 0$/d')
-        fi
-        if [ "$oracle" = "$actual" ]; then
-            ccpass=$((ccpass + 1))
-        else
-            ccfail=$((ccfail + 1))
-            echo "FAIL    self-hosted C-emit differs from stage-0 on $src"
-        fi
-    done
-    echo "selfhost cgen_c: $ccpass/$((ccpass + ccfail)) M5 C-emit fixtures byte-identical to stage-0 --emit=c"
+    if [ -n "$ccbin" ]; then
+        for src in $(cd "$ROOT" && find tests/selfhost/cgen_c -name '*.ig' 2>/dev/null | sort); do
+            want=$(cd "$ROOT" && "$BIN" --emit=run "$src" 2>/dev/null | sed '/^=> 0$/d')
+            m5c="${TMPDIR:-/tmp}/emberc_cgenc_m5_$$.c"
+            m5bin="${TMPDIR:-/tmp}/emberc_cgenc_m5_$$"
+            (cd "$ROOT" && "$ccbin" "$src" 2>/dev/null) | sed '/^=> 0$/d' > "$m5c"
+            if cc -std=c17 -O2 -D_DEFAULT_SOURCE -I"$ROOT/include" "$m5c" "$ROOT/build/libember_rt.a" -lm -o "$m5bin" 2>/dev/null; then
+                got=$("$m5bin" 2>/dev/null | sed '/^=> 0$/d')
+                if [ "$want" = "$got" ]; then
+                    ccpass=$((ccpass + 1))
+                else
+                    ccfail=$((ccfail + 1))
+                    echo "FAIL    self-hosted C-emit RUNS differently from the VM on $src"
+                fi
+            else
+                ccfail=$((ccfail + 1))
+                echo "FAIL    self-hosted C-emit output did not compile: $src"
+            fi
+            rm -f "$m5c" "$m5bin"
+        done
+    fi
+    echo "selfhost cgen_c: $ccpass/$((ccpass + ccfail)) M5 C-emit fixtures RUN identical to the VM"
     pass=$((pass + ccpass)); fail=$((fail + ccfail))
 
     # cgen_c_run: RUNTIME-diff fixtures (NOT byte-identical). Programs whose self-hosted C-emit LEGITIMATELY
@@ -563,25 +572,25 @@ if [ -f "$CCSRC" ]; then
         fi
     fi
 
-    # The real payoff: whole self-hosted MODULES whose C-emit is byte-identical to stage-0 (not fixtures —
-    # actual compiler source). The first native-bootstrap milestone. This list grows as each module's
-    # features land in cgen_c.ig.
+    # The real payoff: whole self-hosted MODULES (actual compiler source, not fixtures) — the C-emit backend
+    # compiles ITSELF. N1 must emit every module cleanly (exit 0, non-empty C); that the C is also RIGHT is
+    # proven by the reproduction fixed point below (N2, built from N1's C, regenerates all six byte-for-byte).
+    # A library module has no `main`, so its C alone is not a linkable program — the driver's is. (Was
+    # byte-identity to stage-0 until OFI-229 — see the Stage 6 header.)
     cmpass=0; cmfail=0
-    for src in selfhost/lexer.ig selfhost/parser.ig selfhost/checker.ig selfhost/codegen.ig selfhost/cgen_c.ig selfhost/cgen_c_dump.ig; do
-        oracle=$(cd "$ROOT" && "$BIN" --emit=c "$src" 2>/dev/null)
-        if [ -n "$ccbin" ]; then
-            actual=$(cd "$ROOT" && "$ccbin" "$src" 2>/dev/null | sed '/^=> 0$/d')
-        else
-            actual=$(cd "$ROOT" && "$BIN" --emit=run selfhost/cgen_c_dump.ig "$src" 2>/dev/null | sed '/^=> 0$/d')
-        fi
-        if [ "$oracle" = "$actual" ]; then
-            cmpass=$((cmpass + 1))
-        else
-            cmfail=$((cmfail + 1))
-            echo "FAIL    self-hosted C-emit differs from stage-0 on module $src"
-        fi
-    done
-    echo "selfhost cgen_c: $cmpass/$((cmpass + cmfail)) whole MODULES self-C-emit byte-identical (lexer, parser, checker, codegen, cgen_c, driver — the C-emit backend compiles ITSELF)"
+    if [ -n "$ccbin" ]; then
+        for src in selfhost/lexer.ig selfhost/parser.ig selfhost/checker.ig selfhost/codegen.ig selfhost/cgen_c.ig selfhost/cgen_c_dump.ig; do
+            mc="${TMPDIR:-/tmp}/emberc_cgenc_mod_$$.c"
+            if (cd "$ROOT" && "$ccbin" "$src" > "$mc" 2>/dev/null) && [ -s "$mc" ]; then
+                cmpass=$((cmpass + 1))
+            else
+                cmfail=$((cmfail + 1))
+                echo "FAIL    self-hosted C-emit failed on module $src"
+            fi
+            rm -f "$mc"
+        done
+    fi
+    echo "selfhost cgen_c: $cmpass/$((cmpass + cmfail)) whole MODULES self-C-emit (lexer, parser, checker, codegen, cgen_c, driver — the C-emit backend compiles ITSELF)"
     pass=$((pass + cmpass)); fail=$((fail + cmfail))
 
     # THE REPRODUCTION FIXED POINT (the promised land): the native C-emitter N1 (built by stage-0 from
@@ -598,8 +607,10 @@ if [ -f "$CCSRC" ]; then
         if cc -std=c17 -O2 -D_DEFAULT_SOURCE -I"$ROOT/include" "$rn1c" "$ROOT/build/libember_rt.a" -lm -o "$rn2" 2>/dev/null; then
             # N2 must reproduce the SAME C for the whole self-hosted source (checker+codegen+cgen_c+driver+…).
             # Both run with the SAME relative path from $ROOT so the emitted `// … from <file>` header matches.
+            # The oracle is N1 itself (the successor to stage-0 C-text identity, OFI-229): N1 and the N2 it
+            # built must agree byte-for-byte — a true fixed point, with stage-0 only ever used to build N1.
             for src in lexer parser checker codegen cgen_c cgen_c_dump; do
-                oracle=$(cd "$ROOT" && "$BIN" --emit=c "selfhost/$src.ig" 2>/dev/null)
+                oracle=$(cd "$ROOT" && "$ccbin" "selfhost/$src.ig" 2>/dev/null | sed '/^=> 0$/d')
                 n2out=$(cd "$ROOT" && "$rn2" "selfhost/$src.ig" 2>/dev/null | sed '/^=> 0$/d')
                 [ "$oracle" = "$n2out" ] || { rok=0; echo "FAIL    2nd-gen compiler N2 diverges on $src.ig"; }
             done

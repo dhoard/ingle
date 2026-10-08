@@ -1950,3 +1950,34 @@ makes the self-hosted compiler the toolchain users and editors actually run — 
   `file:line:col`); the frozen host owns positioned diagnostics until the v1.1 LSP/positions port. Re-aiming
   the generative fuzzers (crucible/ceilings/ledger) at the self-hosted compiler is the G2 oracle-succession
   follow-on (gated on OFI-225 for the `-o` path).
+
+## Decision: retire stage-0 C-text identity as an oracle — the self-hosted C-emit now moves ahead (OFI-229)
+
+**Date:** 2026-10-08. **Trigger:** OFI-229, the typed-scalar fast path — the first change where the
+self-hosted C-emit (`selfhost/cgen_c.ig`) *deliberately* emits different C from the frozen stage-0.
+
+- **What changed in codegen.** When both operands of an arithmetic / compare / bitwise op have a scalar type
+  known at compile time, the C-emit lowers it to plain C operators on unboxed values (`v6 * v7`) instead of an
+  `em_mul(Value, Value, nk)` call on boxed Values. Floats round once per op, exactly as the VM does (an f32 op
+  in `float` equals double-op-then-round, since a double carries > 2×24+2 bits); integer ops call the new
+  `em_i_add/sub/mul/div/mod` in `ember_rt.h`, which trap exactly like the boxed helpers. `ember_rt.h` sets
+  `#pragma STDC FP_CONTRACT OFF` (clang) so `a*b + c` is never fused into an FMA — a single-rounding FMA
+  would be a silent VM/native divergence. Result: an f32 biquad over 100M samples went 2.29 s → 0.38 s
+  (plain C: 0.33 s). This is the prerequisite for DSP / audio plugins in Ingle.
+
+- **Why the oracle had to move.** `make selfhost` used to require the self-hosted C-emit's *text* to be
+  byte-identical to `inglec-stage0 --emit=c` (50 fixtures + the 6 compiler modules, and N2's output in the
+  reproduction check). That was always the *transitional* oracle of OFI-218 §3 / the v1-cutover succession —
+  stage-0 is frozen, so it can never learn a codegen improvement, and requiring C-text identity would freeze
+  the backend with it. The successors, now live:
+  1. **Behaviour vs the VM** — each `tests/selfhost/cgen_c/*.ig` fixture's self-emitted C is compiled and run;
+     its stdout must equal the VM's (as `cgen_c_run` already did).
+  2. **The reproduction fixed point is N1-vs-N2** — N1 (stage-0-built from the current source) and the N2 it
+     builds must emit byte-identical C for all six compiler sources. Stage-0 only ever builds N1.
+  3. **`make bootstrap`** from the seed (refreshed with `make bootstrap-refresh` whenever the C-emit's output
+     changes — the Go-1.5 model, as designed).
+  4. **The Tier-1b native differential** (`tests/native/*.ig`, VM == binary), now including
+     `scalar_fast_path.ig` (f32 biquad, an FMA-detecting `a*b - c`, sized/u64 ints, the overflow trap).
+
+- **Rejected:** teaching stage-0 the same fast path to keep text identity. Stage-0 is frozen by the v1.0
+  decision above; changing it to preserve a transitional oracle would invert the succession.
