@@ -2893,10 +2893,9 @@ static VMResult run(VM *vm, Value *out, const Tracer *tracer) {
                 Value idx   = pop(vm);
                 Value arr   = pop(vm);
                 ObjArray *a = AS_ARRAY(arr);
-                if (a->borrowed) {   // defense: a slice view is read-only
-                    runtime_error("cannot assign through a slice view");
-                    return VM_RUNTIME_ERROR;
-                }
+                // An element write through a slice VIEW (borrowed) writes into the viewed buffer: the checker
+                // admits it only through a `mut s: Slice<T>` parameter (DSP Phase 1), so no runtime veto here —
+                // the view can still never GROW or SHRINK (append/remove keep their borrowed guards below).
                 int64_t i = AS_INT(idx);
                 if (i < 0 || (size_t)i >= a->length) {
                     FaultInt vals[2] = { { "index", i, 0 }, { "len", (int64_t)a->length, 0 } };

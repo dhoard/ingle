@@ -1,0 +1,5 @@
+tests/ship/reject/slice_writes.ig:12:12: error: an `export "c"` Slice parameter must be `Slice<number>` (i8..u64/f32/f64), plain or `mut`
+tests/ship/reject/slice_writes.ig:3:5: error: a slice is a read-only view; assign through the underlying array, or take it as a `mut s: Slice<T>` parameter
+tests/ship/reject/slice_writes.ig:3:5: error: cannot mutate an element through an immutable binding; declare it 'var' or take 'mut'
+tests/ship/reject/slice_writes.ig:9:5: error: a slice is a read-only view; assign through the underlying array, or take it as a `mut s: Slice<T>` parameter
+tests/ship/reject/slice_writes.ig:9:5: error: cannot mutate an element through an immutable binding; declare it 'var' or take 'mut'

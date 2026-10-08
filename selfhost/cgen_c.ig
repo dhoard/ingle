@@ -12177,6 +12177,21 @@ fn export_unbox(t: ps.Ty, rv: string) -> string {
 }
 
 
+// slice_elem_kind is the scalar kind of a `Slice<T>` annotation's element (-1 if not a scalar).
+fn slice_elem_kind(t: ps.Ty) -> int {
+    match t {
+        case TyGeneric(q, n, args) {
+            if n == "Slice" && args.len() == 1 {
+                return ty_scalar_kind(args[0])
+            }
+        }
+        case _ {
+        }
+    }
+    return 0 - 1
+}
+
+
 fn emit_export_wrapper(f: ps.FnDecl, idx: int) {
     var ret = "void"
     if f.ret.len() > 0 {
@@ -12184,6 +12199,7 @@ fn emit_export_wrapper(f: ps.FnDecl, idx: int) {
     }
     var sig = ""
     var args = ""
+    var views = ""
     var p = 0
     loop {
         if p >= f.params.len() {
@@ -12193,14 +12209,33 @@ fn emit_export_wrapper(f: ps.FnDecl, idx: int) {
             sig = sig + ", "
             args = args + ", "
         }
-        sig = sig + "{export_ctype(f.params[p].ty[0])} p{p}"
-        args = args + export_box(f.params[p].ty[0], "p{p}")
+        let sk = slice_elem_kind(f.params[p].ty[0])
+        if sk >= 0 {
+            // A `Slice<T>` crosses as (T *ptr, int64_t len) — `const` unless `mut`. Inside, it is a borrowed
+            // slice VIEW whose header lives on THIS stack frame (no allocation — realtime-safe): it points at
+            // the caller's buffer, never frees it, and cannot outlive the call (slices never escape).
+            let ct = scalar_ctype(sk)
+            var cq = "const "
+            if f.params[p].qual == 1 {
+                cq = ""
+            }
+            sig = sig + "{cq}{ct} *p{p}, int64_t p{p}_len"
+            views = views + "    if (p{p}_len < 0 || (p{p} == 0 && p{p}_len > 0)) em_panic(\"{f.name}: invalid buffer (negative length or NULL)\");\n"
+            views = views + "    ObjArray s{p} = \{ .obj = \{ .type = OBJ_ARRAY, .next = 0, .prev = 0, .home = 0, .refcount = 1, .size_class = -1 \}, .length = (size_t)p{p}_len, .capacity = (size_t)p{p}_len, .elem_kind = {scalar_kind_to_aek(sk)}, .elem_size = (uint8_t)sizeof({ct}), .borrowed = 1, .elem_struct_id = -1, .data = (void *)p{p} \};\n"
+            args = args + "OBJ_VAL(&s{p}.obj)"
+        } else {
+            sig = sig + "{export_ctype(f.params[p].ty[0])} p{p}"
+            args = args + export_box(f.params[p].ty[0], "p{p}")
+        }
         p = p + 1
     }
     if sig == "" {
         sig = "void"
     }
     println("__attribute__((visibility(\"default\"))) {ret} {f.name}({sig}) \{")
+    if views != "" {
+        print(views)
+    }
     if f.ret.len() > 0 {
         let unboxed = export_unbox(f.ret[0], "r")
         println("    Value r = em_fn_{idx}({args});")

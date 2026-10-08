@@ -270,6 +270,8 @@ struct Checker {
     ext_owner: [string]        // OFI-231: the entry module's IMPORTED structs' fields, one row per field, keyed by how the
     ext_field: [string]        // entry names the struct ("m.P") — so a qualified literal `m.P{…}` is completeness-checked
     cur_self_si: int           // OFI-236: the struct whose METHOD is being checked (-1 in a free fn) — types `self.f`
+    slice_ro: [string]         // DSP Phase 1: this fn's READ-ONLY slice bindings (a plain `Slice<T>` param, `let w = a[i..j]`)
+    slice_mut: [string]        // ...and its WRITABLE ones (a `mut s: Slice<T>` param) — `s[i] = v` writes through
     idx_line: [int]            // the SemanticIndex, as parallel arrays (OFI-061: no array-of-structs mutation) —
     idx_col: [int]             // one slot per recorded identifier occurrence, keyed by its 1-based [col,end_col) span
     idx_end: [int]
@@ -1545,7 +1547,13 @@ struct Checker {
             // `move` is allowed on a Ptr alone: C hands the handle's ownership to Ingle (the mirror of a
             // `move` extern param, where Ingle hands it to C).
             let q = f.params[p].qual
-            if q == 1 || (q == 2 && pt != TY_PTR) || (is_numeric(pt) == false && pt != TY_BOOL && pt != TY_PTR) {
+            // A `Slice<number>` crosses as C's (pointer, length) pair — read-only, or writable when `mut` — the
+            // audio-buffer boundary (DSP Phase 1). It stays a borrowed view inside: it cannot grow or escape.
+            if f.params[p].ty.len() > 0 && is_slice_ty(f.params[p].ty[0]) {
+                if q == 2 || slice_elem_numeric(f.params[p].ty[0]) == false {
+                    self.error("an `export \"c\"` Slice parameter must be `Slice<number>` (i8..u64/f32/f64), plain or `mut`")
+                }
+            } else if q == 1 || (q == 2 && pt != TY_PTR) || (is_numeric(pt) == false && pt != TY_BOOL && pt != TY_PTR) {
                 self.error("an `export \"c\"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)")
             }
             p = p + 1
@@ -1817,6 +1825,10 @@ struct Checker {
         self.loop_saw_break = false
         var freshu: [bool] = []
         self.local_unbounded_tp = freshu
+        var fresh_sro: [string] = []
+        var fresh_smut: [string] = []
+        self.slice_ro = fresh_sro
+        self.slice_mut = fresh_smut
         self.scope_depth = 0
         self.self_is_var = false
         self.loop_depth = 0
@@ -1829,6 +1841,13 @@ struct Checker {
             if f.params[p].is_self {
                 self.self_is_var = f.params[p].qual != 0    // `mut self` / `move self` receiver is mutable
             } else {
+                if f.params[p].ty.len() > 0 && is_slice_ty(f.params[p].ty[0]) {
+                    if f.params[p].qual == 1 {
+                        self.slice_mut.append(f.params[p].name)   // `mut s: Slice<T>` — a WRITABLE view
+                    } else {
+                        self.slice_ro.append(f.params[p].name)
+                    }
+                }
                 // a `mut`/`move` parameter is a mutable binding; a plain (borrow) parameter is not.
                 self.declare(f.params[p].name, self.param_type(f.params[p]), f.params[p].qual != 0, f.params[p].qual == 2, f.params[p].qual == 2, f.params[p].nline, f.params[p].ncol)
                 // A parameter typed as an UNBOUNDED generic type-param provides no methods — mark it so a
@@ -2053,6 +2072,19 @@ struct Checker {
         }
         match s {
             case SLet(is_var, name, ty, value, nline, ncol) {
+                match value.value {
+                    case EIndex(sobj, sidx) {
+                        match sidx.value {
+                            case ERange(slo, shi) {
+                                self.slice_ro.append(name)          // `let w = a[i..j]` — a read-only view
+                            }
+                            case _ {
+                            }
+                        }
+                    }
+                    case _ {
+                    }
+                }
                 let vt = self.check_expr(value.value, value.line, value.col)  // initialiser checked BEFORE the binding is in scope
                 self.consume_move(value.value, value.line)   // `let q = p` moves an owned move-type p
                 // OFI-199: an integer LITERAL whose magnitude exceeds i64 is stored as a negative EInt.v (a u64
@@ -2230,6 +2262,12 @@ struct Checker {
                     }
                     case EIndex(object, index) {
                         self.check_expr(target.value, target.line, target.col)
+                        // a slice is a read-only VIEW unless it is a `mut s: Slice<T>` parameter, which writes
+                        // through to the array (or C buffer) it views (DSP Phase 1).
+                        let sroot = assign_root_ident(target.value)
+                        if sroot.len() == 1 && contains(self.slice_ro, sroot[0]) && contains(self.slice_mut, sroot[0]) == false {
+                            self.error("a slice is a read-only view; assign through the underlying array, or take it as a `mut s: Slice<T>` parameter")
+                        }
                         self.check_immutable_root(target.value, false)
                         if self.mutation_through_rc(target.value) {
                             self.error("cannot assign through a field or element of an 'rc' value; an rc struct is deeply immutable and shared")
@@ -3962,6 +4000,27 @@ fn gp_names2(outer: [ps.GenericParam], inner: [ps.GenericParam]) -> [string] {
 // assign_root_ident walks an assignment target through field (`o.f`) and element (`a[i]`) steps to its
 // root, returning [name] if that root is a plain identifier, or [] otherwise (a call result, literal, …).
 // Returned as a 0/1-length list (the file's optional-as-list idiom) since a struct out of a match is moved.
+// slice_elem_numeric reports whether `Slice<T>`'s element is a number type (the C buffer boundary's elements).
+fn slice_elem_numeric(t: ps.Ty) -> bool {
+    match t {
+        case TyGeneric(q, n, args) {
+            if args.len() == 1 {
+                match args[0] {
+                    case TyName(eq, en) {
+                        return eq == "" && is_numeric_typename(en)
+                    }
+                    case _ {
+                    }
+                }
+            }
+        }
+        case _ {
+        }
+    }
+    return false
+}
+
+
 fn assign_root_ident(e: ps.Expr) -> [string] {
     match e {
         case EIdent(name) {
@@ -4239,7 +4298,7 @@ fn build_run(decls: [ps.Decl], path: string, idx_on: bool, opts: CheckOpts) -> C
     var tparams: [string] = []
     var locals: [Local] = []
     var diags: [string] = []
-    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, native: opts.native, ext_owner: opts.ext_owner.clone(), ext_field: opts.ext_field.clone(), cur_self_si: 0 - 1, idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
+    var c = Checker{ fns: fns, structs: structs, enums: enums, variants: variants, globals: globals, aliases: aliases, fn_names: fn_names, fn_arity: fn_arity, fn_ret: fn_ret, fn_pstart: fn_pstart, fn_ptype: fn_ptype, fn_pqual: fn_pqual, fn_ptparam: fn_ptparam, fn_extern: fn_extern, fg_name: fg_name, fg_param: fg_param, fg_bound: fg_bound, struct_garity: struct_garity, struct_kind: struct_kind, sg_struct: sg_struct, sg_param: sg_param, sg_bound: sg_bound, simpl_struct: simpl_struct, simpl_iface: simpl_iface, newtypes: newtypes, newtype_base: newtype_base, sf_owner: sf_owner, sf_tparam: sf_tparam, sf_name: sf_name, sf_type: sf_type, sm_owner: sm_owner, sm_name: sm_name, sm_arity: sm_arity, sm_pstart: sm_pstart, sm_ptype: sm_ptype, sm_mutself: sm_mutself, sm_moveself: sm_moveself, sm_ret: sm_ret, ev_enum: ev_enum, ev_name: ev_name, ev_arity: ev_arity, ev_fstart: [], ev_ftype: [], ifaces: ifaces, im_iface: im_iface, im_name: im_name, im_arity: im_arity, im_ret: im_ret, tparams: tparams, current_return: TY_UNIT, self_is_var: false, loop_depth: 0, nursery_depth: 0, locals: locals, local_moved: [], local_frozen: [], local_consumed: [], loop_break_consumed: [], loop_saw_break: false, local_unbounded_tp: [], scope_depth: 0, diags: diags, cur_line: 0, cur_col: 0, cur_file: path, fn_dl: [], fn_dc: [], idx_on: idx_on, native: opts.native, ext_owner: opts.ext_owner.clone(), ext_field: opts.ext_field.clone(), cur_self_si: 0 - 1, slice_ro: [], slice_mut: [], idx_line: [], idx_col: [], idx_end: [], idx_kind: [], idx_type: [], idx_detail: [], idx_container: [], idx_doc: [], idx_dl: [], idx_dc: [], idx_dfile: [], idx_rfile: [] }
     c.register(decls)                    // pass 1: NAMES (so forward references resolve)
     c.register_types(decls)              // pass 1b: signatures, fields, variants (needs names registered)
     c.check_all(decls)                   // pass 2: bodies

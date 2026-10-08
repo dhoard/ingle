@@ -820,9 +820,9 @@ static Value em_fn_439(Value a0, Value a1);
 static Value em_fn_440(Value a0);
 static Value em_fn_441(Value a0, Value a1);
 static Value em_fn_442(Value a0, Value a1);
-static Value em_fn_443(Value a0, Value a1);
-static Value em_fn_444(Value a0);
-static Value em_fn_445(Value a0, Value a1);
+static Value em_fn_443(Value a0);
+static Value em_fn_444(Value a0, Value a1);
+static Value em_fn_445(Value a0);
 static Value em_fn_446(Value a0, Value a1);
 static Value em_fn_447(Value a0, Value a1);
 static Value em_fn_448(Value a0, Value a1);
@@ -833,38 +833,39 @@ static Value em_fn_452(Value a0, Value a1);
 static Value em_fn_453(Value a0, Value a1);
 static Value em_fn_454(Value a0, Value a1);
 static Value em_fn_455(Value a0, Value a1);
-static Value em_fn_456(Value a0);
+static Value em_fn_456(Value a0, Value a1);
 static Value em_fn_457(Value a0);
 static Value em_fn_458(Value a0);
 static Value em_fn_459(Value a0);
-static Value em_fn_460(Value a0, Value a1, Value a2, Value a3, Value a4);
+static Value em_fn_460(Value a0);
 static Value em_fn_461(Value a0, Value a1, Value a2, Value a3, Value a4);
-static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a5);
-static Value em_fn_463(Value a0);
+static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4);
+static Value em_fn_463(Value a0, Value a1, Value a2, Value a3, Value a4, Value a5);
 static Value em_fn_464(Value a0);
 static Value em_fn_465(Value a0);
 static Value em_fn_466(Value a0);
 static Value em_fn_467(Value a0);
 static Value em_fn_468(Value a0);
-static Value em_fn_469(Value a0, Value a1);
-static Value em_fn_470(Value a0);
+static Value em_fn_469(Value a0);
+static Value em_fn_470(Value a0, Value a1);
 static Value em_fn_471(Value a0);
-static Value em_fn_472(void);
-static Value em_fn_473(Value a0);
+static Value em_fn_472(Value a0);
+static Value em_fn_473(void);
 static Value em_fn_474(Value a0);
 static Value em_fn_475(Value a0);
 static Value em_fn_476(Value a0);
-static Value em_fn_477(Value a0, Value a1);
-static Value em_fn_478(Value a0);
-static Value em_fn_479(Value a0, Value a1);
-static Value em_fn_480(Value a0);
-static Value em_fn_481(Value a0, Value a1);
-static Value em_fn_482(Value a0);
+static Value em_fn_477(Value a0);
+static Value em_fn_478(Value a0, Value a1);
+static Value em_fn_479(Value a0);
+static Value em_fn_480(Value a0, Value a1);
+static Value em_fn_481(Value a0);
+static Value em_fn_482(Value a0, Value a1);
 static Value em_fn_483(Value a0);
-static Value em_fn_484(Value a0, Value a1);
+static Value em_fn_484(Value a0);
 static Value em_fn_485(Value a0, Value a1);
-static Value em_fn_486(Value a0);
+static Value em_fn_486(Value a0, Value a1);
 static Value em_fn_487(Value a0);
+static Value em_fn_488(Value a0);
 
 Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
     (void)ctx; (void)slots;
@@ -2642,15 +2643,15 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 443: {
-            Value _r = em_fn_443(slots[0], slots[1]);
+            Value _r = em_fn_443(slots[0]);
             return _r;
         }
         case 444: {
-            Value _r = em_fn_444(slots[0]);
+            Value _r = em_fn_444(slots[0], slots[1]);
             return _r;
         }
         case 445: {
-            Value _r = em_fn_445(slots[0], slots[1]);
+            Value _r = em_fn_445(slots[0]);
             return _r;
         }
         case 446: {
@@ -2694,7 +2695,7 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 456: {
-            Value _r = em_fn_456(slots[0]);
+            Value _r = em_fn_456(slots[0], slots[1]);
             return _r;
         }
         case 457: {
@@ -2710,7 +2711,7 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 460: {
-            Value _r = em_fn_460(slots[0], slots[1], slots[2], slots[3], slots[4]);
+            Value _r = em_fn_460(slots[0]);
             return _r;
         }
         case 461: {
@@ -2718,11 +2719,11 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 462: {
-            Value _r = em_fn_462(slots[0], slots[1], slots[2], slots[3], slots[4], slots[5]);
+            Value _r = em_fn_462(slots[0], slots[1], slots[2], slots[3], slots[4]);
             return _r;
         }
         case 463: {
-            Value _r = em_fn_463(slots[0]);
+            Value _r = em_fn_463(slots[0], slots[1], slots[2], slots[3], slots[4], slots[5]);
             return _r;
         }
         case 464: {
@@ -2746,11 +2747,11 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 469: {
-            Value _r = em_fn_469(slots[0], slots[1]);
+            Value _r = em_fn_469(slots[0]);
             return _r;
         }
         case 470: {
-            Value _r = em_fn_470(slots[0]);
+            Value _r = em_fn_470(slots[0], slots[1]);
             return _r;
         }
         case 471: {
@@ -2758,11 +2759,11 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 472: {
-            Value _r = em_fn_472();
+            Value _r = em_fn_472(slots[0]);
             return _r;
         }
         case 473: {
-            Value _r = em_fn_473(slots[0]);
+            Value _r = em_fn_473();
             return _r;
         }
         case 474: {
@@ -2778,27 +2779,27 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 477: {
-            Value _r = em_fn_477(slots[0], slots[1]);
+            Value _r = em_fn_477(slots[0]);
             return _r;
         }
         case 478: {
-            Value _r = em_fn_478(slots[0]);
+            Value _r = em_fn_478(slots[0], slots[1]);
             return _r;
         }
         case 479: {
-            Value _r = em_fn_479(slots[0], slots[1]);
+            Value _r = em_fn_479(slots[0]);
             return _r;
         }
         case 480: {
-            Value _r = em_fn_480(slots[0]);
+            Value _r = em_fn_480(slots[0], slots[1]);
             return _r;
         }
         case 481: {
-            Value _r = em_fn_481(slots[0], slots[1]);
+            Value _r = em_fn_481(slots[0]);
             return _r;
         }
         case 482: {
-            Value _r = em_fn_482(slots[0]);
+            Value _r = em_fn_482(slots[0], slots[1]);
             return _r;
         }
         case 483: {
@@ -2806,7 +2807,7 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 484: {
-            Value _r = em_fn_484(slots[0], slots[1]);
+            Value _r = em_fn_484(slots[0]);
             return _r;
         }
         case 485: {
@@ -2814,11 +2815,15 @@ Value em_invoke(EmberRt *ctx, int fn_index, Value *slots) {
             return _r;
         }
         case 486: {
-            Value _r = em_fn_486(slots[0]);
+            Value _r = em_fn_486(slots[0], slots[1]);
             return _r;
         }
         case 487: {
             Value _r = em_fn_487(slots[0]);
+            return _r;
+        }
+        case 488: {
+            Value _r = em_fn_488(slots[0]);
             return _r;
         }
         default: break;
@@ -2929,7 +2934,7 @@ static Value em_fn_5(Value a0) {
         if (em_truthy(INT_VAL((((int64_t)v1) >= AS_INT(em_array_len(a0))) ? 1 : 0))) {
             break;
         }
-        Value v2 = em_fn_487(own_into_slot(&g_em, em_index(&g_em, a0, INT_VAL((int64_t)v1))));
+        Value v2 = em_fn_488(own_into_slot(&g_em, em_index(&g_em, a0, INT_VAL((int64_t)v1))));
         int64_t v3 = (int64_t)AS_INT(INT_VAL(0LL));
         for (;;) {
             if (em_truthy(INT_VAL((((int64_t)v3) >= AS_INT(em_array_len(v2))) ? 1 : 0))) {
@@ -3129,7 +3134,7 @@ static Value em_fn_9(void) {
         }
     }
     Value v2 = em_fn_8(own_into_slot(&g_em, em_index(&g_em, v0, INT_VAL(0LL))));
-    (void)(em_fn_460(em_enum_field(&g_em, v2, 0), em_enum_field(&g_em, v2, 1), em_enum_field(&g_em, v2, 2), em_enum_field(&g_em, v2, 3), own_into_slot(&g_em, em_index(&g_em, v0, INT_VAL(0LL)))));
+    (void)(em_fn_461(em_enum_field(&g_em, v2, 0), em_enum_field(&g_em, v2, 1), em_enum_field(&g_em, v2, 2), em_enum_field(&g_em, v2, 3), own_into_slot(&g_em, em_index(&g_em, v0, INT_VAL(0LL)))));
     { Value v3 = INT_VAL(0LL);
         drop_value(&g_em, v2);
         drop_value(&g_em, v0);
@@ -3294,13 +3299,13 @@ static Value em_fn_12(Value a0, Value a1) {
         } else if (v2 == 5) {
             Value v10 = em_enum_field(&g_em, v1, 0);
             Value v11 = em_enum_field(&g_em, v1, 1);
-            (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_to_string(&g_em, v0, 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "Unary ", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_463(own_into_slot(&g_em, v10)), 0)));
+            (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_to_string(&g_em, v0, 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "Unary ", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_464(own_into_slot(&g_em, v10)), 0)));
             (void)(em_fn_12(own_into_slot(&g_em, em_enum_field(&g_em, v11, 0)), INT_VAL(em_i_add(AS_INT(a1), ((int64_t)1LL), 0))));
         } else if (v2 == 6) {
             Value v12 = em_enum_field(&g_em, v1, 0);
             Value v13 = em_enum_field(&g_em, v1, 1);
             Value v14 = em_enum_field(&g_em, v1, 2);
-            (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_to_string(&g_em, v0, 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "Binary ", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_463(own_into_slot(&g_em, v12)), 0)));
+            (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_to_string(&g_em, v0, 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "Binary ", 7); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_464(own_into_slot(&g_em, v12)), 0)));
             (void)(em_fn_12(own_into_slot(&g_em, em_enum_field(&g_em, v13, 0)), INT_VAL(em_i_add(AS_INT(a1), ((int64_t)1LL), 0))));
             (void)(em_fn_12(own_into_slot(&g_em, em_enum_field(&g_em, v14, 0)), INT_VAL(em_i_add(AS_INT(a1), ((int64_t)1LL), 0))));
         } else if (v2 == 7) {
@@ -5692,8 +5697,8 @@ static Value em_fn_64(Value a0) {
             Value v32 = ({ Value v33 = em_enum_field(&g_em, a0, 3); if (IS_OBJ(v33)) OBJ_RETAIN(AS_OBJ(v33)); v33; });
             int64_t v34 = (int64_t)AS_INT(em_enum_field(&g_em, a0, 4));
             Value v35 = em_fn_73(a0);
-            if (em_truthy(em_fn_471(em_fn_36(a0)))) {
-                { Value v36 = em_fn_65(a0, own_into_slot(&g_em, v35), INT_VAL((int64_t)v31), v32, INT_VAL((int64_t)v34), INT_VAL((int64_t)v25), INT_VAL((int64_t)v28), em_fn_473(em_fn_36(a0)));
+            if (em_truthy(em_fn_472(em_fn_36(a0)))) {
+                { Value v36 = em_fn_65(a0, own_into_slot(&g_em, v35), INT_VAL((int64_t)v31), v32, INT_VAL((int64_t)v34), INT_VAL((int64_t)v25), INT_VAL((int64_t)v28), em_fn_474(em_fn_36(a0)));
                     drop_value(&g_em, v35);
                     drop_value(&g_em, v0);
                     return v36;
@@ -5961,7 +5966,7 @@ static Value em_fn_70(Value a0) {
 }
 
 static Value em_fn_71(Value a0) {
-    if (em_truthy(em_fn_470(em_fn_36(a0)))) {
+    if (em_truthy(em_fn_471(em_fn_36(a0)))) {
         Value v0 = em_fn_75(a0);
         { Value v1 = em_struct(&g_em, 5, 8, INT_VAL(2LL), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_array(&g_em, 0, 0), em_array(&g_em, 1, 0, own_into_slot(&g_em, v0)), em_array(&g_em, 0, 0), em_array(&g_em, 0, 0), INT_VAL(0));
             drop_value(&g_em, v0);
@@ -6108,7 +6113,7 @@ static Value em_fn_73(Value a0) {
         int64_t v13 = (int64_t)AS_INT(({ Value v14 = em_fn_35(a0); Value v15 = em_enum_field(&g_em, v14, 2); if (IS_OBJ(v15)) OBJ_RETAIN(AS_OBJ(v15)); drop_value(&g_em, v14); v15; }));
         Value v16 = em_fn_74(a0, INT_VAL(1LL));
         if (em_truthy(v8)) {
-            { Value v17 = em_enum(&g_em, 1, 6, 3, em_fn_472(), em_struct(&g_em, 24, 3, own_into_slot(&g_em, v16), INT_VAL((int64_t)v10), INT_VAL((int64_t)v13)), em_struct(&g_em, 24, 3, em_enum(&g_em, 1, 0, 2, INT_VAL(1LL), INT_VAL(0LL)), INT_VAL((int64_t)v10), INT_VAL((int64_t)v13)));
+            { Value v17 = em_enum(&g_em, 1, 6, 3, em_fn_473(), em_struct(&g_em, 24, 3, own_into_slot(&g_em, v16), INT_VAL((int64_t)v10), INT_VAL((int64_t)v13)), em_struct(&g_em, 24, 3, em_enum(&g_em, 1, 0, 2, INT_VAL(1LL), INT_VAL(0LL)), INT_VAL((int64_t)v10), INT_VAL((int64_t)v13)));
                 drop_value(&g_em, v16);
                 v16 = v17;
             }
@@ -6644,7 +6649,7 @@ static Value em_fn_81(Value a0) {
 }
 
 static Value em_fn_82(Value a0) {
-    Value v0 = em_struct(&g_em, 11, 7, em_fn_487(own_into_slot(&g_em, a0)), INT_VAL(0LL), own_into_slot(&g_em, a0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
+    Value v0 = em_struct(&g_em, 11, 7, em_fn_488(own_into_slot(&g_em, a0)), INT_VAL(0LL), own_into_slot(&g_em, a0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
     { Value v1 = em_fn_48(v0);
         drop_value(&g_em, v0);
         drop_value(&g_em, a0);
@@ -6656,7 +6661,7 @@ static Value em_fn_82(Value a0) {
 }
 
 static Value em_fn_83(Value a0) {
-    Value v0 = em_struct(&g_em, 11, 7, em_fn_487(own_into_slot(&g_em, a0)), INT_VAL(0LL), own_into_slot(&g_em, a0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
+    Value v0 = em_struct(&g_em, 11, 7, em_fn_488(own_into_slot(&g_em, a0)), INT_VAL(0LL), own_into_slot(&g_em, a0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
     Value v1 = em_fn_48(v0);
     { Value v2 = ({ Value v3 = em_enum_field(&g_em, v0, 5); if (IS_OBJ(v3)) OBJ_RETAIN(AS_OBJ(v3)); v3; });
         drop_value(&g_em, v1);
@@ -6683,7 +6688,7 @@ static Value em_fn_84(Value a0, Value a1) {
         }
         v1 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v1), ((int64_t)1LL), 0)));
     }
-    Value v3 = em_struct(&g_em, 11, 7, em_fn_487(own_into_slot(&g_em, v0)), INT_VAL(0LL), own_into_slot(&g_em, v0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
+    Value v3 = em_struct(&g_em, 11, 7, em_fn_488(own_into_slot(&g_em, v0)), INT_VAL(0LL), own_into_slot(&g_em, v0), INT_VAL(0), INT_VAL(0LL), INT_VAL(0), em_array(&g_em, 0, 0));
     (void)(em_fn_41(v3));
     { Value v4 = em_fn_73(v3);
         drop_value(&g_em, v3);
@@ -14674,7 +14679,7 @@ static Value em_fn_323(Value a0, Value a1) {
         } else if (v1 == 14) {
             Value v133 = em_enum_field(&g_em, v0, 0);
             Value v134 = em_enum_field(&g_em, v0, 1);
-            Value v135 = em_fn_451(v133, v134);
+            Value v135 = em_fn_452(v133, v134);
             Value v136 = em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "em_closure(&g_em, ", 18); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, em_enum_field(&g_em, a0, 45), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, em_array_len(v135), 0), 0);
             int64_t v137 = (int64_t)AS_INT(INT_VAL(0LL));
             for (;;) {
@@ -18107,7 +18112,7 @@ static Value em_fn_370(Value a0, Value a1, Value a2) {
                 if (em_truthy(INT_VAL((((int64_t)v8) >= ((int64_t)v1)) ? 1 : 0))) {
                     break;
                 }
-                v7 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v7), AS_INT(em_fn_458(own_into_slot(&g_em, em_index(&g_em, a2, INT_VAL((int64_t)v8))))), 0)));
+                v7 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v7), AS_INT(em_fn_459(own_into_slot(&g_em, em_index(&g_em, a2, INT_VAL((int64_t)v8))))), 0)));
                 v8 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v8), ((int64_t)1LL), 0)));
             }
             (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 52), INT_VAL((int64_t)v7)));
@@ -22543,7 +22548,7 @@ static Value em_fn_439(Value a0, Value a1) {
                 Value v4 = em_enum_field(&g_em, v2, 0);
                 if (em_truthy(em_enum_field(&g_em, v4, 4))) {
                     if (em_truthy(em_eq_op(&g_em, ({ Value v5 = em_enum_field(&g_em, v4, 12); if (IS_OBJ(v5)) OBJ_RETAIN(AS_OBJ(v5)); v5; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "c", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-                        (void)(em_fn_443(v4, INT_VAL((int64_t)v0)));
+                        (void)(em_fn_444(v4, INT_VAL((int64_t)v0)));
                     }
                     v0 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), ((int64_t)1LL), 0)));
                 }
@@ -22676,7 +22681,32 @@ static Value em_fn_442(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_443(Value a0, Value a1) {
+static Value em_fn_443(Value a0) {
+    {
+        Value v0 = a0;
+        int v1 = em_tag(v0);
+        if (v1 == 1) {
+            Value v2 = em_enum_field(&g_em, v0, 0);
+            Value v3 = em_enum_field(&g_em, v0, 1);
+            Value v4 = em_enum_field(&g_em, v0, 2);
+            if (em_truthy(INT_VAL((em_truthy(em_eq_op(&g_em, ({ Value v5 = v3; if (IS_OBJ(v5)) OBJ_RETAIN(AS_OBJ(v5)); v5; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "Slice", 5); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }))) && em_truthy(INT_VAL((AS_INT(em_array_len(v4)) == ((int64_t)1LL)) ? 1 : 0))) ? 1 : 0))) {
+                { Value v6 = em_fn_101(own_into_slot(&g_em, em_index(&g_em, v4, INT_VAL(0LL))));
+                    drop_value(&g_em, a0);
+                    return v6;
+                }
+            }
+        } else {
+        }
+    }
+    { Value v7 = INT_VAL(em_i_sub(((int64_t)0LL), ((int64_t)1LL), 0));
+        drop_value(&g_em, a0);
+        return v7;
+    }
+    drop_value(&g_em, a0);
+    return INT_VAL(0);
+}
+
+static Value em_fn_444(Value a0, Value a1) {
     Value v0 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "void", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
     if (em_truthy(INT_VAL((AS_INT(em_array_len(em_enum_field(&g_em, a0, 3))) > ((int64_t)0LL)) ? 1 : 0))) {
         { Value v1 = em_fn_440(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 3), INT_VAL(0LL))));
@@ -22686,54 +22716,89 @@ static Value em_fn_443(Value a0, Value a1) {
     }
     Value v2 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
     Value v3 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
-    int64_t v4 = (int64_t)AS_INT(INT_VAL(0LL));
+    Value v4 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
+    int64_t v5 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
-        if (em_truthy(INT_VAL((((int64_t)v4) >= AS_INT(em_array_len(em_enum_field(&g_em, a0, 2)))) ? 1 : 0))) {
+        if (em_truthy(INT_VAL((((int64_t)v5) >= AS_INT(em_array_len(em_enum_field(&g_em, a0, 2)))) ? 1 : 0))) {
             break;
         }
-        if (em_truthy(INT_VAL((((int64_t)v4) > ((int64_t)0LL)) ? 1 : 0))) {
-            { Value v5 = em_add(&g_em, own_into_slot(&g_em, v2), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
+        if (em_truthy(INT_VAL((((int64_t)v5) > ((int64_t)0LL)) ? 1 : 0))) {
+            { Value v6 = em_add(&g_em, own_into_slot(&g_em, v2), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
                 drop_value(&g_em, v2);
-                v2 = v5;
+                v2 = v6;
             }
-            { Value v6 = em_add(&g_em, own_into_slot(&g_em, v3), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
+            { Value v7 = em_add(&g_em, own_into_slot(&g_em, v3), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0);
                 drop_value(&g_em, v3);
-                v3 = v6;
+                v3 = v7;
             }
         }
-        { Value v7 = em_add(&g_em, own_into_slot(&g_em, v2), em_add(&g_em, em_add(&g_em, em_fn_440(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v4)), 3), INT_VAL(0LL)))), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " p", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v4), 0), 0), 0);
-            drop_value(&g_em, v2);
-            v2 = v7;
+        int64_t v8 = (int64_t)AS_INT(em_fn_443(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v5)), 3), INT_VAL(0LL)))));
+        if (em_truthy(INT_VAL((((int64_t)v8) >= ((int64_t)0LL)) ? 1 : 0))) {
+            Value v9 = em_fn_150(INT_VAL((int64_t)v8));
+            Value v10 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "const ", 6); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
+            if (em_truthy(INT_VAL((AS_INT(em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v5)), 0)) == ((int64_t)1LL)) ? 1 : 0))) {
+                { Value v11 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
+                    drop_value(&g_em, v10);
+                    v10 = v11;
+                }
+            }
+            { Value v12 = em_add(&g_em, own_into_slot(&g_em, v2), em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_to_string(&g_em, v10, 0), em_to_string(&g_em, v9, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " *p", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", int64_t p", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_len", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), 0);
+                drop_value(&g_em, v2);
+                v2 = v12;
+            }
+            { Value v13 = em_add(&g_em, own_into_slot(&g_em, v4), em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    if (p", 9); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_len < 0 || (p", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " == 0 && p", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_len > 0)) em_panic(\"", 21); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, em_enum_field(&g_em, a0, 0), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ": invalid buffer (negative length or NULL)\");\n", 46); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), 0);
+                drop_value(&g_em, v4);
+                v4 = v13;
+            }
+            { Value v14 = em_add(&g_em, own_into_slot(&g_em, v4), em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    ObjArray s", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " = { .obj = { .type = OBJ_ARRAY, .next = 0, .prev = 0, .home = 0, .refcount = 1, .size_class = -1 }, .length = (size_t)p", 120); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_len, .capacity = (size_t)p", 27); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_len, .elem_kind = ", 19); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, em_fn_203(INT_VAL((int64_t)v8)), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ", .elem_size = (uint8_t)sizeof(", 31); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v9, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "), .borrowed = 1, .elem_struct_id = -1, .data = (void *)p", 57); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " };\n", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), 0);
+                drop_value(&g_em, v4);
+                v4 = v14;
+            }
+            { Value v15 = em_add(&g_em, own_into_slot(&g_em, v3), em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "OBJ_VAL(&s", 10); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ".obj)", 5); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), 0);
+                drop_value(&g_em, v3);
+                v3 = v15;
+            }
+            drop_value(&g_em, v10);
+            drop_value(&g_em, v9);
+        } else {
+            { Value v16 = em_add(&g_em, own_into_slot(&g_em, v2), em_add(&g_em, em_add(&g_em, em_fn_440(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v5)), 3), INT_VAL(0LL)))), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " p", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0), 0);
+                drop_value(&g_em, v2);
+                v2 = v16;
+            }
+            { Value v17 = em_add(&g_em, own_into_slot(&g_em, v3), em_fn_441(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v5)), 3), INT_VAL(0LL))), em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "p", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v5), 0), 0)), 0);
+                drop_value(&g_em, v3);
+                v3 = v17;
+            }
         }
-        { Value v8 = em_add(&g_em, own_into_slot(&g_em, v3), em_fn_441(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 2), INT_VAL((int64_t)v4)), 3), INT_VAL(0LL))), em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "p", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, INT_VAL((int64_t)v4), 0), 0)), 0);
-            drop_value(&g_em, v3);
-            v3 = v8;
-        }
-        v4 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v4), ((int64_t)1LL), 0)));
+        v5 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v5), ((int64_t)1LL), 0)));
     }
-    if (em_truthy(em_eq_op(&g_em, ({ Value v9 = v2; if (IS_OBJ(v9)) OBJ_RETAIN(AS_OBJ(v9)); v9; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
-        { Value v10 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "void", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
+    if (em_truthy(em_eq_op(&g_em, ({ Value v18 = v2; if (IS_OBJ(v18)) OBJ_RETAIN(AS_OBJ(v18)); v18; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        { Value v19 = ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "void", 4); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
             drop_value(&g_em, v2);
-            v2 = v10;
+            v2 = v19;
         }
     }
     (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "__attribute__((visibility(\"default\"))) ", 39); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, v0, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, " ", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, em_enum_field(&g_em, a0, 0), 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v2, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ") {", 3); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
+    if (em_truthy(em_neq_op(&g_em, ({ Value v20 = v4; if (IS_OBJ(v20)) OBJ_RETAIN(AS_OBJ(v20)); v20; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
+        (void)(em_print(&g_em, v4));
+    }
     if (em_truthy(INT_VAL((AS_INT(em_array_len(em_enum_field(&g_em, a0, 3))) > ((int64_t)0LL)) ? 1 : 0))) {
-        Value v11 = em_fn_442(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 3), INT_VAL(0LL))), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "r", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }));
+        Value v21 = em_fn_442(own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, a0, 3), INT_VAL(0LL))), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "r", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }));
         (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    Value r = em_fn_", 20); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, a1, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v3, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ");", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
-        (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    return ", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, v11, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ";", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
-        drop_value(&g_em, v11);
+        (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    return ", 11); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, v21, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ";", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
+        drop_value(&g_em, v21);
     } else {
         (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    (void)em_fn_", 16); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, a1, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "(", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_to_string(&g_em, v3, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ");", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
     }
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "}", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
+    drop_value(&g_em, v4);
     drop_value(&g_em, v3);
     drop_value(&g_em, v2);
     drop_value(&g_em, v0);
     return INT_VAL(0);
 }
 
-static Value em_fn_444(Value a0) {
+static Value em_fn_445(Value a0) {
     int64_t v0 = (int64_t)AS_INT(INT_VAL(0LL));
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
@@ -22777,7 +22842,7 @@ static Value em_fn_444(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_445(Value a0, Value a1) {
+static Value em_fn_446(Value a0, Value a1) {
     int64_t v0 = (int64_t)AS_INT(em_array_len(em_enum_field(&g_em, a0, 0)));
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)0LL)) ? 1 : 0))) {
         return INT_VAL(0);
@@ -22906,7 +22971,7 @@ static Value em_fn_445(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_446(Value a0, Value a1) {
+static Value em_fn_447(Value a0, Value a1) {
     if (em_truthy(INT_VAL((AS_INT(em_fn_167(em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, a1))) >= ((int64_t)0LL)) ? 1 : 0))) {
         { Value v0 = INT_VAL(0);
             drop_value(&g_em, a1);
@@ -22924,42 +22989,42 @@ static Value em_fn_446(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_447(Value a0, Value a1) {
+static Value em_fn_448(Value a0, Value a1) {
     {
         Value v0 = a1;
         int v1 = em_tag(v0);
         if (v1 == 4) {
             Value v2 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_446(a0, own_into_slot(&g_em, v2)));
+            (void)(em_fn_447(a0, own_into_slot(&g_em, v2)));
         } else if (v1 == 5) {
             Value v3 = em_enum_field(&g_em, v0, 0);
             Value v4 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v4, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v4, 0))));
         } else if (v1 == 6) {
             Value v5 = em_enum_field(&g_em, v0, 0);
             Value v6 = em_enum_field(&g_em, v0, 1);
             Value v7 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v6, 0))));
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v7, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v6, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v7, 0))));
         } else if (v1 == 7) {
             Value v8 = em_enum_field(&g_em, v0, 0);
             Value v9 = em_enum_field(&g_em, v0, 1);
             Value v10 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v8, 0))));
-            (void)(em_fn_448(a0, v9));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v8, 0))));
+            (void)(em_fn_449(a0, v9));
         } else if (v1 == 8) {
             Value v11 = em_enum_field(&g_em, v0, 0);
             Value v12 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
         } else if (v1 == 9) {
             Value v13 = em_enum_field(&g_em, v0, 0);
             Value v14 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v14, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v14, 0))));
         } else if (v1 == 10) {
             Value v15 = em_enum_field(&g_em, v0, 0);
             Value v16 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_448(a0, v15));
+            (void)(em_fn_449(a0, v15));
         } else if (v1 == 11) {
             Value v17 = em_enum_field(&g_em, v0, 0);
             Value v18 = em_enum_field(&g_em, v0, 1);
@@ -22968,17 +23033,17 @@ static Value em_fn_447(Value a0, Value a1) {
                 if (em_truthy(INT_VAL((((int64_t)v19) >= AS_INT(em_array_len(v18))) ? 1 : 0))) {
                     break;
                 }
-                (void)(em_fn_447(a0, own_into_slot(&g_em, ({ Value v20 = em_index(&g_em, v18, INT_VAL((int64_t)v19)); Value v21 = em_enum_field(&g_em, v20, 1); if (IS_OBJ(v21)) OBJ_RETAIN(AS_OBJ(v21)); drop_value(&g_em, v20); v21; }))));
+                (void)(em_fn_448(a0, own_into_slot(&g_em, ({ Value v20 = em_index(&g_em, v18, INT_VAL((int64_t)v19)); Value v21 = em_enum_field(&g_em, v20, 1); if (IS_OBJ(v21)) OBJ_RETAIN(AS_OBJ(v21)); drop_value(&g_em, v20); v21; }))));
                 v19 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v19), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 12) {
             Value v22 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v22, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v22, 0))));
         } else if (v1 == 13) {
             Value v23 = em_enum_field(&g_em, v0, 0);
             Value v24 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v24, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v24, 0))));
         } else if (v1 == 3) {
             Value v25 = em_enum_field(&g_em, v0, 0);
             int64_t v26 = (int64_t)AS_INT(INT_VAL(0LL));
@@ -22987,7 +23052,7 @@ static Value em_fn_447(Value a0, Value a1) {
                     break;
                 }
                 if (em_truthy(INT_VAL((AS_INT(em_array_len(em_enum_field(&g_em, em_index(&g_em, v25, INT_VAL((int64_t)v26)), 1))) > ((int64_t)0LL)) ? 1 : 0))) {
-                    (void)(em_fn_447(a0, own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, v25, INT_VAL((int64_t)v26)), 1), INT_VAL(0LL)))));
+                    (void)(em_fn_448(a0, own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, v25, INT_VAL((int64_t)v26)), 1), INT_VAL(0LL)))));
                 }
                 v26 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v26), ((int64_t)1LL), 0)));
             }
@@ -23003,7 +23068,7 @@ static Value em_fn_447(Value a0, Value a1) {
                 (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, em_enum_field(&g_em, em_index(&g_em, v27, INT_VAL((int64_t)v30)), 2))));
                 v30 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v30), ((int64_t)1LL), 0)));
             }
-            (void)(em_fn_450(a0, v28));
+            (void)(em_fn_451(a0, v28));
             em_set_field(&g_em, a0, 0, ({ Value v31 = v29; v29 = INT_VAL(0); v31; }));
             drop_value(&g_em, v29);
         } else {
@@ -23013,19 +23078,19 @@ static Value em_fn_447(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_448(Value a0, Value a1) {
+static Value em_fn_449(Value a0, Value a1) {
     int64_t v0 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
         if (em_truthy(INT_VAL((((int64_t)v0) >= AS_INT(em_array_len(a1))) ? 1 : 0))) {
             break;
         }
-        (void)(em_fn_447(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v0)))));
+        (void)(em_fn_448(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v0)))));
         v0 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), ((int64_t)1LL), 0)));
     }
     return INT_VAL(0);
 }
 
-static Value em_fn_449(Value a0, Value a1) {
+static Value em_fn_450(Value a0, Value a1) {
     {
         Value v0 = a1;
         int v1 = em_tag(v0);
@@ -23036,29 +23101,29 @@ static Value em_fn_449(Value a0, Value a1) {
             Value v5 = em_enum_field(&g_em, v0, 3);
             Value v6 = em_enum_field(&g_em, v0, 4);
             Value v7 = em_enum_field(&g_em, v0, 5);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
             (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, v3)));
         } else if (v1 == 1) {
             Value v8 = em_enum_field(&g_em, v0, 0);
             Value v9 = em_enum_field(&g_em, v0, 1);
             if (em_truthy(INT_VAL((AS_INT(em_array_len(v8)) > ((int64_t)0LL)) ? 1 : 0))) {
-                (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, em_index(&g_em, v8, INT_VAL(0LL)), 0))));
+                (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, em_index(&g_em, v8, INT_VAL(0LL)), 0))));
             }
         } else if (v1 == 2) {
             Value v10 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v10, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v10, 0))));
         } else if (v1 == 3) {
             Value v11 = em_enum_field(&g_em, v0, 0);
             Value v12 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v12, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v12, 0))));
         } else if (v1 == 4) {
             Value v13 = em_enum_field(&g_em, v0, 0);
             Value v14 = em_enum_field(&g_em, v0, 1);
             Value v15 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
-            (void)(em_fn_450(a0, v14));
-            (void)(em_fn_450(a0, v15));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
+            (void)(em_fn_451(a0, v14));
+            (void)(em_fn_451(a0, v15));
         } else if (v1 == 5) {
             Value v16 = em_enum_field(&g_em, v0, 0);
             Value v17 = em_enum_field(&g_em, v0, 1);
@@ -23066,22 +23131,22 @@ static Value em_fn_449(Value a0, Value a1) {
             Value v19 = em_enum_field(&g_em, v0, 3);
             Value v20 = em_enum_field(&g_em, v0, 4);
             Value v21 = em_enum_field(&g_em, v0, 5);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v18, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v18, 0))));
             Value v22 = em_fn_168(em_enum_field(&g_em, a0, 0));
             (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, v16)));
             if (em_truthy(em_neq_op(&g_em, ({ Value v23 = v17; if (IS_OBJ(v23)) OBJ_RETAIN(AS_OBJ(v23)); v23; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
                 (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, v17)));
             }
-            (void)(em_fn_450(a0, v19));
+            (void)(em_fn_451(a0, v19));
             em_set_field(&g_em, a0, 0, ({ Value v24 = v22; v22 = INT_VAL(0); v24; }));
             drop_value(&g_em, v22);
         } else if (v1 == 6) {
             Value v25 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_450(a0, v25));
+            (void)(em_fn_451(a0, v25));
         } else if (v1 == 9) {
             Value v26 = em_enum_field(&g_em, v0, 0);
             Value v27 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v26, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v26, 0))));
             int64_t v28 = (int64_t)AS_INT(INT_VAL(0LL));
             for (;;) {
                 if (em_truthy(INT_VAL((((int64_t)v28) >= AS_INT(em_array_len(v27))) ? 1 : 0))) {
@@ -23096,21 +23161,21 @@ static Value em_fn_449(Value a0, Value a1) {
                     (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_enum_field(&g_em, em_index(&g_em, v27, INT_VAL((int64_t)v28)), 0), 3), INT_VAL((int64_t)v30)))));
                     v30 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v30), ((int64_t)1LL), 0)));
                 }
-                (void)(em_fn_450(a0, em_enum_field(&g_em, em_index(&g_em, v27, INT_VAL((int64_t)v28)), 2)));
+                (void)(em_fn_451(a0, em_enum_field(&g_em, em_index(&g_em, v27, INT_VAL((int64_t)v28)), 2)));
                 em_set_field(&g_em, a0, 0, ({ Value v31 = v29; v29 = INT_VAL(0); v31; }));
                 v28 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v28), ((int64_t)1LL), 0)));
                 drop_value(&g_em, v29);
             }
         } else if (v1 == 12) {
             Value v32 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_450(a0, v32));
+            (void)(em_fn_451(a0, v32));
         } else if (v1 == 10) {
             Value v33 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_447(a0, own_into_slot(&g_em, em_enum_field(&g_em, v33, 0))));
+            (void)(em_fn_448(a0, own_into_slot(&g_em, em_enum_field(&g_em, v33, 0))));
         } else if (v1 == 11) {
             Value v34 = em_enum_field(&g_em, v0, 0);
             Value v35 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_450(a0, v34));
+            (void)(em_fn_451(a0, v34));
         } else {
         }
     }
@@ -23118,14 +23183,14 @@ static Value em_fn_449(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_450(Value a0, Value a1) {
+static Value em_fn_451(Value a0, Value a1) {
     Value v0 = em_fn_168(em_enum_field(&g_em, a0, 0));
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
         if (em_truthy(INT_VAL((((int64_t)v1) >= AS_INT(em_array_len(a1))) ? 1 : 0))) {
             break;
         }
-        (void)(em_fn_449(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v1)))));
+        (void)(em_fn_450(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v1)))));
         v1 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v1), ((int64_t)1LL), 0)));
     }
     em_set_field(&g_em, a0, 0, ({ Value v2 = v0; v0 = INT_VAL(0); v2; }));
@@ -23133,7 +23198,7 @@ static Value em_fn_450(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_451(Value a0, Value a1) {
+static Value em_fn_452(Value a0, Value a1) {
     Value v0 = em_array(&g_em, 0, 0);
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
@@ -23144,7 +23209,7 @@ static Value em_fn_451(Value a0, Value a1) {
         v1 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v1), ((int64_t)1LL), 0)));
     }
     Value v2 = em_struct(&g_em, 20, 2, ({ Value v3 = v0; v0 = INT_VAL(0); v3; }), em_array(&g_em, 0, 0));
-    (void)(em_fn_450(v2, a1));
+    (void)(em_fn_451(v2, a1));
     { Value v4 = em_fn_168(em_enum_field(&g_em, v2, 1));
         drop_value(&g_em, v2);
         drop_value(&g_em, v0);
@@ -23155,7 +23220,7 @@ static Value em_fn_451(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_452(Value a0, Value a1) {
+static Value em_fn_453(Value a0, Value a1) {
     Value v0 = em_array(&g_em, 0, 0);
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
@@ -23181,42 +23246,42 @@ static Value em_fn_452(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_453(Value a0, Value a1) {
+static Value em_fn_454(Value a0, Value a1) {
     {
         Value v0 = a1;
         int v1 = em_tag(v0);
         if (v1 == 5) {
             Value v2 = em_enum_field(&g_em, v0, 0);
             Value v3 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v3, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v3, 0))));
         } else if (v1 == 6) {
             Value v4 = em_enum_field(&g_em, v0, 0);
             Value v5 = em_enum_field(&g_em, v0, 1);
             Value v6 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v6, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v6, 0))));
         } else if (v1 == 7) {
             Value v7 = em_enum_field(&g_em, v0, 0);
             Value v8 = em_enum_field(&g_em, v0, 1);
             Value v9 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v7, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v7, 0))));
             int64_t v10 = (int64_t)AS_INT(INT_VAL(0LL));
             for (;;) {
                 if (em_truthy(INT_VAL((((int64_t)v10) >= AS_INT(em_array_len(v8))) ? 1 : 0))) {
                     break;
                 }
-                (void)(em_fn_453(a0, own_into_slot(&g_em, em_index(&g_em, v8, INT_VAL((int64_t)v10)))));
+                (void)(em_fn_454(a0, own_into_slot(&g_em, em_index(&g_em, v8, INT_VAL((int64_t)v10)))));
                 v10 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v10), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 8) {
             Value v11 = em_enum_field(&g_em, v0, 0);
             Value v12 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
         } else if (v1 == 9) {
             Value v13 = em_enum_field(&g_em, v0, 0);
             Value v14 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v14, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v14, 0))));
         } else if (v1 == 10) {
             Value v15 = em_enum_field(&g_em, v0, 0);
             Value v16 = em_enum_field(&g_em, v0, 1);
@@ -23225,7 +23290,7 @@ static Value em_fn_453(Value a0, Value a1) {
                 if (em_truthy(INT_VAL((((int64_t)v17) >= AS_INT(em_array_len(v15))) ? 1 : 0))) {
                     break;
                 }
-                (void)(em_fn_453(a0, own_into_slot(&g_em, em_index(&g_em, v15, INT_VAL((int64_t)v17)))));
+                (void)(em_fn_454(a0, own_into_slot(&g_em, em_index(&g_em, v15, INT_VAL((int64_t)v17)))));
                 v17 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v17), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 11) {
@@ -23236,17 +23301,17 @@ static Value em_fn_453(Value a0, Value a1) {
                 if (em_truthy(INT_VAL((((int64_t)v20) >= AS_INT(em_array_len(v19))) ? 1 : 0))) {
                     break;
                 }
-                (void)(em_fn_453(a0, own_into_slot(&g_em, ({ Value v21 = em_index(&g_em, v19, INT_VAL((int64_t)v20)); Value v22 = em_enum_field(&g_em, v21, 1); if (IS_OBJ(v22)) OBJ_RETAIN(AS_OBJ(v22)); drop_value(&g_em, v21); v22; }))));
+                (void)(em_fn_454(a0, own_into_slot(&g_em, ({ Value v21 = em_index(&g_em, v19, INT_VAL((int64_t)v20)); Value v22 = em_enum_field(&g_em, v21, 1); if (IS_OBJ(v22)) OBJ_RETAIN(AS_OBJ(v22)); drop_value(&g_em, v21); v22; }))));
                 v20 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v20), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 12) {
             Value v23 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
         } else if (v1 == 13) {
             Value v24 = em_enum_field(&g_em, v0, 0);
             Value v25 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v24, 0))));
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v25, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v24, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v25, 0))));
         } else if (v1 == 3) {
             Value v26 = em_enum_field(&g_em, v0, 0);
             int64_t v27 = (int64_t)AS_INT(INT_VAL(0LL));
@@ -23255,15 +23320,15 @@ static Value em_fn_453(Value a0, Value a1) {
                     break;
                 }
                 if (em_truthy(INT_VAL((AS_INT(em_array_len(em_enum_field(&g_em, em_index(&g_em, v26, INT_VAL((int64_t)v27)), 1))) > ((int64_t)0LL)) ? 1 : 0))) {
-                    (void)(em_fn_453(a0, own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, v26, INT_VAL((int64_t)v27)), 1), INT_VAL(0LL)))));
+                    (void)(em_fn_454(a0, own_into_slot(&g_em, em_index(&g_em, em_enum_field(&g_em, em_index(&g_em, v26, INT_VAL((int64_t)v27)), 1), INT_VAL(0LL)))));
                 }
                 v27 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v27), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 14) {
             Value v28 = em_enum_field(&g_em, v0, 0);
             Value v29 = em_enum_field(&g_em, v0, 1);
-            Value v30 = em_fn_451(v28, v29);
-            Value v31 = em_fn_452(v30, v28);
+            Value v30 = em_fn_452(v28, v29);
+            Value v31 = em_fn_453(v30, v28);
             (void)(em_array_append(&g_em, em_enum_field(&g_em, a0, 0), em_struct(&g_em, 10, 14, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "<lambda>", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_array(&g_em, 0, 0), ({ Value v32 = v31; v31 = INT_VAL(0); v32; }), em_array(&g_em, 0, 0), INT_VAL(1), own_into_slot(&g_em, v29), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), em_array(&g_em, 0, 0), em_array(&g_em, 0, 4), INT_VAL(0LL), INT_VAL(0LL), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), INT_VAL(0))));
             drop_value(&g_em, v31);
             drop_value(&g_em, v30);
@@ -23274,7 +23339,7 @@ static Value em_fn_453(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_454(Value a0, Value a1) {
+static Value em_fn_455(Value a0, Value a1) {
     {
         Value v0 = a1;
         int v1 = em_tag(v0);
@@ -23285,28 +23350,28 @@ static Value em_fn_454(Value a0, Value a1) {
             Value v5 = em_enum_field(&g_em, v0, 3);
             Value v6 = em_enum_field(&g_em, v0, 4);
             Value v7 = em_enum_field(&g_em, v0, 5);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v5, 0))));
         } else if (v1 == 1) {
             Value v8 = em_enum_field(&g_em, v0, 0);
             Value v9 = em_enum_field(&g_em, v0, 1);
             if (em_truthy(INT_VAL((AS_INT(em_array_len(v8)) > ((int64_t)0LL)) ? 1 : 0))) {
-                (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, em_index(&g_em, v8, INT_VAL(0LL)), 0))));
+                (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, em_index(&g_em, v8, INT_VAL(0LL)), 0))));
             }
         } else if (v1 == 2) {
             Value v10 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v10, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v10, 0))));
         } else if (v1 == 3) {
             Value v11 = em_enum_field(&g_em, v0, 0);
             Value v12 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v12, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v11, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v12, 0))));
         } else if (v1 == 4) {
             Value v13 = em_enum_field(&g_em, v0, 0);
             Value v14 = em_enum_field(&g_em, v0, 1);
             Value v15 = em_enum_field(&g_em, v0, 2);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
-            (void)(em_fn_455(a0, v14));
-            (void)(em_fn_455(a0, v15));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v13, 0))));
+            (void)(em_fn_456(a0, v14));
+            (void)(em_fn_456(a0, v15));
         } else if (v1 == 5) {
             Value v16 = em_enum_field(&g_em, v0, 0);
             Value v17 = em_enum_field(&g_em, v0, 1);
@@ -23314,33 +23379,33 @@ static Value em_fn_454(Value a0, Value a1) {
             Value v19 = em_enum_field(&g_em, v0, 3);
             Value v20 = em_enum_field(&g_em, v0, 4);
             Value v21 = em_enum_field(&g_em, v0, 5);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v18, 0))));
-            (void)(em_fn_455(a0, v19));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v18, 0))));
+            (void)(em_fn_456(a0, v19));
         } else if (v1 == 6) {
             Value v22 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_455(a0, v22));
+            (void)(em_fn_456(a0, v22));
         } else if (v1 == 9) {
             Value v23 = em_enum_field(&g_em, v0, 0);
             Value v24 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v23, 0))));
             int64_t v25 = (int64_t)AS_INT(INT_VAL(0LL));
             for (;;) {
                 if (em_truthy(INT_VAL((((int64_t)v25) >= AS_INT(em_array_len(v24))) ? 1 : 0))) {
                     break;
                 }
-                (void)(em_fn_455(a0, em_enum_field(&g_em, em_index(&g_em, v24, INT_VAL((int64_t)v25)), 2)));
+                (void)(em_fn_456(a0, em_enum_field(&g_em, em_index(&g_em, v24, INT_VAL((int64_t)v25)), 2)));
                 v25 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v25), ((int64_t)1LL), 0)));
             }
         } else if (v1 == 12) {
             Value v26 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_455(a0, v26));
+            (void)(em_fn_456(a0, v26));
         } else if (v1 == 10) {
             Value v27 = em_enum_field(&g_em, v0, 0);
-            (void)(em_fn_453(a0, own_into_slot(&g_em, em_enum_field(&g_em, v27, 0))));
+            (void)(em_fn_454(a0, own_into_slot(&g_em, em_enum_field(&g_em, v27, 0))));
         } else if (v1 == 11) {
             Value v28 = em_enum_field(&g_em, v0, 0);
             Value v29 = em_enum_field(&g_em, v0, 1);
-            (void)(em_fn_455(a0, v28));
+            (void)(em_fn_456(a0, v28));
         } else {
         }
     }
@@ -23348,19 +23413,19 @@ static Value em_fn_454(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_455(Value a0, Value a1) {
+static Value em_fn_456(Value a0, Value a1) {
     int64_t v0 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
         if (em_truthy(INT_VAL((((int64_t)v0) >= AS_INT(em_array_len(a1))) ? 1 : 0))) {
             break;
         }
-        (void)(em_fn_454(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v0)))));
+        (void)(em_fn_455(a0, own_into_slot(&g_em, em_index(&g_em, a1, INT_VAL((int64_t)v0)))));
         v0 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), ((int64_t)1LL), 0)));
     }
     return INT_VAL(0);
 }
 
-static Value em_fn_456(Value a0) {
+static Value em_fn_457(Value a0) {
     Value v0 = em_struct(&g_em, 21, 1, em_array(&g_em, 0, 0));
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
@@ -23373,7 +23438,7 @@ static Value em_fn_456(Value a0) {
             if (v3 == 0) {
                 Value v4 = em_enum_field(&g_em, v2, 0);
                 if (em_truthy(em_enum_field(&g_em, v4, 4))) {
-                    (void)(em_fn_455(v0, em_enum_field(&g_em, v4, 5)));
+                    (void)(em_fn_456(v0, em_enum_field(&g_em, v4, 5)));
                 }
             } else if (v3 == 1) {
                 Value v5 = em_enum_field(&g_em, v2, 0);
@@ -23388,7 +23453,7 @@ static Value em_fn_456(Value a0) {
                         break;
                     }
                     if (em_truthy(em_enum_field(&g_em, em_index(&g_em, v9, INT_VAL((int64_t)v11)), 4))) {
-                        (void)(em_fn_455(v0, em_enum_field(&g_em, em_index(&g_em, v9, INT_VAL((int64_t)v11)), 5)));
+                        (void)(em_fn_456(v0, em_enum_field(&g_em, em_index(&g_em, v9, INT_VAL((int64_t)v11)), 5)));
                     }
                     v11 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v11), ((int64_t)1LL), 0)));
                 }
@@ -23405,9 +23470,9 @@ static Value em_fn_456(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_457(Value a0) {
+static Value em_fn_458(Value a0) {
     Value v0 = em_struct(&g_em, 21, 1, em_array(&g_em, 0, 0));
-    (void)(em_fn_455(v0, a0));
+    (void)(em_fn_456(v0, a0));
     { Value v1 = em_array_len(em_enum_field(&g_em, v0, 0));
         drop_value(&g_em, v0);
         return v1;
@@ -23416,9 +23481,9 @@ static Value em_fn_457(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_458(Value a0) {
+static Value em_fn_459(Value a0) {
     Value v0 = em_struct(&g_em, 21, 1, em_array(&g_em, 0, 0));
-    (void)(em_fn_453(v0, own_into_slot(&g_em, a0)));
+    (void)(em_fn_454(v0, own_into_slot(&g_em, a0)));
     { Value v1 = em_array_len(em_enum_field(&g_em, v0, 0));
         drop_value(&g_em, v0);
         drop_value(&g_em, a0);
@@ -23429,7 +23494,7 @@ static Value em_fn_458(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_459(Value a0) {
+static Value em_fn_460(Value a0) {
     Value v0 = em_array(&g_em, 0, 0);
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
@@ -23457,19 +23522,19 @@ static Value em_fn_459(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_460(Value a0, Value a1, Value a2, Value a3, Value a4) {
-    (void)(em_fn_462(a0, a1, a2, a3, own_into_slot(&g_em, a4), INT_VAL(0)));
-    drop_value(&g_em, a4);
-    return INT_VAL(0);
-}
-
 static Value em_fn_461(Value a0, Value a1, Value a2, Value a3, Value a4) {
-    (void)(em_fn_462(a0, a1, a2, a3, own_into_slot(&g_em, a4), INT_VAL(1)));
+    (void)(em_fn_463(a0, a1, a2, a3, own_into_slot(&g_em, a4), INT_VAL(0)));
     drop_value(&g_em, a4);
     return INT_VAL(0);
 }
 
-static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a5) {
+static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4) {
+    (void)(em_fn_463(a0, a1, a2, a3, own_into_slot(&g_em, a4), INT_VAL(1)));
+    drop_value(&g_em, a4);
+    return INT_VAL(0);
+}
+
+static Value em_fn_463(Value a0, Value a1, Value a2, Value a3, Value a4, Value a5) {
     int64_t v0 = (int64_t)AS_INT(em_fn_438(a0));
     Value v1 = em_fn_86(a0);
     Value v2 = em_fn_87(a0);
@@ -23477,7 +23542,7 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
     Value v4 = em_fn_94(a0);
     Value v5 = em_fn_89(a0);
     Value v6 = em_fn_206(a0);
-    Value v7 = em_struct(&g_em, 12, 16, ({ Value v8 = v2; v2 = INT_VAL(0); v8; }), ({ Value v9 = v3; v3 = INT_VAL(0); v9; }), ({ Value v10 = v4; v4 = INT_VAL(0); v10; }), ({ Value v11 = v5; v5 = INT_VAL(0); v11; }), own_into_slot(&g_em, a2), own_into_slot(&g_em, a3), em_fn_459(a0), em_fn_213(a0), em_fn_217(a0), ({ Value c13 = a0; Value c14 = em_fn_213(a0); Value c12 = em_fn_246(c13, c14); drop_value(&g_em, c14); c12; }), ({ Value c16 = a0; Value c17 = em_fn_213(a0); Value c15 = em_fn_91(c16, c17); drop_value(&g_em, c17); c15; }), em_fn_245(a0), em_fn_244(a0, v6), em_fn_154(a0, v6), em_fn_149(a0), em_fn_111(a0));
+    Value v7 = em_struct(&g_em, 12, 16, ({ Value v8 = v2; v2 = INT_VAL(0); v8; }), ({ Value v9 = v3; v3 = INT_VAL(0); v9; }), ({ Value v10 = v4; v4 = INT_VAL(0); v10; }), ({ Value v11 = v5; v5 = INT_VAL(0); v11; }), own_into_slot(&g_em, a2), own_into_slot(&g_em, a3), em_fn_460(a0), em_fn_213(a0), em_fn_217(a0), ({ Value c13 = a0; Value c14 = em_fn_213(a0); Value c12 = em_fn_246(c13, c14); drop_value(&g_em, c14); c12; }), ({ Value c16 = a0; Value c17 = em_fn_213(a0); Value c15 = em_fn_91(c16, c17); drop_value(&g_em, c17); c15; }), em_fn_245(a0), em_fn_244(a0, v6), em_fn_154(a0, v6), em_fn_149(a0), em_fn_111(a0));
     Value v18 = em_fn_108(a0);
     Value v19 = em_fn_117(a0);
     Value v20 = em_fn_121(a0);
@@ -23499,13 +23564,13 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
     Value v36 = em_fn_114(a0);
     Value v37 = em_fn_116(a0);
     Value v38 = em_fn_115(a0, v6);
-    Value v39 = em_fn_456(a0);
+    Value v39 = em_fn_457(a0);
     int64_t v40 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), AS_INT(em_array_len(em_enum_field(&g_em, v39, 0))), 0)));
     (void)(em_println(&g_em, em_add(&g_em, em_add(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "// Generated by `inglec --emit=c` from ", 39); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_to_string(&g_em, a4, 0), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ". Do not edit.", 14); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0)));
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "// The bytecode VM is the reference semantics; tests/native diffs the two.", 74); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "#include \"ember_rt.h\"", 21); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
-    (void)(em_fn_445(v6, v1));
+    (void)(em_fn_446(v6, v1));
     if (em_truthy(em_fn_98(a0))) {
         (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "_Thread_local EmberRt g_em;", 27); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
     } else {
@@ -23660,7 +23725,7 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
                         (void)(em_array_append(&g_em, v71, em_index(&g_em, v78, INT_VAL((int64_t)v79))));
                         v79 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v79), ((int64_t)1LL), 0)));
                     }
-                    v70 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v70), AS_INT(em_fn_457(em_enum_field(&g_em, v77, 5))), 0)));
+                    v70 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v70), AS_INT(em_fn_458(em_enum_field(&g_em, v77, 5))), 0)));
                     v69 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v69), ((int64_t)1LL), 0)));
                     if (em_truthy(INT_VAL((((int64_t)v69) < ((int64_t)v40)) ? 1 : 0))) {
                         (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
@@ -23690,7 +23755,7 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
                             (void)(em_array_append(&g_em, v71, em_index(&g_em, v88, INT_VAL((int64_t)v89))));
                             v89 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v89), ((int64_t)1LL), 0)));
                         }
-                        v70 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v70), AS_INT(em_fn_457(em_enum_field(&g_em, em_index(&g_em, v84, INT_VAL((int64_t)v87)), 5))), 0)));
+                        v70 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v70), AS_INT(em_fn_458(em_enum_field(&g_em, em_index(&g_em, v84, INT_VAL((int64_t)v87)), 5))), 0)));
                         v69 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v69), ((int64_t)1LL), 0)));
                         if (em_truthy(INT_VAL((((int64_t)v69) < ((int64_t)v40)) ? 1 : 0))) {
                             (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
@@ -23785,7 +23850,7 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
             return v100;
         }
     }
-    int64_t v101 = (int64_t)AS_INT(em_fn_444(a0));
+    int64_t v101 = (int64_t)AS_INT(em_fn_445(a0));
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "int main(int argc, char **argv) {", 33); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
     (void)(em_println(&g_em, ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "    em_argc = argc - 1; em_argv = argv + 1;", 43); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })));
     if (em_truthy(INT_VAL((AS_INT(em_array_len(em_enum_field(&g_em, v6, 0))) > ((int64_t)0LL)) ? 1 : 0))) {
@@ -23840,7 +23905,7 @@ static Value em_fn_462(Value a0, Value a1, Value a2, Value a3, Value a4, Value a
     return INT_VAL(0);
 }
 
-static Value em_fn_463(Value a0) {
+static Value em_fn_464(Value a0) {
     {
         Value v0 = a0;
         int v1 = em_tag(v0);
@@ -24245,7 +24310,7 @@ static Value em_fn_463(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_464(Value a0) {
+static Value em_fn_465(Value a0) {
     if (em_truthy(em_eq_op(&g_em, ({ Value v0 = a0; if (IS_OBJ(v0)) OBJ_RETAIN(AS_OBJ(v0)); v0; }), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "requires", 8); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; })))) {
         { Value v1 = ({ Value v2 = em_enum(&g_em, 4, 36, 0); if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; });
             drop_value(&g_em, a0);
@@ -24440,7 +24505,7 @@ static Value em_fn_464(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_465(Value a0) {
+static Value em_fn_466(Value a0) {
     {
         Value v0 = a0;
         int v1 = em_tag(v0);
@@ -24525,24 +24590,24 @@ static Value em_fn_465(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_466(Value a0) {
+static Value em_fn_467(Value a0) {
     return INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)48LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)57LL)) ? 1 : 0))) ? 1 : 0);
     return INT_VAL(0);
 }
 
-static Value em_fn_467(Value a0) {
+static Value em_fn_468(Value a0) {
     return INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)97LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)122LL)) ? 1 : 0))) ? 1 : 0)) || em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)65LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)90LL)) ? 1 : 0))) ? 1 : 0))) ? 1 : 0)) || em_truthy(INT_VAL((AS_INT(a0) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0);
     return INT_VAL(0);
 }
 
-static Value em_fn_468(Value a0) {
-    return INT_VAL((em_truthy(em_fn_467(a0)) || em_truthy(em_fn_466(a0))) ? 1 : 0);
+static Value em_fn_469(Value a0) {
+    return INT_VAL((em_truthy(em_fn_468(a0)) || em_truthy(em_fn_467(a0))) ? 1 : 0);
     return INT_VAL(0);
 }
 
-static Value em_fn_469(Value a0, Value a1) {
+static Value em_fn_470(Value a0, Value a1) {
     if (em_truthy(INT_VAL((AS_INT(a1) == ((int64_t)16LL)) ? 1 : 0))) {
-        return INT_VAL((em_truthy(INT_VAL((em_truthy(em_fn_466(a0)) || em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)97LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)102LL)) ? 1 : 0))) ? 1 : 0))) ? 1 : 0)) || em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)65LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)70LL)) ? 1 : 0))) ? 1 : 0))) ? 1 : 0);
+        return INT_VAL((em_truthy(INT_VAL((em_truthy(em_fn_467(a0)) || em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)97LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)102LL)) ? 1 : 0))) ? 1 : 0))) ? 1 : 0)) || em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)65LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)70LL)) ? 1 : 0))) ? 1 : 0))) ? 1 : 0);
     }
     if (em_truthy(INT_VAL((AS_INT(a1) == ((int64_t)8LL)) ? 1 : 0))) {
         return INT_VAL((em_truthy(INT_VAL((AS_INT(a0) >= ((int64_t)48LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(a0) <= ((int64_t)55LL)) ? 1 : 0))) ? 1 : 0);
@@ -24550,11 +24615,11 @@ static Value em_fn_469(Value a0, Value a1) {
     if (em_truthy(INT_VAL((AS_INT(a1) == ((int64_t)2LL)) ? 1 : 0))) {
         return INT_VAL((em_truthy(INT_VAL((AS_INT(a0) == ((int64_t)48LL)) ? 1 : 0)) || em_truthy(INT_VAL((AS_INT(a0) == ((int64_t)49LL)) ? 1 : 0))) ? 1 : 0);
     }
-    return em_fn_466(a0);
+    return em_fn_467(a0);
     return INT_VAL(0);
 }
 
-static Value em_fn_470(Value a0) {
+static Value em_fn_471(Value a0) {
     {
         Value v0 = a0;
         int v1 = em_tag(v0);
@@ -24599,7 +24664,7 @@ static Value em_fn_470(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_471(Value a0) {
+static Value em_fn_472(Value a0) {
     {
         Value v0 = a0;
         int v1 = em_tag(v0);
@@ -24654,12 +24719,12 @@ static Value em_fn_471(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_472(void) {
+static Value em_fn_473(void) {
     return em_enum(&g_em, 4, 57, 0);
     return INT_VAL(0);
 }
 
-static Value em_fn_473(Value a0) {
+static Value em_fn_474(Value a0) {
     {
         Value v0 = a0;
         int v1 = em_tag(v0);
@@ -24714,7 +24779,7 @@ static Value em_fn_473(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_474(Value a0) {
+static Value em_fn_475(Value a0) {
     if (em_truthy(INT_VAL((AS_INT(em_enum_field(&g_em, a0, 3)) >= AS_INT(em_enum_field(&g_em, a0, 2))) ? 1 : 0))) {
         return INT_VAL(0LL);
     }
@@ -24722,7 +24787,7 @@ static Value em_fn_474(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_475(Value a0) {
+static Value em_fn_476(Value a0) {
     if (em_truthy(INT_VAL((em_i_add(AS_INT(em_enum_field(&g_em, a0, 3)), ((int64_t)1LL), 0) >= AS_INT(em_enum_field(&g_em, a0, 2))) ? 1 : 0))) {
         return INT_VAL(0LL);
     }
@@ -24730,8 +24795,8 @@ static Value em_fn_475(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_476(Value a0) {
-    int64_t v0 = (int64_t)AS_INT(em_fn_474(a0));
+static Value em_fn_477(Value a0) {
+    int64_t v0 = (int64_t)AS_INT(em_fn_475(a0));
     em_set_field(&g_em, a0, 3, INT_VAL(em_i_add(AS_INT(em_enum_field(&g_em, a0, 3)), ((int64_t)1LL), 0)));
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)10LL)) ? 1 : 0))) {
         em_set_field(&g_em, a0, 4, INT_VAL(em_i_add(AS_INT(em_enum_field(&g_em, a0, 4)), ((int64_t)1LL), 0)));
@@ -24743,31 +24808,31 @@ static Value em_fn_476(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_477(Value a0, Value a1) {
-    if (em_truthy(INT_VAL((AS_INT(em_fn_474(a0)) == AS_INT(a1)) ? 1 : 0))) {
-        int64_t v0 = (int64_t)AS_INT(em_fn_476(a0));
+static Value em_fn_478(Value a0, Value a1) {
+    if (em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) == AS_INT(a1)) ? 1 : 0))) {
+        int64_t v0 = (int64_t)AS_INT(em_fn_477(a0));
         return INT_VAL(1);
     }
     return INT_VAL(0);
     return INT_VAL(0);
 }
 
-static Value em_fn_478(Value a0) {
+static Value em_fn_479(Value a0) {
     Value v0 = INT_VAL(0);
     for (;;) {
-        int64_t v1 = (int64_t)AS_INT(em_fn_474(a0));
+        int64_t v1 = (int64_t)AS_INT(em_fn_475(a0));
         if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)32LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)9LL)) ? 1 : 0))) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)13LL)) ? 1 : 0))) ? 1 : 0))) {
-            int64_t v2 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v2 = (int64_t)AS_INT(em_fn_477(a0));
         } else if (em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)10LL)) ? 1 : 0))) {
             v0 = INT_VAL(1);
-            int64_t v3 = (int64_t)AS_INT(em_fn_476(a0));
-        } else if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)47LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) == ((int64_t)47LL)) ? 1 : 0))) ? 1 : 0))) {
+            int64_t v3 = (int64_t)AS_INT(em_fn_477(a0));
+        } else if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v1) == ((int64_t)47LL)) ? 1 : 0)) && em_truthy(INT_VAL((AS_INT(em_fn_476(a0)) == ((int64_t)47LL)) ? 1 : 0))) ? 1 : 0))) {
             for (;;) {
-                int64_t v4 = (int64_t)AS_INT(em_fn_474(a0));
+                int64_t v4 = (int64_t)AS_INT(em_fn_475(a0));
                 if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v4) == ((int64_t)0LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v4) == ((int64_t)10LL)) ? 1 : 0))) ? 1 : 0))) {
                     break;
                 }
-                int64_t v5 = (int64_t)AS_INT(em_fn_476(a0));
+                int64_t v5 = (int64_t)AS_INT(em_fn_477(a0));
             }
         } else {
             break;
@@ -24777,9 +24842,9 @@ static Value em_fn_478(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_479(Value a0, Value a1) {
+static Value em_fn_480(Value a0, Value a1) {
     if (em_truthy(INT_VAL((AS_INT(a1) == ((int64_t)48LL)) ? 1 : 0))) {
-        int64_t v0 = (int64_t)AS_INT(em_fn_474(a0));
+        int64_t v0 = (int64_t)AS_INT(em_fn_475(a0));
         int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
         if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)120LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)88LL)) ? 1 : 0))) ? 1 : 0))) {
             v1 = (int64_t)AS_INT(INT_VAL(16LL));
@@ -24788,22 +24853,22 @@ static Value em_fn_479(Value a0, Value a1) {
         } else if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)98LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)66LL)) ? 1 : 0))) ? 1 : 0))) {
             v1 = (int64_t)AS_INT(INT_VAL(2LL));
         }
-        if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v1) != ((int64_t)0LL)) ? 1 : 0)) && em_truthy(em_fn_469(em_fn_475(a0), INT_VAL((int64_t)v1)))) ? 1 : 0))) {
-            int64_t v2 = (int64_t)AS_INT(em_fn_476(a0));
+        if (em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v1) != ((int64_t)0LL)) ? 1 : 0)) && em_truthy(em_fn_470(em_fn_476(a0), INT_VAL((int64_t)v1)))) ? 1 : 0))) {
+            int64_t v2 = (int64_t)AS_INT(em_fn_477(a0));
             for (;;) {
-                int64_t v3 = (int64_t)AS_INT(em_fn_474(a0));
-                if (em_truthy(INT_VAL((em_truthy(em_fn_469(INT_VAL((int64_t)v3), INT_VAL((int64_t)v1))) || em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
-                    int64_t v4 = (int64_t)AS_INT(em_fn_476(a0));
+                int64_t v3 = (int64_t)AS_INT(em_fn_475(a0));
+                if (em_truthy(INT_VAL((em_truthy(em_fn_470(INT_VAL((int64_t)v3), INT_VAL((int64_t)v1))) || em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
+                    int64_t v4 = (int64_t)AS_INT(em_fn_477(a0));
                 } else {
                     break;
                 }
             }
-            int64_t v5 = (int64_t)AS_INT(em_fn_474(a0));
-            if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v5) == ((int64_t)105LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v5) == ((int64_t)117LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_466(em_fn_475(a0)))) ? 1 : 0))) {
-                int64_t v6 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v5 = (int64_t)AS_INT(em_fn_475(a0));
+            if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v5) == ((int64_t)105LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v5) == ((int64_t)117LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_467(em_fn_476(a0)))) ? 1 : 0))) {
+                int64_t v6 = (int64_t)AS_INT(em_fn_477(a0));
                 for (;;) {
-                    if (em_truthy(em_fn_466(em_fn_474(a0)))) {
-                        int64_t v7 = (int64_t)AS_INT(em_fn_476(a0));
+                    if (em_truthy(em_fn_467(em_fn_475(a0)))) {
+                        int64_t v7 = (int64_t)AS_INT(em_fn_477(a0));
                     } else {
                         break;
                     }
@@ -24813,31 +24878,31 @@ static Value em_fn_479(Value a0, Value a1) {
         }
     }
     for (;;) {
-        int64_t v8 = (int64_t)AS_INT(em_fn_474(a0));
-        if (em_truthy(INT_VAL((em_truthy(em_fn_466(INT_VAL((int64_t)v8))) || em_truthy(INT_VAL((((int64_t)v8) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
-            int64_t v9 = (int64_t)AS_INT(em_fn_476(a0));
+        int64_t v8 = (int64_t)AS_INT(em_fn_475(a0));
+        if (em_truthy(INT_VAL((em_truthy(em_fn_467(INT_VAL((int64_t)v8))) || em_truthy(INT_VAL((((int64_t)v8) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
+            int64_t v9 = (int64_t)AS_INT(em_fn_477(a0));
         } else {
             break;
         }
     }
-    if (em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(em_fn_474(a0)) == ((int64_t)46LL)) ? 1 : 0)) && em_truthy(em_fn_466(em_fn_475(a0)))) ? 1 : 0))) {
-        int64_t v10 = (int64_t)AS_INT(em_fn_476(a0));
+    if (em_truthy(INT_VAL((em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) == ((int64_t)46LL)) ? 1 : 0)) && em_truthy(em_fn_467(em_fn_476(a0)))) ? 1 : 0))) {
+        int64_t v10 = (int64_t)AS_INT(em_fn_477(a0));
         for (;;) {
-            int64_t v11 = (int64_t)AS_INT(em_fn_474(a0));
-            if (em_truthy(INT_VAL((em_truthy(em_fn_466(INT_VAL((int64_t)v11))) || em_truthy(INT_VAL((((int64_t)v11) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
-                int64_t v12 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v11 = (int64_t)AS_INT(em_fn_475(a0));
+            if (em_truthy(INT_VAL((em_truthy(em_fn_467(INT_VAL((int64_t)v11))) || em_truthy(INT_VAL((((int64_t)v11) == ((int64_t)95LL)) ? 1 : 0))) ? 1 : 0))) {
+                int64_t v12 = (int64_t)AS_INT(em_fn_477(a0));
             } else {
                 break;
             }
         }
         return em_enum(&g_em, 4, 4, 0);
     }
-    int64_t v13 = (int64_t)AS_INT(em_fn_474(a0));
-    if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v13) == ((int64_t)105LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v13) == ((int64_t)117LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_466(em_fn_475(a0)))) ? 1 : 0))) {
-        int64_t v14 = (int64_t)AS_INT(em_fn_476(a0));
+    int64_t v13 = (int64_t)AS_INT(em_fn_475(a0));
+    if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(INT_VAL((((int64_t)v13) == ((int64_t)105LL)) ? 1 : 0)) || em_truthy(INT_VAL((((int64_t)v13) == ((int64_t)117LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_467(em_fn_476(a0)))) ? 1 : 0))) {
+        int64_t v14 = (int64_t)AS_INT(em_fn_477(a0));
         for (;;) {
-            if (em_truthy(em_fn_466(em_fn_474(a0)))) {
-                int64_t v15 = (int64_t)AS_INT(em_fn_476(a0));
+            if (em_truthy(em_fn_467(em_fn_475(a0)))) {
+                int64_t v15 = (int64_t)AS_INT(em_fn_477(a0));
             } else {
                 break;
             }
@@ -24847,12 +24912,12 @@ static Value em_fn_479(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_480(Value a0) {
+static Value em_fn_481(Value a0) {
     int64_t v0 = (int64_t)AS_INT(INT_VAL(0LL));
     int64_t v1 = (int64_t)AS_INT(INT_VAL(0LL));
     int64_t v2 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
-        int64_t v3 = (int64_t)AS_INT(em_fn_474(a0));
+        int64_t v3 = (int64_t)AS_INT(em_fn_475(a0));
         if (em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)0LL)) ? 1 : 0))) {
             if (em_truthy(INT_VAL((((int64_t)v0) > ((int64_t)0LL)) ? 1 : 0))) {
                 em_set_field(&g_em, a0, 8, INT_VAL((int64_t)v1));
@@ -24861,31 +24926,31 @@ static Value em_fn_480(Value a0) {
             return em_enum(&g_em, 4, 1, 0);
         }
         if (em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)92LL)) ? 1 : 0))) {
-            int64_t v4 = (int64_t)AS_INT(em_fn_476(a0));
-            if (em_truthy(INT_VAL((AS_INT(em_fn_474(a0)) != ((int64_t)0LL)) ? 1 : 0))) {
-                int64_t v5 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v4 = (int64_t)AS_INT(em_fn_477(a0));
+            if (em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) != ((int64_t)0LL)) ? 1 : 0))) {
+                int64_t v5 = (int64_t)AS_INT(em_fn_477(a0));
             }
         } else if (em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)34LL)) ? 1 : 0))) {
             if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)0LL)) ? 1 : 0))) {
-                int64_t v6 = (int64_t)AS_INT(em_fn_476(a0));
+                int64_t v6 = (int64_t)AS_INT(em_fn_477(a0));
                 return em_enum(&g_em, 4, 5, 0);
             }
-            int64_t v7 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v7 = (int64_t)AS_INT(em_fn_477(a0));
             for (;;) {
-                int64_t v8 = (int64_t)AS_INT(em_fn_474(a0));
+                int64_t v8 = (int64_t)AS_INT(em_fn_475(a0));
                 if (em_truthy(INT_VAL((((int64_t)v8) == ((int64_t)0LL)) ? 1 : 0))) {
                     return em_enum(&g_em, 4, 1, 0);
                 }
                 if (em_truthy(INT_VAL((((int64_t)v8) == ((int64_t)92LL)) ? 1 : 0))) {
-                    int64_t v9 = (int64_t)AS_INT(em_fn_476(a0));
-                    if (em_truthy(INT_VAL((AS_INT(em_fn_474(a0)) != ((int64_t)0LL)) ? 1 : 0))) {
-                        int64_t v10 = (int64_t)AS_INT(em_fn_476(a0));
+                    int64_t v9 = (int64_t)AS_INT(em_fn_477(a0));
+                    if (em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) != ((int64_t)0LL)) ? 1 : 0))) {
+                        int64_t v10 = (int64_t)AS_INT(em_fn_477(a0));
                     }
                 } else if (em_truthy(INT_VAL((((int64_t)v8) == ((int64_t)34LL)) ? 1 : 0))) {
-                    int64_t v11 = (int64_t)AS_INT(em_fn_476(a0));
+                    int64_t v11 = (int64_t)AS_INT(em_fn_477(a0));
                     break;
                 } else {
-                    int64_t v12 = (int64_t)AS_INT(em_fn_476(a0));
+                    int64_t v12 = (int64_t)AS_INT(em_fn_477(a0));
                 }
             }
         } else if (em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)123LL)) ? 1 : 0))) {
@@ -24894,37 +24959,37 @@ static Value em_fn_480(Value a0) {
                 v2 = (int64_t)AS_INT(em_enum_field(&g_em, a0, 5));
             }
             v0 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), ((int64_t)1LL), 0)));
-            int64_t v13 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v13 = (int64_t)AS_INT(em_fn_477(a0));
         } else if (em_truthy(INT_VAL((((int64_t)v3) == ((int64_t)125LL)) ? 1 : 0))) {
             if (em_truthy(INT_VAL((((int64_t)v0) > ((int64_t)0LL)) ? 1 : 0))) {
                 v0 = (int64_t)AS_INT(INT_VAL(em_i_sub(((int64_t)v0), ((int64_t)1LL), 0)));
             }
-            int64_t v14 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v14 = (int64_t)AS_INT(em_fn_477(a0));
         } else {
-            int64_t v15 = (int64_t)AS_INT(em_fn_476(a0));
+            int64_t v15 = (int64_t)AS_INT(em_fn_477(a0));
         }
     }
     return em_enum(&g_em, 4, 1, 0);
     return INT_VAL(0);
 }
 
-static Value em_fn_481(Value a0, Value a1) {
-    int64_t v0 = (int64_t)AS_INT(em_fn_476(a0));
-    if (em_truthy(em_fn_467(INT_VAL((int64_t)v0)))) {
+static Value em_fn_482(Value a0, Value a1) {
+    int64_t v0 = (int64_t)AS_INT(em_fn_477(a0));
+    if (em_truthy(em_fn_468(INT_VAL((int64_t)v0)))) {
         for (;;) {
-            if (em_truthy(em_fn_468(em_fn_474(a0)))) {
-                int64_t v1 = (int64_t)AS_INT(em_fn_476(a0));
+            if (em_truthy(em_fn_469(em_fn_475(a0)))) {
+                int64_t v1 = (int64_t)AS_INT(em_fn_477(a0));
             } else {
                 break;
             }
         }
-        return em_fn_464(em_native(&g_em, 22, 3, (Value[]){ em_enum_field(&g_em, a0, 0), a1, em_enum_field(&g_em, a0, 3) }));
+        return em_fn_465(em_native(&g_em, 22, 3, (Value[]){ em_enum_field(&g_em, a0, 0), a1, em_enum_field(&g_em, a0, 3) }));
     }
-    if (em_truthy(em_fn_466(INT_VAL((int64_t)v0)))) {
-        return em_fn_479(a0, INT_VAL((int64_t)v0));
+    if (em_truthy(em_fn_467(INT_VAL((int64_t)v0)))) {
+        return em_fn_480(a0, INT_VAL((int64_t)v0));
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)34LL)) ? 1 : 0))) {
-        return em_fn_480(a0);
+        return em_fn_481(a0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)40LL)) ? 1 : 0))) {
         return em_enum(&g_em, 4, 38, 0);
@@ -24954,31 +25019,31 @@ static Value em_fn_481(Value a0, Value a1) {
         return em_enum(&g_em, 4, 49, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)43LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 71, 0);
         }
         return em_enum(&g_em, 4, 57, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)42LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 73, 0);
         }
         return em_enum(&g_em, 4, 59, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)47LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 74, 0);
         }
         return em_enum(&g_em, 4, 60, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)37LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 75, 0);
         }
         return em_enum(&g_em, 4, 61, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)94LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 78, 0);
         }
         return em_enum(&g_em, 4, 67, 0);
@@ -24987,64 +25052,64 @@ static Value em_fn_481(Value a0, Value a1) {
         return em_enum(&g_em, 4, 68, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)46LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(46LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(46LL)))) {
             return em_enum(&g_em, 4, 46, 0);
         }
         return em_enum(&g_em, 4, 45, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)45LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(62LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(62LL)))) {
             return em_enum(&g_em, 4, 48, 0);
         }
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 72, 0);
         }
         return em_enum(&g_em, 4, 58, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)61LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 51, 0);
         }
         return em_enum(&g_em, 4, 50, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)33LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 52, 0);
         }
         return em_enum(&g_em, 4, 62, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)60LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(60LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(60LL)))) {
             return em_enum(&g_em, 4, 69, 0);
         }
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 54, 0);
         }
         return em_enum(&g_em, 4, 53, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)62LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(62LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(62LL)))) {
             return em_enum(&g_em, 4, 70, 0);
         }
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 56, 0);
         }
         return em_enum(&g_em, 4, 55, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)38LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(38LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(38LL)))) {
             return em_enum(&g_em, 4, 63, 0);
         }
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 76, 0);
         }
         return em_enum(&g_em, 4, 66, 0);
     }
     if (em_truthy(INT_VAL((((int64_t)v0) == ((int64_t)124LL)) ? 1 : 0))) {
-        if (em_truthy(em_fn_477(a0, INT_VAL(124LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(124LL)))) {
             return em_enum(&g_em, 4, 64, 0);
         }
-        if (em_truthy(em_fn_477(a0, INT_VAL(61LL)))) {
+        if (em_truthy(em_fn_478(a0, INT_VAL(61LL)))) {
             return em_enum(&g_em, 4, 77, 0);
         }
         return em_enum(&g_em, 4, 65, 0);
@@ -25053,22 +25118,22 @@ static Value em_fn_481(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_482(Value a0) {
+static Value em_fn_483(Value a0) {
     Value v0 = em_struct_array(&g_em, 0, 22);
     for (;;) {
-        Value v1 = em_fn_478(a0);
-        if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(v1) && em_truthy(INT_VAL((AS_INT(em_enum_field(&g_em, a0, 6)) == ((int64_t)0LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_465(own_into_slot(&g_em, em_enum_field(&g_em, a0, 7))))) ? 1 : 0))) {
+        Value v1 = em_fn_479(a0);
+        if (em_truthy(INT_VAL((em_truthy(INT_VAL((em_truthy(v1) && em_truthy(INT_VAL((AS_INT(em_enum_field(&g_em, a0, 6)) == ((int64_t)0LL)) ? 1 : 0))) ? 1 : 0)) && em_truthy(em_fn_466(own_into_slot(&g_em, em_enum_field(&g_em, a0, 7))))) ? 1 : 0))) {
             (void)(em_array_append(&g_em, v0, em_struct(&g_em, 22, 5, em_enum(&g_em, 4, 2, 0), em_enum_field(&g_em, a0, 4), em_enum_field(&g_em, a0, 5), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_enum_field(&g_em, a0, 3))));
             em_set_field(&g_em, a0, 7, em_enum(&g_em, 4, 2, 0));
         }
-        if (em_truthy(INT_VAL((AS_INT(em_fn_474(a0)) == ((int64_t)0LL)) ? 1 : 0))) {
+        if (em_truthy(INT_VAL((AS_INT(em_fn_475(a0)) == ((int64_t)0LL)) ? 1 : 0))) {
             (void)(em_array_append(&g_em, v0, em_struct(&g_em, 22, 5, em_enum(&g_em, 4, 0, 0), em_enum_field(&g_em, a0, 4), em_enum_field(&g_em, a0, 5), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "", 0); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), em_enum_field(&g_em, a0, 3))));
             break;
         }
         int64_t v2 = (int64_t)AS_INT(em_enum_field(&g_em, a0, 4));
         int64_t v3 = (int64_t)AS_INT(em_enum_field(&g_em, a0, 5));
         int64_t v4 = (int64_t)AS_INT(em_enum_field(&g_em, a0, 3));
-        Value v5 = em_fn_481(a0, INT_VAL((int64_t)v4));
+        Value v5 = em_fn_482(a0, INT_VAL((int64_t)v4));
         int64_t v6 = (int64_t)AS_INT(INT_VAL((int64_t)v2));
         int64_t v7 = (int64_t)AS_INT(INT_VAL((int64_t)v3));
         if (em_truthy(INT_VAL((AS_INT(em_enum_field(&g_em, a0, 8)) >= ((int64_t)0LL)) ? 1 : 0))) {
@@ -25106,7 +25171,7 @@ static Value em_fn_482(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_483(Value a0) {
+static Value em_fn_484(Value a0) {
     if (em_truthy(INT_VAL((AS_INT(a0) == ((int64_t)0LL)) ? 1 : 0))) {
         return ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "0", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; });
     }
@@ -25130,7 +25195,7 @@ static Value em_fn_483(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_484(Value a0, Value a1) {
+static Value em_fn_485(Value a0, Value a1) {
     Value v0 = own_into_slot(&g_em, a0);
     for (;;) {
         if (em_truthy(INT_VAL((AS_INT(em_str_len(v0)) >= AS_INT(a1)) ? 1 : 0))) {
@@ -25151,7 +25216,7 @@ static Value em_fn_484(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_485(Value a0, Value a1) {
+static Value em_fn_486(Value a0, Value a1) {
     Value v0 = own_into_slot(&g_em, a0);
     for (;;) {
         if (em_truthy(INT_VAL((AS_INT(em_str_len(v0)) >= AS_INT(a1)) ? 1 : 0))) {
@@ -25172,14 +25237,14 @@ static Value em_fn_485(Value a0, Value a1) {
     return INT_VAL(0);
 }
 
-static Value em_fn_486(Value a0) {
+static Value em_fn_487(Value a0) {
     int64_t v0 = (int64_t)AS_INT(INT_VAL(0LL));
     for (;;) {
         if (em_truthy(INT_VAL((((int64_t)v0) >= AS_INT(em_array_len(a0))) ? 1 : 0))) {
             break;
         }
         Value v1 = ({ Value v2 = em_index(&g_em, a0, INT_VAL((int64_t)v0)); if (IS_OBJ(v2)) OBJ_RETAIN(AS_OBJ(v2)); v2; });
-        Value v3 = em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_484(em_fn_483(em_enum_field(&g_em, v1, 1)), INT_VAL(4LL)), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ":", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_485(em_fn_483(em_enum_field(&g_em, v1, 2)), INT_VAL(3LL)), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "  ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_485(em_fn_463(own_into_slot(&g_em, em_enum_field(&g_em, v1, 0))), INT_VAL(10LL)), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "  ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), ({ Value v4 = own_into_slot(&g_em, em_enum_field(&g_em, v1, 3)); if (IS_OBJ(v4)) OBJ_RETAIN(AS_OBJ(v4)); v4; }), 0);
+        Value v3 = em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_add(&g_em, em_fn_485(em_fn_484(em_enum_field(&g_em, v1, 1)), INT_VAL(4LL)), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, ":", 1); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_486(em_fn_484(em_enum_field(&g_em, v1, 2)), INT_VAL(3LL)), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "  ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), em_fn_486(em_fn_464(own_into_slot(&g_em, em_enum_field(&g_em, v1, 0))), INT_VAL(10LL)), 0), ({ static Value _li; static char _ls; if (!_ls) { _ls = 1; _li = em_str(&g_em, "  ", 2); } if (IS_OBJ(_li)) OBJ_RETAIN(AS_OBJ(_li)); _li; }), 0), ({ Value v4 = own_into_slot(&g_em, em_enum_field(&g_em, v1, 3)); if (IS_OBJ(v4)) OBJ_RETAIN(AS_OBJ(v4)); v4; }), 0);
         (void)(em_println(&g_em, v3));
         v0 = (int64_t)AS_INT(INT_VAL(em_i_add(((int64_t)v0), ((int64_t)1LL), 0)));
         drop_value(&g_em, v3);
@@ -25188,9 +25253,9 @@ static Value em_fn_486(Value a0) {
     return INT_VAL(0);
 }
 
-static Value em_fn_487(Value a0) {
+static Value em_fn_488(Value a0) {
     Value v0 = em_struct(&g_em, 23, 10, own_into_slot(&g_em, a0), em_str_bytes(&g_em, a0), em_str_len(a0), INT_VAL(0LL), INT_VAL(1LL), INT_VAL(1LL), INT_VAL(0LL), em_enum(&g_em, 4, 2, 0), INT_VAL(em_i_sub(((int64_t)0LL), ((int64_t)1LL), 0)), INT_VAL(0LL));
-    { Value v1 = em_fn_482(v0);
+    { Value v1 = em_fn_483(v0);
         drop_value(&g_em, v0);
         drop_value(&g_em, a0);
         return v1;

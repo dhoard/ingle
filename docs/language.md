@@ -791,8 +791,27 @@ alive, its source array is **frozen** (you can't `append`, reassign, or move it 
 the view), and a slice **cannot escape** — it may be a parameter or a local, but never a return
 type, a struct field, or an array element. When you need to *keep* a sub-array, use the copying
 companion **`arr.slice(lo, hi)`**, which returns a fresh **owned `[T]`** you can return or store.
-(Returnable views and mutable/write-through slices are deliberately deferred — they need full
-lifetime inference; see the architecture notes.)
+**Writable slices — `mut s: Slice<T>`.** A slice taken as a `mut` *parameter* writes through to the array
+it views (no copy), which is how a function processes part of a buffer in place:
+
+```ember
+fn scale(mut s: Slice<f32>, g: f32) {
+    for i in 0..s.len() {
+        s[i] = s[i] * g
+    }
+}
+
+fn main() -> int {
+    var a: [f32] = [f32(1.0), f32(2.0), f32(3.0), f32(4.0)]
+    scale(a[1..3], f32(10.0))          // a is now [1, 20, 30, 4]
+    return 0
+}
+```
+
+Element writes are the only mutation — a slice can never grow or shrink — and the source must be a `var`
+(the usual `mut`-argument rule). Every other slice (a plain `Slice<T>` parameter, a `let w = a[i..j]`)
+stays read-only. Because a writable slice is still a parameter, it cannot escape, so no lifetime inference
+is needed. (Returnable views remain deliberately deferred — they would need it; see the architecture notes.)
 
 **Deep copy — `.clone()`.** Arrays and structs are **uniquely owned** (§memory model), so the
 compiler will not let you silently make a second owner of one. Reading an element of a struct array
@@ -1757,11 +1776,26 @@ float gain_sample(float x, float db);
 int main(void) { return gain_sample(0.5f, -6.0f) > 0.25f; }
 ```
 
-- **Signature.** Each parameter and the return must be a scalar — `i8`…`u64` and `int` (its C width:
+- **Signature.** Each parameter (other than a buffer, below) and the return must be a scalar — `i8`…`u64` and `int` (its C width:
   `int8_t`…`uint64_t`, `int64_t`), `f32`/`f64` (`float`/`double`), `bool` (`_Bool`) — or a `Ptr`
   (`void *`), or the function returns nothing (`void`). A `Ptr` may be taken `move` (C hands the handle's
   ownership to Ingle); every other parameter is plain. No generics (C cannot pick type arguments), and the
   name must be a free C symbol (not `main`, not `em_…`). The checker rejects anything else.
+- **Buffers.** A `Slice<number>` parameter crosses as a C pointer + length — `buf: Slice<f32>` is
+  `const float *buf, int64_t buf_len`, and `mut buf: Slice<f32>` is `float *buf, int64_t buf_len`, written in
+  place. Inside, it is an ordinary slice view of the caller's memory: no copy and no allocation (its header
+  lives on the call's stack), so it is usable from `realtime` code — the shape of an audio callback:
+
+  ```ember
+  export "c" realtime fn apply_gain(mut buf: Slice<f32>, gain: f32) {
+      for i in 0..buf.len() {
+          buf[i] = buf[i] * gain
+      }
+  }
+  ```
+  ```c
+  void apply_gain(float *buf, int64_t buf_len, float gain);   // C side
+  ```
 - **The library.** `--emit=lib -o lib.a` bundles your code *and* the Ingle runtime into one archive, so
   the C side links a single file plus `-lm`. Only the exports are visible symbols; everything else is
   hidden, and the code is position-independent, so the archive can go into a shared library or a plugin
