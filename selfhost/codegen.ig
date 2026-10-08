@@ -7554,6 +7554,10 @@ struct Chunk {
                     let fi = self.resolve_module_qualified(object, mname)
                     if fi >= 0 {
                         self.gen_user_call(fi, args, line, false, "", "")
+                    } else if cg_index_of(self.ext_names, mname) >= 0 {
+                        // a module-qualified EXTERN `m.sin(x)` (declared in an imported module, e.g. std/math):
+                        // the alias is inert — compile it exactly as the bare extern call `sin(x)`.
+                        self.gen_expr(ps.ECall(ps.Box<ps.Expr>{ value: ps.EIdent(mname), line: line, col: 0 }, args, arg_names), line)
                     } else {
                         cg_internal_error("unresolved module-qualified call `.{mname}` (OFI-218 P1)")
                     }

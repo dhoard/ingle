@@ -899,7 +899,7 @@ Value em_struct_array(EmberRt *ctx, int n, int struct_id, ...) {
 // element is a BORROW (the array keeps ownership). An INLINE-STRUCT element materialises a fresh
 // OWNED struct COPY, increfing its boxed sub-fields (a no-op for an all-scalar struct) — value
 // semantics; the caller drops it after transient use (an owning temp, OFI-027), mirroring OP_INDEX.
-Value em_index(EmberRt *ctx, Value arr, Value idx) {
+Value em_index_slow(EmberRt *ctx, Value arr, Value idx) {
     ObjArray *a = AS_ARRAY(arr);
     int64_t i = AS_INT(idx);
     if (i < 0 || (size_t)i >= a->length) {
@@ -933,7 +933,7 @@ Value em_index(EmberRt *ctx, Value arr, Value idx) {
 
 // em_set_index mutates element `i` in place (the VM's OP_SET_INDEX): a boxed element's
 // previous value is released before the new one overwrites it; a packed scalar is rewritten.
-void em_set_index(EmberRt *ctx, Value arr, Value idx, Value value) {
+void em_set_index_slow(EmberRt *ctx, Value arr, Value idx, Value value) {
     ObjArray *a = AS_ARRAY(arr);
     int64_t i = AS_INT(idx);
     if (i < 0 || (size_t)i >= a->length) {

@@ -422,6 +422,7 @@ struct FnResolve {
     fn_ret_elem_str: [bool]    // per-em_fn: does it return `[string]`? — so `let ns = f(); ns[i].len()` tracks the
                                // element as a boxed string. Carried HERE (not an emit_fn_body param) because the
                                // frozen stage-0 host caps functions at 32 params and emit_fn_body is already at 32. (OFI-173)
+    libm_direct: [bool]        // per declared extern: a pure libm fn declared with libm's exact signature → direct call
     ext_kinds: [string]        // per declared extern (parallel to build_extern_names): its C-boundary kinds, "<ret>:<params>"
                                // with v void / f float / p Ptr / i integer-or-bool — drives a DIRECT extern call (OFI-232)
 }
@@ -683,6 +684,58 @@ fn build_fn_ret_kinds(decls: [ps.Decl]) -> [int] {
 // (libm's tanhf, a kernel MMIO helper). Its boundary is scalar-or-Ptr (the checker enforces it), so each type
 // maps to one fixed C type — the forward declaration matches the C definition exactly (no UB).
 
+// is_libm_direct reports whether extern `f` is one of the hosted registry's pure libm functions DECLARED with
+// libm's exact signature (all `float`, i.e. C double): native code then calls libm directly instead of going
+// through em_ffi's Value marshalling — the registry wrapper calls the very same function, so the bits match,
+// and a hot DSP loop (`tanh` per sample) runs at C speed. A differently-typed declaration keeps em_ffi.
+fn is_libm_direct(f: ps.FnDecl) -> bool {
+    let n = f.name
+    let known = n == "sin" || n == "cos" || n == "tan" || n == "asin" || n == "acos" || n == "atan" || n == "atan2" || n == "exp" || n == "log" || n == "log2" || n == "log10" || n == "sinh" || n == "cosh" || n == "tanh" || n == "cbrt" || n == "trunc" || n == "hypot" || n == "fmod"
+    if known == false || f.ret.len() != 1 || ty_scalar_kind(f.ret[0]) != 9 {
+        return false
+    }
+    var p = 0
+    loop {
+        if p >= f.params.len() {
+            break
+        }
+        if ty_scalar_kind(f.params[p].ty[0]) != 9 {
+            return false
+        }
+        p = p + 1
+    }
+    return true
+}
+
+
+// build_libm_direct: per declared extern (parallel to build_extern_names), whether it lowers to direct libm.
+fn build_libm_direct(decls: [ps.Decl]) -> [bool] {
+    var out: [bool] = []
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DExtern(abi, fns) {
+                var e = 0
+                loop {
+                    if e >= fns.len() {
+                        break
+                    }
+                    out.append(is_libm_direct(fns[e]))
+                    e = e + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
 // direct_ctype is a direct-extern param/return's C type ("" for a type the boundary does not admit).
 fn direct_ctype(t: ps.Ty) -> string {
     let k = ty_scalar_kind(t)
@@ -764,6 +817,7 @@ fn build_extern_kinds(decls: [ps.Decl]) -> [string] {
 // through em_ffi and need none.
 fn emit_direct_extern_protos(decls: [ps.Decl]) {
     let profile = ffi_band_profile(build_extern_names(decls))
+    var done: [string] = []
     var i = 0
     loop {
         if i >= decls.len() {
@@ -776,7 +830,8 @@ fn emit_direct_extern_protos(decls: [ps.Decl]) {
                     if e >= fns.len() {
                         break
                     }
-                    if cgc_cextern_index(fns[e].name, profile) < 0 {
+                    if (cgc_cextern_index(fns[e].name, profile) < 0 || is_libm_direct(fns[e])) && index_of_str(done, fns[e].name) < 0 {
+                        done.append(fns[e].name)
                         var ret = "void"
                         if fns[e].ret.len() > 0 {
                             ret = direct_ctype(fns[e].ret[0])
@@ -7771,7 +7826,17 @@ struct CgcGen {
             case EIdent(name) {
                 let ck = numeric_typename_kind(name)
                 if ck >= 0 && args.len() == 1 {
-                    return "em_conv({self.emit_expr(args[0])}, {ck})"   // a numeric-width conversion `int(x)`
+                    // a numeric-width conversion `f32(x)` / `i32(n)`: when the argument's kind is known it lowers
+                    // INLINE (OFI-229 follow-on) — a float↔float width change is a C cast (em_conv's rounding), an
+                    // int↔int one keeps its range trap via em_i_conv; anything else keeps the em_conv call.
+                    let ak = self.scalar_kind_of(args[0])
+                    if (ck == 8 || ck == 9) && (ak == 8 || ak == 9) {
+                        return "FLOAT_VAL((double)(({scalar_ctype(ck)}){self.raw_scalar(args[0])}))"
+                    }
+                    if ck <= 7 && ak >= 0 && ak <= 7 {
+                        return "INT_VAL(em_i_conv({self.raw_scalar(args[0])}, {ck}))"
+                    }
+                    return "em_conv({self.emit_expr(args[0])}, {ck})"
                 }
                 // WRAPPING arithmetic intrinsics (OFI-041): wrapping_add/sub/mul(a, b) → em_wrap_<op>(a, b,
                 // num_kind) — modulo 2^width, no trap. The args are borrowed scalars; num_kind 0 (i64 subset).
@@ -7882,6 +7947,9 @@ struct CgcGen {
                 }
                 // extern "c" REGISTRY FFI call (sin / proc_run / http_post / …) — not a native builtin and not
                 // a user fn: dispatch through em_ffi + the in-tree registry (cextern.c), like the VM's CALL_C.
+                if self.fn_index(name) < 0 && self.extern_index(name) >= 0 && self.res.libm_direct[self.extern_index(name)] {
+                    return self.emit_direct_call(name, args)    // a pure libm fn — call it directly, not via em_ffi
+                }
                 if self.fn_index(name) < 0 && cgc_cextern_index(name, ffi_band_profile(self.extern_names)) >= 0 {
                     return self.emit_ffi_call(name, args)
                 }
@@ -7932,6 +8000,17 @@ struct CgcGen {
                 let mfi = self.qual_free_fi(object.value, mname, args.len())
                 if mfi >= 0 {
                     return self.emit_free_call(mfi, args)
+                }
+                // A module-qualified EXTERN `m.sin(x)` (an `extern "c"` fn declared in an imported module, e.g.
+                // std/math): the alias is inert — lower it exactly like the bare `sin(x)` (registry or direct).
+                match object.value {
+                    case EIdent(qalias) {
+                        if self.lookup_cname(qalias) == "" && self.fn_index(mname) < 0 && self.extern_index(mname) >= 0 {
+                            return self.emit_call(ps.EIdent(mname), args, arg_names)
+                        }
+                    }
+                    case _ {
+                    }
                 }
                 // A built-in STRING method (a string receiver — a param / literal / owned local). `.len()`
                 // is em_str_len (NO ctx); `.bytes()`/`.chars()` return fresh OWNED arrays (em_str_bytes → [u8],
@@ -12898,7 +12977,7 @@ fn emit_program_mode(decls: [ps.Decl], decl_mods: [string], imp_alias: [string],
     let fn_ret_gopt = build_fn_ret_gopt(decls)           // per-em_fn: returns a generic Option/Result (erased-payload own_into_slot)
     let fn_param_quals = build_fn_param_quals(decls)     // per-em_fn declared param qualifiers (honour `move` at call sites)
     let stab = build_struct_tab(decls)
-    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab), fn_ret_elem_str: build_fn_ret_elem_str(decls), ext_kinds: build_extern_kinds(decls) }
+    let fnres = FnResolve { param_counts: fn_param_counts, modules: fn_modules, ret_gopt: fn_ret_gopt, param_quals: fn_param_quals, imp_alias: imp_alias, imp_path: imp_path, newtypes: build_newtypes(decls), itab: build_iface_tab(decls), wit: build_fn_witness(decls), ret_iface: build_fn_ret_iface(decls, build_iface_tab(decls)), param_iface: build_fn_param_iface(decls, build_iface_tab(decls)), ret_ok_str: build_fn_ret_ok_str(decls), ret_ok_struct: build_fn_ret_ok_struct(decls, stab), mut_self_value: build_fn_mut_self_value(decls, stab), fn_ret_elem_str: build_fn_ret_elem_str(decls), ext_kinds: build_extern_kinds(decls), libm_direct: build_libm_direct(decls) }
     let fn_ret_kind = build_fn_ret_kinds(decls)
     let fn_ret_render = build_fn_ret_render(decls)
     let fn_ret_opt_param = build_ret_opt_param(decls)   // per-method Option/Result generic-payload param index

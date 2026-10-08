@@ -602,6 +602,13 @@ in Ingle over a minimal native base, in a file, and `import` it like any other m
   data (entity tables, retained UI nodes, object pools) that [the manifesto](https://github.com/ingle-lang/ingle/blob/main/MANIFESTO.md)
   promises in place of escalating a borrow checker.
 
+- **`std/math`** — the C maths library, callable from [`realtime`](#realtime-functions--proven-allocation-free-runs-checked-on-every-path)
+  code: `sin cos tan asin acos atan atan2 exp log log2 log10 sinh cosh tanh cbrt trunc hypot fmod` on
+  `float` (libm itself — native code calls it directly, the VM through the FFI registry), `f32` forms
+  `sinf cosf tanf tanhf expf logf sqrtf powf atan2f` (computed in f64 and rounded once, so they give the
+  same bits on every backend), constants `PI TAU E`, and `clamp`/`clampf`, `lerp`/`lerpf`,
+  `db_to_gain`/`gain_to_db`. `import "std/math" as m` then `m.tanhf(x)`.
+
 **Also in `std/` (opt-in, application support).** Beyond the core collections above, the standard
 library ships modules a real 2026 program reaches for, each ordinary Ingle pulled in with `import`:
 **`std/json`** (parse/emit), **`std/markdown`** and **`std/highlight`** (Markdown rendering and

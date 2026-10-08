@@ -276,8 +276,11 @@ static inline Value em_hash_any(Value v) {
 // on read, a move-in on append).
 Value          em_array(EmberRt *ctx, int n, int elem_kind, ...);
 Value          em_struct_array(EmberRt *ctx, int n, int struct_id, ...);
-Value          em_index(EmberRt *ctx, Value arr, Value idx);
-void           em_set_index(EmberRt *ctx, Value arr, Value idx, Value value);
+// em_index / em_set_index are INLINE (defined at the end of this header): a packed scalar element is read or
+// written in place; an inline-struct or boxed element takes the out-of-line *_slow path (copy / clone /
+// release semantics). The fast path is what lets a per-sample DSP loop run at C speed (OFI-229 follow-on).
+Value          em_index_slow(EmberRt *ctx, Value arr, Value idx);
+void           em_set_index_slow(EmberRt *ctx, Value arr, Value idx, Value value);
 Value          em_array_append(EmberRt *ctx, Value arr, Value value);
 
 static inline Value em_array_len(Value arr) {
@@ -560,6 +563,15 @@ static inline int64_t em_i_div(int64_t x, int64_t y, int nk) {
     return x / y;
 }
 
+// em_i_conv is em_conv's integer branch on a raw int64_t (a width conversion `i32(n)`), trapping when the value
+// leaves the target width exactly as em_conv does (u64, kind 7, reinterprets the bits).
+static inline int64_t em_i_conv(int64_t i, int nk) {
+    if (nk != 7 && (i < EM_NK_MIN[nk] || i > EM_NK_MAX[nk])) {
+        em_panic("value out of range for the target integer type");
+    }
+    return i;
+}
+
 static inline int64_t em_i_mod(int64_t x, int64_t y, int nk) {
     if (y == 0) em_panic("modulo by zero");
     if (nk == 7) return (int64_t)((uint64_t)x % (uint64_t)y);
@@ -731,6 +743,31 @@ static inline Value array_box(const ObjArray *a, size_t i) {
 
 static inline void array_unbox(ObjArray *a, size_t i, Value v) {
     value_unbox((unsigned char *)a->data + i * a->elem_size, a->elem_kind, v);
+}
+
+static inline Value em_index(EmberRt *ctx, Value arr, Value idx) {
+    ObjArray *a = AS_ARRAY(arr);
+    if (a->elem_kind == AEK_BOXED || a->elem_kind == AEK_INLINE_STRUCT) {
+        return em_index_slow(ctx, arr, idx);
+    }
+    int64_t i = AS_INT(idx);
+    if (i < 0 || (size_t)i >= a->length) {
+        em_panic("array index out of bounds");
+    }
+    return array_box(a, (size_t)i);
+}
+
+static inline void em_set_index(EmberRt *ctx, Value arr, Value idx, Value value) {
+    ObjArray *a = AS_ARRAY(arr);
+    if (a->elem_kind == AEK_BOXED || a->elem_kind == AEK_INLINE_STRUCT) {
+        em_set_index_slow(ctx, arr, idx, value);
+        return;
+    }
+    int64_t i = AS_INT(idx);
+    if (i < 0 || (size_t)i >= a->length) {
+        em_panic("array index out of bounds");
+    }
+    array_unbox(a, (size_t)i, value);
 }
 
 #endif // EMBER_RT_H
