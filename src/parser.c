@@ -613,7 +613,15 @@ static Expr *parse_struct_lit(Parser *p, Type *type) {
 
     Vec fields;
     vec_init(&fields, sizeof(StructLitField));
+    size_t last_pos = (size_t)-1;   // OFI-235: progress guard — an iteration that consumed nothing
     while (!check(p, TOK_RBRACE) && !at_end(p)) {
+        if (p->pos == last_pos) {     // (error recovery parked on a keyword) skips one token, so a
+            adv(p);                   // malformed body can never loop forever (and hang the LSP)
+            if (check(p, TOK_RBRACE) || at_end(p)) {
+                break;
+            }
+        }
+        last_pos = p->pos;
         StructLitField f;
         const Token *name_tok = expect(p, TOK_IDENT, "expected field name");
         f.name = tok_text(p, name_tok);
@@ -1676,7 +1684,15 @@ static Stmt *parse_statement(Parser *p) {
             skip_newlines(p);
             Vec cases;
             vec_init(&cases, sizeof(MatchCase));
+            size_t last_pos = (size_t)-1;   // OFI-235: progress guard — an iteration that consumed nothing
             while (!check(p, TOK_RBRACE) && !at_end(p)) {
+                if (p->pos == last_pos) {     // (error recovery parked on a keyword) skips one token, so a
+                    adv(p);                   // malformed body can never loop forever (and hang the LSP)
+                    if (check(p, TOK_RBRACE) || at_end(p)) {
+                        break;
+                    }
+                }
+                last_pos = p->pos;
                 expect(p, TOK_CASE, "expected 'case' in match");
                 MatchCase mc;
                 Pattern first = parse_pattern(p);
@@ -1989,6 +2005,7 @@ static Decl *parse_struct(Parser *p) {
     vec_init(&fields, sizeof(Field));
     vec_init(&methods, sizeof(FnDecl));
     while (!check(p, TOK_RBRACE) && !at_end(p)) {
+        size_t start_pos = p->pos;   // OFI-235: progress guard (see the end of the loop body)
         if (check(p, TOK_FN)) {
             FnDecl m = parse_fn(p, 1);
             vec_push(&methods, &m);
@@ -2007,6 +2024,13 @@ static Decl *parse_struct(Parser *p) {
             synchronize(p);
         }
         skip_newlines(p);
+        // OFI-235: synchronize() stops AT a statement keyword without consuming it, so an unparseable
+        // member whose recovery lands on one (`realtime fn m(self) { return … }` — a modifier this frozen
+        // frontend predates) made no progress and looped forever, hanging the stage-0-served LSP. Always
+        // consume at least one token per iteration; a valid struct body never reaches this.
+        if (p->pos == start_pos && !at_end(p)) {
+            adv(p);
+        }
     }
     expect(p, TOK_RBRACE, "expected '}' to close struct body");
     d->as.struct_.fields  = vec_to_arena(p->arena, &fields,
@@ -2037,7 +2061,15 @@ static Decl *parse_enum(Parser *p) {
 
     Vec variants;
     vec_init(&variants, sizeof(Variant));
+    size_t last_pos = (size_t)-1;   // OFI-235: progress guard — an iteration that consumed nothing
     while (!check(p, TOK_RBRACE) && !at_end(p)) {
+        if (p->pos == last_pos) {     // (error recovery parked on a keyword) skips one token, so a
+            adv(p);                   // malformed body can never loop forever (and hang the LSP)
+            if (check(p, TOK_RBRACE) || at_end(p)) {
+                break;
+            }
+        }
+        last_pos = p->pos;
         Variant v;
         const Token *vname = expect(p, TOK_IDENT, "expected variant name");
         v.name = tok_text(p, vname);
@@ -2098,7 +2130,15 @@ static Decl *parse_interface(Parser *p) {
 
     Vec methods;
     vec_init(&methods, sizeof(FnDecl));
+    size_t last_pos = (size_t)-1;   // OFI-235: progress guard — an iteration that consumed nothing
     while (!check(p, TOK_RBRACE) && !at_end(p)) {
+        if (p->pos == last_pos) {     // (error recovery parked on a keyword) skips one token, so a
+            adv(p);                   // malformed body can never loop forever (and hang the LSP)
+            if (check(p, TOK_RBRACE) || at_end(p)) {
+                break;
+            }
+        }
+        last_pos = p->pos;
         if (check(p, TOK_FN)) {
             FnDecl m = parse_fn(p, 0);
             vec_push(&methods, &m);
@@ -2135,7 +2175,15 @@ static Decl *parse_extern(Parser *p) {
     skip_newlines(p);
     Vec fns;
     vec_init(&fns, sizeof(FnDecl));
+    size_t last_pos = (size_t)-1;   // OFI-235: progress guard — an iteration that consumed nothing
     while (!check(p, TOK_RBRACE) && !at_end(p)) {
+        if (p->pos == last_pos) {     // (error recovery parked on a keyword) skips one token, so a
+            adv(p);                   // malformed body can never loop forever (and hang the LSP)
+            if (check(p, TOK_RBRACE) || at_end(p)) {
+                break;
+            }
+        }
+        last_pos = p->pos;
         if (check(p, TOK_FN)) {
             FnDecl f = parse_fn(p, 0);   // signature only, no body
             vec_push(&fns, &f);

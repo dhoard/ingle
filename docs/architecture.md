@@ -1981,3 +1981,15 @@ self-hosted C-emit (`selfhost/cgen_c.ig`) *deliberately* emits different C from 
 
 - **Rejected:** teaching stage-0 the same fast path to keep text identity. Stage-0 is frozen by the v1.0
   decision above; changing it to preserve a transitional oracle would invert the succession.
+
+## Decision: the frozen stage-0 may take HANG/CRASH fixes — never language changes (OFI-235)
+
+**Date:** 2026-10-08 (Karl's call). Stage-0 is frozen behind the language frontier, but it still SERVES
+tooling: `inglec --lsp` and the introspection modes exec it. When new syntax it predates (the DSP
+`realtime` modifier) sent its struct-body parser into an infinite loop, an editor opening such a file could
+hang the language server. Rule adopted: stage-0 may receive **robustness fixes** — a hang, a crash, a
+memory error — that change no accepted program's meaning and no valid program's output; it never learns new
+language. The fix: a progress guard on every brace-delimited body loop in `src/parser.c` (struct, enum,
+interface, extern, struct literal, match) — an iteration that consumed nothing skips one token, so error
+recovery parked on a keyword can no longer spin. Valid programs never reach it (the AST differential in
+`make selfhost` stays byte-identical).
