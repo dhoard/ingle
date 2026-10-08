@@ -11128,7 +11128,7 @@ struct Chunk {
                 let aparams = annotate_ptype_params(aparams0, self.pending_lambda_ptys)
                 self.pending_lambda_str = []
                 self.pending_lambda_ptys = []
-                let synth = ps.FnDecl { name: "<lambda>", generics: [], params: aparams, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [], line: 0, col: 0 }
+                let synth = ps.FnDecl { name: "<lambda>", generics: [], params: aparams, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [], line: 0, col: 0, export_abi: "", is_realtime: false }
                 self.lifted.append(LambdaSpec { decl: synth, caps: cflags })
             }
             case _ {

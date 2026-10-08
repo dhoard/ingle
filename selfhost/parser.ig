@@ -153,6 +153,8 @@ struct FnDecl {
     ens_lines: [int]
     line: int                                       // the `fn` keyword's line/col — DIAGNOSTIC-ONLY (positions
     col: int                                        // signature/decl errors; not printed by ast_print, not read by codegen)
+    export_abi: string                              // `export "c" fn …` → "c": callable FROM C by name (DSP Phase 1); "" = not exported
+    is_realtime: bool                               // `realtime fn …`: checked never to allocate/lock/block (DSP Phase 1)
 }
 
 
@@ -1070,6 +1072,14 @@ let TAG_PIPE: int = 31
 let TAG_SHR: int = 32
 
 
+fn is_string_tk(k: lx.Tk) -> bool {
+    match k {
+        case TString { return true }
+        case _ { return false }
+    }
+}
+
+
 fn tk_tag(k: lx.Tk) -> int {
     match k {
         case TEof { return 1 }
@@ -1306,6 +1316,23 @@ struct Parser {
                 return self.parse_struct(k)
             }
         }
+        // `export "c"` and `realtime` are contextual modifiers before `fn` (DSP Phase 1) — plain identifiers
+        // everywhere else, so existing code naming a variable `export`/`realtime` keeps compiling.
+        if self.at(TAG_IDENT) && self.peek().text == "export" && is_string_tk(self.peek2_kind()) {
+            let _ = self.advance()                  // export
+            let abi = strip_quotes(self.advance().text)
+            let rt = self.eat_realtime()
+            var f = self.parse_fn(true)
+            f.export_abi = abi
+            f.is_realtime = rt
+            return DFn(f)
+        }
+        if self.at(TAG_IDENT) && self.peek().text == "realtime" && self.at2(TAG_FN) {
+            let _ = self.advance()                  // realtime
+            var f = self.parse_fn(true)
+            f.is_realtime = true
+            return DFn(f)
+        }
         match self.peek_kind() {
             case TFn { return DFn(self.parse_fn(true)) }
             case TStruct { return self.parse_struct(0) }
@@ -1321,6 +1348,16 @@ struct Parser {
                 return DImport("", "")
             }
         }
+    }
+
+
+    // eat_realtime consumes an optional contextual `realtime` modifier sitting directly before `fn`.
+    fn eat_realtime(mut self) -> bool {
+        if self.at(TAG_IDENT) && self.peek().text == "realtime" && self.at2(TAG_FN) {
+            let _ = self.advance()
+            return true
+        }
+        return false
     }
 
 
@@ -1505,7 +1542,7 @@ struct Parser {
             ret.append(self.parse_type())
         }
         if with_body == false {
-            return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: false, body: [], reqs: [], req_lines: [], enss: [], ens_lines: [], line: fline, col: fcol }
+            return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: false, body: [], reqs: [], req_lines: [], enss: [], ens_lines: [], line: fline, col: fcol, export_abi: "", is_realtime: false }
         }
         // requires/ensures contract clauses — captured into parallel predicate/line arrays (the line is the
         // clause keyword's, for codegen attribution), but ast_print does NOT print them, so the M2
@@ -1529,7 +1566,7 @@ struct Parser {
             }
         }
         let body = self.parse_block()
-        return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: true, body: body, reqs: reqs, req_lines: req_lines, enss: enss, ens_lines: ens_lines, line: fline, col: fcol }
+        return FnDecl{ name: name, generics: generics, params: params, ret: ret, has_body: true, body: body, reqs: reqs, req_lines: req_lines, enss: enss, ens_lines: ens_lines, line: fline, col: fcol, export_abi: "", is_realtime: false }
     }
 
 
@@ -1559,6 +1596,11 @@ struct Parser {
             }
             if self.at(TAG_FN) {
                 methods.append(self.parse_fn(true))
+            } else if self.at(TAG_IDENT) && self.peek().text == "realtime" && self.at2(TAG_FN) {
+                let _ = self.advance()              // a `realtime` method (DSP Phase 1)
+                var m = self.parse_fn(true)
+                m.is_realtime = true
+                methods.append(m)
             } else {
                 let fname = self.advance().text
                 let _ = self.expect(TAG_COLON)

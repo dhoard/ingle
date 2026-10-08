@@ -1,0 +1,8 @@
+tests/lib/reject/bad_exports.ig:2:12: error: an `export "c"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)
+tests/lib/reject/bad_exports.ig:5:12: error: an `export "c"` function cannot be generic — C has no way to pick the type arguments
+tests/lib/reject/bad_exports.ig:5:12: error: an `export "c"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)
+tests/lib/reject/bad_exports.ig:8:12: error: an `export "c"` function cannot be named 'main' — that C symbol belongs to the runtime
+tests/lib/reject/bad_exports.ig:11:15: error: unsupported export ABI "rust" — only `export "c"` is supported
+tests/lib/reject/bad_exports.ig:13:12: error: an `export "c"` function must return a scalar (i8..u64/f32/f64/bool), a Ptr handle, or nothing
+tests/lib/reject/bad_exports.ig:16:12: error: an `export "c"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)
+tests/lib/reject/bad_exports.ig:19:12: error: an `export "c"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)

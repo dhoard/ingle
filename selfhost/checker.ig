@@ -983,6 +983,9 @@ struct Checker {
                         self.cur_line = f.line
                         self.cur_col = f.col
                     }
+                    if f.export_abi != "" {
+                        self.check_export_sig(f)
+                    }
                     self.tparams = gp_names(f.generics)      // T in a param type → lenient, not a struct
                     self.fn_pstart.append(self.fn_ptype.len())
                     var p = 0
@@ -1372,6 +1375,44 @@ struct Checker {
             }
             case TyFn(params, ret) {
                 return TY_INFER
+            }
+        }
+    }
+
+
+    // check_export_sig validates an `export "c" fn` (DSP Phase 1): C calls it by name with a plain C
+    // signature, so — like a direct extern, its mirror image — every parameter and the return must be a
+    // scalar (i8..u64/f32/f64/bool) or a Ptr handle, passed plainly (or a Ptr by `move`); no generics (C has no instantiation to
+    // pick); and the name must be a free C symbol (not `main`, not the runtime's `em_` namespace).
+    fn check_export_sig(mut self, f: ps.FnDecl) {
+        if f.export_abi != "c" {
+            self.error("unsupported export ABI \"{f.export_abi}\" — only `export \"c\"` is supported")
+            return
+        }
+        if f.generics.len() > 0 {
+            self.error("an `export \"c\"` function cannot be generic — C has no way to pick the type arguments")
+        }
+        if f.name == "main" || (f.name.len() >= 3 && byte_slice(f.name, 0, 3) == "em_") {
+            self.error("an `export \"c\"` function cannot be named '{f.name}' — that C symbol belongs to the runtime")
+        }
+        var p = 0
+        loop {
+            if p >= f.params.len() {
+                break
+            }
+            let pt = self.param_type(f.params[p])
+            // `move` is allowed on a Ptr alone: C hands the handle's ownership to Ingle (the mirror of a
+            // `move` extern param, where Ingle hands it to C).
+            let q = f.params[p].qual
+            if q == 1 || (q == 2 && pt != TY_PTR) || (is_numeric(pt) == false && pt != TY_BOOL && pt != TY_PTR) {
+                self.error("an `export \"c\"` parameter must be a plain scalar (i8..u64/f32/f64/bool) or a Ptr handle ('move' only on a Ptr)")
+            }
+            p = p + 1
+        }
+        if f.ret.len() > 0 {
+            let rt = self.annotation_type(f.ret[0])
+            if is_numeric(rt) == false && rt != TY_BOOL && rt != TY_PTR {
+                self.error("an `export \"c\"` function must return a scalar (i8..u64/f32/f64/bool), a Ptr handle, or nothing")
             }
         }
     }

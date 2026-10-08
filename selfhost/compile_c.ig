@@ -433,7 +433,7 @@ fn needs_frozen_host(argv: [string]) -> bool {
         }
         let a = argv[i]
         if a.len() >= 2 && byte_slice(a, 0, 2) == "--" {
-            if a != "--emit=run" && a != "--emit=c" {
+            if a != "--emit=run" && a != "--emit=c" && a != "--emit=lib" {
                 return true
             }
         }
@@ -487,7 +487,7 @@ fn main() -> int {
         }
     }
     if entry == "" {
-        println("usage: inglec [-o <out> | --emit=run | --emit=c] <file.ig>")
+        println("usage: inglec [-o <out> | --emit=run | --emit=c | --emit=lib [-o <lib.a>]] <file.ig>")
         exit(1)
     }
 
@@ -520,6 +520,29 @@ fn main() -> int {
         exit(65)
     }
     let ld = load_modules(entry)
+    if emit_mode == "lib" {
+        // --emit=lib (DSP Phase 1): a STATIC LIBRARY for C to link — no `main`; each `export "c" fn` is a C
+        // entry point. Without -o, print the library-mode C (like --emit=c). With -o, compile it and bundle it
+        // WITH the runtime into one archive, so a C host links a single `libfoo.a` (plus -lm). Position-
+        // independent and symbol-hidden, so it can go into a shared library / plugin bundle that exposes only
+        // the exports.
+        if outpath == "" {
+            cc.emit_library(ld.decls, ld.decl_mods, ld.imp_alias, ld.imp_path, entry)
+            exit(0)
+        }
+        let lexe = exe_path()
+        let lbindir = dirname(lexe)
+        let linc = dirname(lbindir) + "/include"
+        let lfl = flavor_spec(ld.decls, ld.imp_path, lbindir)
+        let script = "set -e; T=$(mktemp -d); trap 'rm -rf \"$T\"' EXIT; " + dq(lexe) + " --emit=lib " + dq(entry) + " | cc -std=c17 -O2 -fPIC -fvisibility=hidden -D_DEFAULT_SOURCE " + lfl.defines + " -I" + dq(linc) + " -x c - -c -o \"$T/prog.o\"; rm -f " + dq(outpath) + "; if [ \"$(uname -s)\" = Darwin ]; then libtool -static -o " + dq(outpath) + " \"$T/prog.o\" " + dq(lfl.lib) + " 2>/dev/null; else mkdir \"$T/rt\"; (cd \"$T/rt\" && ar x " + dq(lfl.lib) + "); ar rcs " + dq(outpath) + " \"$T/prog.o\" \"$T\"/rt/*.o; fi"
+        let lr = proc.run(script)
+        if lr.code() != 0 {
+            print(lr.combined())
+            println("inglec: library build of {entry} failed")
+            exit(1)
+        }
+        exit(0)
+    }
     if outpath == "" {
         // C-EMIT the whole (merged, prelude-injected) program. `exit(0)` sets the success code AND suppresses
         // the runtime's `=> 0` echo, so stdout is exactly the C translation unit — pipe straight to cc.

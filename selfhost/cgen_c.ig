@@ -11775,6 +11775,144 @@ fn fn_count(decls: [ps.Decl]) -> int {
 
 
 // main_index returns the em_fn_N index of the entry `main` free function (the C `main` calls it), or -1.
+// ---- Library mode: `export "c"` entry points (DSP Phase 1) ----
+// emit_lib_entry closes a library-mode translation unit: a load-time constructor (no symbol of its own, so
+// two Ingle libraries never clash on an init name) that wires the runtime context exactly as the program
+// `main` does, then one C-ABI wrapper per `export "c" fn`, which boxes its C arguments into Values, calls
+// the em_fn, and unboxes the result. Everything else in the unit stays `static`.
+fn emit_lib_entry(decls: [ps.Decl], stab: StructTab) {
+    println("__attribute__((constructor)) static void em_lib_init(void) \{")
+    if stab.names.len() > 0 {
+        println("    g_em.structs = em_structs;")
+        println("    g_em.struct_count = {stab.struct_count()};")
+    }
+    println("    g_em.invoke = em_invoke;")
+    println("\}")
+    var idx = 0
+    var i = 0
+    loop {
+        if i >= decls.len() {
+            break
+        }
+        match decls[i] {
+            case DFn(f) {
+                if f.has_body {
+                    if f.export_abi == "c" {
+                        emit_export_wrapper(f, idx)
+                    }
+                    idx = idx + 1
+                }
+            }
+            case DStruct(name, generics, impls, fields, methods, kind) {
+                var mi = 0
+                loop {
+                    if mi >= methods.len() {
+                        break
+                    }
+                    if methods[mi].has_body {
+                        idx = idx + 1
+                    }
+                    mi = mi + 1
+                }
+            }
+            case _ {
+            }
+        }
+        i = i + 1
+    }
+}
+
+
+// export_ctype is the C type of an `export "c"` parameter/return (the checker admits only scalars, bool and
+// Ptr): the scalar's natural C type, `_Bool`, or `void *`.
+fn export_ctype(t: ps.Ty) -> string {
+    let k = ty_scalar_kind(t)
+    if k >= 0 {
+        return scalar_ctype(k)
+    }
+    match t {
+        case TyName(qual, name) {
+            if name == "bool" {
+                return "_Bool"
+            }
+        }
+        case _ {
+        }
+    }
+    return "void *"
+}
+
+
+// export_box renders C argument `cv` (of type `t`) as the Value the em_fn takes.
+fn export_box(t: ps.Ty, cv: string) -> string {
+    let k = ty_scalar_kind(t)
+    if k == 8 || k == 9 {
+        return "FLOAT_VAL((double){cv})"
+    }
+    if k >= 0 {
+        return "INT_VAL((int64_t){cv})"
+    }
+    if export_ctype(t) == "_Bool" {
+        return "INT_VAL({cv} ? 1 : 0)"
+    }
+    return "INT_VAL((int64_t)(intptr_t){cv})"          // a Ptr rides in the int slot (cextern.c PTR_VAL)
+}
+
+
+// export_unbox renders the em_fn's Value result `rv` as the export's C return type.
+fn export_unbox(t: ps.Ty, rv: string) -> string {
+    let k = ty_scalar_kind(t)
+    if k == 8 {
+        return "(float)AS_FLOAT({rv})"
+    }
+    if k == 9 {
+        return "AS_FLOAT({rv})"
+    }
+    if k >= 0 {
+        return "({scalar_ctype(k)})AS_INT({rv})"
+    }
+    if export_ctype(t) == "_Bool" {
+        return "AS_INT({rv}) != 0"
+    }
+    return "(void *)(intptr_t)AS_INT({rv})"
+}
+
+
+fn emit_export_wrapper(f: ps.FnDecl, idx: int) {
+    var ret = "void"
+    if f.ret.len() > 0 {
+        ret = export_ctype(f.ret[0])
+    }
+    var sig = ""
+    var args = ""
+    var p = 0
+    loop {
+        if p >= f.params.len() {
+            break
+        }
+        if p > 0 {
+            sig = sig + ", "
+            args = args + ", "
+        }
+        sig = sig + "{export_ctype(f.params[p].ty[0])} p{p}"
+        args = args + export_box(f.params[p].ty[0], "p{p}")
+        p = p + 1
+    }
+    if sig == "" {
+        sig = "void"
+    }
+    println("__attribute__((visibility(\"default\"))) {ret} {f.name}({sig}) \{")
+    if f.ret.len() > 0 {
+        let unboxed = export_unbox(f.ret[0], "r")
+        println("    Value r = em_fn_{idx}({args});")
+        println("    return {unboxed};")
+    } else {
+        println("    (void)em_fn_{idx}({args});")
+    }
+    println("\}")
+}
+
+
 fn main_index(decls: [ps.Decl]) -> int {
     var idx = 0
     var i = 0
@@ -12250,7 +12388,7 @@ struct LamColl {
             case ELambda(params, body) {
                 let caps = cgc_lambda_captures(params, body)
                 let lp = cgc_lifted_params(caps, params)
-                self.lams.append(ps.FnDecl { name: "<lambda>", generics: [], params: lp, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [], line: 0, col: 0 })
+                self.lams.append(ps.FnDecl { name: "<lambda>", generics: [], params: lp, ret: [], has_body: true, body: body, reqs: [], req_lines: [], enss: [], ens_lines: [], line: 0, col: 0, export_abi: "", is_realtime: false })
             }
             case _ {
             }
@@ -12407,6 +12545,18 @@ fn build_newtypes(decls: [ps.Decl]) -> [string] {
 // emit_program writes the whole C translation unit for the merged module declarations, byte-identical to
 // stage-0 `inglec --emit=c`. It iterates `decls` once per section, keeping a shared em_fn_N counter.
 fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_path: [string], filename: string) {
+    emit_program_mode(decls, decl_mods, imp_alias, imp_path, filename, false)
+}
+
+
+// emit_library is emit_program in LIBRARY mode (`inglec --emit=lib`, DSP Phase 1): no C `main`; instead a
+// load-time constructor sets up the runtime context, and every `export "c" fn` gets a real C entry point.
+fn emit_library(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_path: [string], filename: string) {
+    emit_program_mode(decls, decl_mods, imp_alias, imp_path, filename, true)
+}
+
+
+fn emit_program_mode(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_path: [string], filename: string, lib: bool) {
     let total = fn_count(decls)
     let fn_names = build_fn_names(decls)
     let fn_param_counts = build_fn_param_counts(decls)   // per-em_fn declared param count (colliding-name arity disambiguation)
@@ -12673,6 +12823,10 @@ fn emit_program(decls: [ps.Decl], decl_mods: [string], imp_alias: [string], imp_
         lb = lb + 1
     }
     println("")
+    if lib {
+        emit_lib_entry(decls, stab)
+        return
+    }
     // the C main wrapper, invoking the Ingle `main`
     let mi = main_index(decls)
     println("int main(int argc, char **argv) \{")

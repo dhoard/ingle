@@ -1738,6 +1738,39 @@ OFI-043. Arbitrary dynamic linking likewise remains future work.) See `examples/
 > the bytes reports `diverged` (replay correctly surfacing an uncaptured effect). Scalar/handle-only
 > FFI replays fine. See OFI-044.
 
+### The other direction — C calling Ingle: `export "c"` and `--emit=lib` [runs: native]
+
+`extern "c"` lets Ingle call C. **`export "c"`** is its mirror image: it makes an Ingle function callable
+*from* C, by name, with a plain C signature. Build the program as a **static library** with
+`inglec --emit=lib -o libname.a file.ig` and link it into any C (or C++) program:
+
+```ember
+// dsp.ig
+export "c" fn gain_sample(x: f32, db: f32) -> f32 {
+    return x * f32(pow(10.0, f64(db) / 20.0))
+}
+```
+
+```c
+// host.c — cc host.c libdsp.a -lm
+float gain_sample(float x, float db);
+int main(void) { return gain_sample(0.5f, -6.0f) > 0.25f; }
+```
+
+- **Signature.** Each parameter and the return must be a scalar — `i8`…`u64` and `int` (its C width:
+  `int8_t`…`uint64_t`, `int64_t`), `f32`/`f64` (`float`/`double`), `bool` (`_Bool`) — or a `Ptr`
+  (`void *`), or the function returns nothing (`void`). A `Ptr` may be taken `move` (C hands the handle's
+  ownership to Ingle); every other parameter is plain. No generics (C cannot pick type arguments), and the
+  name must be a free C symbol (not `main`, not `em_…`). The checker rejects anything else.
+- **The library.** `--emit=lib -o lib.a` bundles your code *and* the Ingle runtime into one archive, so
+  the C side links a single file plus `-lm`. Only the exports are visible symbols; everything else is
+  hidden, and the code is position-independent, so the archive can go into a shared library or a plugin
+  bundle. The runtime sets itself up when the library loads — there is no init call. `--emit=lib`
+  without `-o` prints the library's C instead.
+- **Identifiers.** `export` (followed by an ABI string) and `realtime` (followed by `fn`) are *contextual*
+  modifiers — everywhere else they are ordinary names, so `let export = 3` still compiles.
+- In a normal program (`-o` / `--emit=run`) an `export "c"` function is just a function you can call.
+
 ---
 
 ## Ownership — [runs: mutation + move/borrow safety; lifetime inference designed]

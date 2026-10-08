@@ -1,0 +1,6 @@
+gain_sample(0.5, -6) = 0.250594
+add_i32(40, 2) = 42, add_i32(-5, 3) = -2
+mix_u8(0x3c, 0xa5) = 0xac
+is_loud(0.7) = 1, is_loud(0.1) = 0
+same_handle round-trips = 1
+ping from Ingle
